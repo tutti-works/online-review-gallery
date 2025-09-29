@@ -1,0 +1,37 @@
+{"users": [
+{
+  "localId": "31Oe2ETnEXgfs1jGjI1065hIAXx2",
+  "email": "princess.bibibibibi@gmail.com",
+  "emailVerified": true,
+  "displayName": "Ryusei Asakawa",
+  "photoUrl": "https://lh3.googleusercontent.com/a/ACg8ocJLcGumhL_pib_5thV38ajWF4GBr2e2cJi25PpZhVAYP5Qxs3M=s96-c",
+  "lastSignedInAt": "1759166578565",
+  "createdAt": "1759166578565",
+  "providerUserInfo": [
+    {
+      "providerId": "google.com",
+      "rawId": "108371972571658085164",
+      "email": "princess.bibibibibi@gmail.com",
+      "displayName": "Ryusei Asakawa",
+      "photoUrl": "https://lh3.googleusercontent.com/a/ACg8ocJLcGumhL_pib_5thV38ajWF4GBr2e2cJi25PpZhVAYP5Qxs3M=s96-c"
+    }
+  ]
+},
+{
+  "localId": "8r7X1opskXR29eE5Eai0bAOb0K22",
+  "email": "googoo1118tdr@gmail.com",
+  "emailVerified": true,
+  "displayName": "asakawa ryusei",
+  "photoUrl": "https://lh3.googleusercontent.com/a/ACg8ocLRxkqYNedSH849l0Z-2sYXW43072PGDo6MVQYTq8RWsrJPLNljcw=s96-c",
+  "lastSignedInAt": "1759166497675",
+  "createdAt": "1759166497675",
+  "providerUserInfo": [
+    {
+      "providerId": "google.com",
+      "rawId": "111114046153619978394",
+      "email": "googoo1118tdr@gmail.com",
+      "displayName": "asakawa ryusei",
+      "photoUrl": "https://lh3.googleusercontent.com/a/ACg8ocLRxkqYNedSH849l0Z-2sYXW43072PGDo6MVQYTq8RWsrJPLNljcw=s96-c"
+    }
+  ]
+}]}
