@@ -1,9 +1,9 @@
-import * as sharp from 'sharp';
+import sharp from 'sharp';
 const pdf2pic = require('pdf2pic');
 import * as admin from 'firebase-admin';
 import { v4 as uuidv4 } from 'uuid';
 import { google, Auth } from 'googleapis';
-import { checkImportCompletion } from './importController';
+import { FieldValue } from 'firebase-admin/firestore';
 
 interface ProcessedImage {
   id: string;
@@ -22,7 +22,7 @@ export async function processFile(
   studentName: string,
   studentEmail: string,
   galleryId: string,
-  auth: Auth.GoogleAuth
+  auth: Auth.GoogleAuth | Auth.OAuth2Client
 ): Promise<void> {
   const db = admin.firestore();
   const storage = admin.storage();
@@ -59,12 +59,12 @@ export async function processFile(
       fileType,
       studentName,
       studentEmail,
-      submittedAt: admin.firestore.Timestamp.now(),
+      submittedAt: FieldValue.serverTimestamp(),
       classroomId: '', // importControllerから取得する必要がある場合は追加
       assignmentId: '', // importControllerから取得する必要がある場合は追加
       likeCount: 0,
       comments: [],
-      createdAt: admin.firestore.Timestamp.now(),
+      createdAt: FieldValue.serverTimestamp(),
       importedBy: importJobId,
     };
 
@@ -72,11 +72,8 @@ export async function processFile(
 
     // インポートジョブの進捗を更新
     await db.collection('importJobs').doc(importJobId).update({
-      processedFiles: admin.firestore.FieldValue.increment(1),
+      processedFiles: FieldValue.increment(1),
     });
-
-    // 完了チェックを実行
-    await checkImportCompletion(importJobId);
 
     console.log(`Successfully processed file: ${fileName}`);
 
@@ -85,11 +82,8 @@ export async function processFile(
 
     // エラーログを記録
     await db.collection('importJobs').doc(importJobId).update({
-      errorFiles: admin.firestore.FieldValue.arrayUnion(fileId),
+      errorFiles: FieldValue.arrayUnion(fileId),
     });
-
-    // 完了チェックを実行（エラーでも進捗を更新）
-    await checkImportCompletion(importJobId);
 
     throw error;
   }
@@ -163,14 +157,26 @@ async function processImageFile(
     })
   ]);
 
-  // 公開URLを取得
-  await Promise.all([
-    imageFile.makePublic(),
-    thumbnailFile.makePublic()
-  ]);
+  // エミュレーター環境判定
+  const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
 
-  const imageUrl = `https://storage.googleapis.com/${bucket.name}/${imagePath}`;
-  const thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailPath}`;
+  let imageUrl: string;
+  let thumbnailUrl: string;
+
+  if (isEmulator) {
+    // エミュレーター環境: localhost URLを使用
+    imageUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(imagePath)}?alt=media`;
+    thumbnailUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(thumbnailPath)}?alt=media`;
+    console.log(`🔧 Emulator Storage URL: ${imageUrl}`);
+  } else {
+    // 本番環境: 公開URLを使用
+    await Promise.all([
+      imageFile.makePublic(),
+      thumbnailFile.makePublic()
+    ]);
+    imageUrl = `https://storage.googleapis.com/${bucket.name}/${imagePath}`;
+    thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailPath}`;
+  }
 
   return [{
     id: imageId,
@@ -191,6 +197,14 @@ async function processPdfFile(
 
   const bucket = storage.bucket();
   const processedImages: ProcessedImage[] = [];
+
+  // エミュレーター環境ではPDF処理をスキップ（pdf2picがWindows環境で動作しないため）
+  const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+  if (isEmulator) {
+    console.warn(`⚠️ PDF processing skipped in emulator mode: ${fileName}`);
+    console.warn('PDF processing requires GraphicsMagick/ImageMagick which is not available in Windows emulator environment');
+    throw new Error('PDF processing is not supported in emulator mode. Please test with image files instead.');
+  }
 
   try {
     // PDFを画像に変換
@@ -257,8 +271,13 @@ async function processPdfFile(
           }
         });
 
-        await thumbnailFile.makePublic();
-        thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailPath}`;
+        // エミュレーター環境ではmakePublicを呼ばない
+        if (isEmulator) {
+          thumbnailUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(thumbnailPath)}?alt=media`;
+        } else {
+          await thumbnailFile.makePublic();
+          thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailPath}`;
+        }
       }
 
       // メイン画像をアップロード
@@ -276,8 +295,13 @@ async function processPdfFile(
         }
       });
 
-      await imageFile.makePublic();
-      const imageUrl = `https://storage.googleapis.com/${bucket.name}/${imagePath}`;
+      let imageUrl: string;
+      if (isEmulator) {
+        imageUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(imagePath)}?alt=media`;
+      } else {
+        await imageFile.makePublic();
+        imageUrl = `https://storage.googleapis.com/${bucket.name}/${imagePath}`;
+      }
 
       processedImages.push({
         id: imageId,

@@ -17,13 +17,15 @@ interface ArtworkModalProps {
   onClose: () => void;
   onLike?: (artworkId: string) => void;
   onComment?: (artworkId: string, comment: string) => void;
+  onDelete?: (artworkId: string) => void;
   userRole: string;
 }
 
-function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, userRole }: ArtworkModalProps) {
+function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, userRole }: ArtworkModalProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const [commentText, setCommentText] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -48,6 +50,25 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, userRole }:
     }
   };
 
+  const handleDelete = async () => {
+    if (!onDelete || userRole !== 'admin') return;
+
+    if (!confirm('この作品を削除してもよろしいですか？この操作は取り消せません。')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await onDelete(artwork.id);
+      onClose();
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('削除に失敗しました');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -68,14 +89,25 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, userRole }:
                   提出日: {toDate(artwork.submittedAt).toLocaleString('ja-JP')}
                 </p>
               </div>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-gray-600 focus:outline-none focus:text-gray-600"
-              >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center space-x-2">
+                {userRole === 'admin' && (
+                  <button
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    className="px-3 py-1 text-sm text-white bg-red-600 hover:bg-red-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isDeleting ? '削除中...' : '削除'}
+                  </button>
+                )}
+                <button
+                  onClick={onClose}
+                  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:text-gray-600"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Content */}
@@ -241,10 +273,41 @@ function GalleryPage() {
 
   const fetchArtworks = async () => {
     try {
-      // TODO: Firestoreから作品データを取得
-      // 今は仮のデータを表示
-      const mockArtworks: Artwork[] = [];
-      setArtworks(mockArtworks);
+      const { collection, query, getDocs, orderBy } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
+
+      // Firestoreから全作品を取得（作成日時順）
+      const artworksQuery = query(
+        collection(db, 'artworks'),
+        orderBy('createdAt', 'desc')
+      );
+
+      const querySnapshot = await getDocs(artworksQuery);
+      const fetchedArtworks: Artwork[] = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          title: data.title || '',
+          description: data.description,
+          originalFileUrl: data.originalFileUrl || '',
+          images: data.images || [],
+          fileType: data.fileType || 'image',
+          studentName: data.studentName || '',
+          studentEmail: data.studentEmail || '',
+          submittedAt: data.submittedAt?.toDate ? data.submittedAt.toDate() : data.submittedAt,
+          classroomId: data.classroomId || '',
+          assignmentId: data.assignmentId || '',
+          likeCount: data.likeCount || 0,
+          comments: (data.comments || []).map((comment: any) => ({
+            ...comment,
+            createdAt: comment.createdAt?.toDate ? comment.createdAt.toDate() : comment.createdAt,
+          })),
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+          importedBy: data.importedBy || '',
+        };
+      });
+
+      setArtworks(fetchedArtworks);
     } catch (err) {
       setError('作品の読み込みに失敗しました');
       console.error('Fetch artworks error:', err);
@@ -254,31 +317,75 @@ function GalleryPage() {
   };
 
   const handleLike = async (artworkId: string) => {
-    if (user?.role !== 'admin') return;
+    if (user?.role !== 'admin' || !user?.email) return;
 
     try {
-      // TODO: いいね機能の実装
-      console.log('Like artwork:', artworkId);
+      const { doc, getDoc, setDoc, deleteDoc, collection, updateDoc, increment } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
 
-      // 楽観的更新
-      setArtworks(prev => prev.map(artwork =>
-        artwork.id === artworkId
-          ? { ...artwork, likeCount: artwork.likeCount + 1 }
-          : artwork
-      ));
+      const likeId = `${artworkId}_${user.email.replace(/[.@]/g, '_')}`;
+      const likeRef = doc(db, 'likes', likeId);
+      const likeDoc = await getDoc(likeRef);
+
+      if (likeDoc.exists()) {
+        // いいねを削除
+        await deleteDoc(likeRef);
+
+        // アートワークのいいね数を減らす
+        const artworkRef = doc(db, 'artworks', artworkId);
+        await updateDoc(artworkRef, {
+          likeCount: increment(-1)
+        });
+
+        // 楽観的更新
+        setArtworks(prev => prev.map(artwork =>
+          artwork.id === artworkId
+            ? { ...artwork, likeCount: Math.max(0, artwork.likeCount - 1) }
+            : artwork
+        ));
+
+        if (selectedArtwork?.id === artworkId) {
+          setSelectedArtwork(prev => prev ? { ...prev, likeCount: Math.max(0, prev.likeCount - 1) } : null);
+        }
+      } else {
+        // いいねを追加
+        await setDoc(likeRef, {
+          id: likeId,
+          artworkId,
+          userEmail: user.email,
+          createdAt: new Date(),
+        });
+
+        // アートワークのいいね数を増やす
+        const artworkRef = doc(db, 'artworks', artworkId);
+        await updateDoc(artworkRef, {
+          likeCount: increment(1)
+        });
+
+        // 楽観的更新
+        setArtworks(prev => prev.map(artwork =>
+          artwork.id === artworkId
+            ? { ...artwork, likeCount: artwork.likeCount + 1 }
+            : artwork
+        ));
+
+        if (selectedArtwork?.id === artworkId) {
+          setSelectedArtwork(prev => prev ? { ...prev, likeCount: prev.likeCount + 1 } : null);
+        }
+      }
     } catch (error) {
       console.error('Like error:', error);
+      alert('いいねの処理に失敗しました');
     }
   };
 
   const handleComment = async (artworkId: string, comment: string) => {
-    if (user?.role !== 'admin') return;
+    if (user?.role !== 'admin' || !user?.email) return;
 
     try {
-      // TODO: コメント機能の実装
-      console.log('Comment on artwork:', artworkId, comment);
+      const { doc, updateDoc, arrayUnion } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
 
-      // 楽観的更新
       const newComment = {
         id: crypto.randomUUID(),
         content: comment,
@@ -287,13 +394,62 @@ function GalleryPage() {
         createdAt: new Date(),
       };
 
+      // Firestoreに保存
+      const artworkRef = doc(db, 'artworks', artworkId);
+      await updateDoc(artworkRef, {
+        comments: arrayUnion(newComment)
+      });
+
+      // 楽観的更新
       setArtworks(prev => prev.map(artwork =>
         artwork.id === artworkId
           ? { ...artwork, comments: [...artwork.comments, newComment] }
           : artwork
       ));
+
+      if (selectedArtwork?.id === artworkId) {
+        setSelectedArtwork(prev => prev ? { ...prev, comments: [...prev.comments, newComment] } : null);
+      }
     } catch (error) {
       console.error('Comment error:', error);
+      alert('コメントの投稿に失敗しました');
+      throw error;
+    }
+  };
+
+  const handleDelete = async (artworkId: string) => {
+    if (user?.role !== 'admin' || !user?.email) return;
+
+    try {
+      // Cloud Functionを呼び出して削除（Firestore + Storage）
+      const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL || 'http://localhost:5001';
+
+      const response = await fetch(`${functionsBaseUrl}/deleteArtwork`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          artworkId,
+          userEmail: user.email,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '削除に失敗しました');
+      }
+
+      const data = await response.json();
+      console.log(`Deleted ${data.deletedFiles} files from Storage`);
+
+      // UIから削除
+      setArtworks(prev => prev.filter(artwork => artwork.id !== artworkId));
+
+      alert('作品を削除しました');
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert(`作品の削除に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
       throw error;
     }
   };
@@ -397,8 +553,7 @@ function GalleryPage() {
                       />
                     </div>
                     <div className="p-4">
-                      <h3 className="font-medium text-gray-900 mb-1">{artwork.title}</h3>
-                      <p className="text-sm text-gray-600 mb-2">{artwork.studentName}</p>
+                      <p className="text-sm text-gray-900 font-medium mb-2">{artwork.studentName}</p>
                       <div className="flex items-center justify-between text-xs text-gray-500">
                         <span>{toDate(artwork.submittedAt).toLocaleDateString('ja-JP')}</span>
                         <div className="flex items-center space-x-3">
@@ -441,6 +596,7 @@ function GalleryPage() {
           onClose={() => setSelectedArtwork(null)}
           onLike={handleLike}
           onComment={handleComment}
+          onDelete={handleDelete}
           userRole={user?.role || 'viewer'}
         />
       )}

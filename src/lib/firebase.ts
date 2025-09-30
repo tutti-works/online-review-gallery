@@ -1,7 +1,7 @@
 import { initializeApp, getApps, FirebaseApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import { getAuth, GoogleAuthProvider, connectAuthEmulator } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'test-api-key',
@@ -24,6 +24,31 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
+// エミュレーター接続（開発環境のみ）
+if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+  try {
+    // Auth エミュレーター（環境変数で制御）
+    if (process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === 'true') {
+      connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+      console.log('🔧 Connected to Auth Emulator');
+    } else {
+      console.log('✅ Using Production Auth (Google Sign-In)');
+    }
+
+    // Firestore & Storage エミュレーター（環境変数で制御）
+    if (process.env.NEXT_PUBLIC_USE_FIRESTORE_EMULATOR === 'true') {
+      connectFirestoreEmulator(db, 'localhost', 8080);
+      connectStorageEmulator(storage, 'localhost', 9199);
+      console.log('🔧 Connected to Firestore & Storage Emulators');
+    } else {
+      console.log('✅ Using Production Firestore & Storage');
+    }
+  } catch (error) {
+    // エミュレーターへの接続は一度しかできないため、エラーを無視
+    console.log('Emulator connection already established');
+  }
+}
+
 // Google Auth Provider
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
@@ -34,6 +59,7 @@ googleProvider.setCustomParameters({
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.students.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.students.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly'); // 学生名を取得するために必要
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.photos');
 googleProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
