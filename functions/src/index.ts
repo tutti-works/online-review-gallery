@@ -3,9 +3,18 @@ import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import * as admin from 'firebase-admin';
 import { google } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
-import * as cors from 'cors';
+import cors from 'cors';
 import { initializeImport } from './importController';
 import { processFile } from './fileProcessor';
+import { FieldValue } from 'firebase-admin/firestore';
+
+// エミュレーター環境の設定（initializeApp前に設定）
+if (process.env.FUNCTIONS_EMULATOR === 'true') {
+  process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080';
+  process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099';
+  process.env.FIREBASE_STORAGE_EMULATOR_HOST = 'localhost:9199';
+  console.log('🔧 Using Firebase Emulators');
+}
 
 admin.initializeApp();
 
@@ -31,8 +40,20 @@ export const importClassroomSubmissions = onRequest(
     memory: '1GiB', // 1GB以上のメモリ
     timeoutSeconds: 540, // 9分
     maxInstances: 100,
+    cors: true, // CORS を有効化
   },
   async (request, response) => {
+    // CORS ヘッダーを明示的に設定（エミュレーター対応）
+    response.set('Access-Control-Allow-Origin', '*');
+    response.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    // プリフライトリクエストへの対応
+    if (request.method === 'OPTIONS') {
+      response.status(204).send('');
+      return;
+    }
+
     return corsHandler(request, response, async () => {
       try {
         if (request.method !== 'POST') {
@@ -149,7 +170,7 @@ export const processFileTask = onTaskDispatched(
 
       // エラーを記録
       await admin.firestore().collection('importJobs').doc(importJobId).update({
-        errorFiles: admin.firestore.FieldValue.arrayUnion(fileId),
+        errorFiles: FieldValue.arrayUnion(fileId),
       });
 
       throw error; // Cloud Tasksにリトライさせるために再スロー
@@ -163,8 +184,20 @@ export const getImportStatus = onRequest(
     region: 'asia-northeast1',
     memory: '512MiB',
     timeoutSeconds: 30,
+    cors: true, // CORS を有効化
   },
   async (request, response) => {
+    // CORS ヘッダーを明示的に設定（エミュレーター対応）
+    response.set('Access-Control-Allow-Origin', '*');
+    response.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    // プリフライトリクエストへの対応
+    if (request.method === 'OPTIONS') {
+      response.status(204).send('');
+      return;
+    }
+
     return corsHandler(request, response, async () => {
       try {
         const { importJobId } = request.query;
@@ -367,5 +400,163 @@ export const getCourseAssignments = onRequest(
         error: 'Failed to fetch assignments',
       });
     }
+  }
+);
+
+// 【第2世代】Cloud Function: 作品削除（Firestore + Storage）
+export const deleteArtwork = onRequest(
+  {
+    region: 'asia-northeast1',
+    memory: '512MiB',
+    timeoutSeconds: 60,
+    cors: true,
+  },
+  async (request, response) => {
+    // CORS ヘッダーを明示的に設定（エミュレーター対応）
+    response.set('Access-Control-Allow-Origin', '*');
+    response.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    // プリフライトリクエストへの対応
+    if (request.method === 'OPTIONS') {
+      response.status(204).send('');
+      return;
+    }
+
+    return corsHandler(request, response, async () => {
+      try {
+        if (request.method !== 'POST') {
+          response.status(405).send('Method Not Allowed');
+          return;
+        }
+
+        const { artworkId, userEmail } = request.body;
+
+        if (!artworkId || !userEmail) {
+          response.status(400).json({
+            error: 'Missing required parameters',
+          });
+          return;
+        }
+
+        // ユーザー権限チェック
+        const userDoc = await admin
+          .firestore()
+          .collection('userRoles')
+          .doc(userEmail)
+          .get();
+
+        if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+          console.error(`Permission denied for ${userEmail}. Role: ${userDoc.data()?.role}`);
+          response.status(403).json({
+            error: 'Insufficient permissions',
+          });
+          return;
+        }
+
+        // Firestoreから作品情報を取得
+        const artworkDoc = await admin
+          .firestore()
+          .collection('artworks')
+          .doc(artworkId)
+          .get();
+
+        if (!artworkDoc.exists) {
+          response.status(404).json({
+            error: 'Artwork not found',
+          });
+          return;
+        }
+
+        const artworkData = artworkDoc.data();
+        const images = artworkData?.images || [];
+
+        // Storage から画像ファイルを削除
+        const bucket = admin.storage().bucket();
+        const deletePromises: Promise<void>[] = [];
+
+        for (const image of images) {
+          // URLからファイルパスを抽出
+          let imagePath = '';
+          let thumbnailPath = '';
+
+          // エミュレーターの場合
+          if (image.url.includes('localhost:9199')) {
+            const urlMatch = image.url.match(/o\/(.+?)\?/);
+            if (urlMatch) {
+              imagePath = decodeURIComponent(urlMatch[1]);
+            }
+          } else {
+            // 本番環境の場合
+            const urlMatch = image.url.match(/storage\.googleapis\.com\/[^/]+\/(.+)$/);
+            if (urlMatch) {
+              imagePath = decodeURIComponent(urlMatch[1]);
+            }
+          }
+
+          // サムネイルパス
+          if (image.thumbnailUrl) {
+            if (image.thumbnailUrl.includes('localhost:9199')) {
+              const urlMatch = image.thumbnailUrl.match(/o\/(.+?)\?/);
+              if (urlMatch) {
+                thumbnailPath = decodeURIComponent(urlMatch[1]);
+              }
+            } else {
+              const urlMatch = image.thumbnailUrl.match(/storage\.googleapis\.com\/[^/]+\/(.+)$/);
+              if (urlMatch) {
+                thumbnailPath = decodeURIComponent(urlMatch[1]);
+              }
+            }
+          }
+
+          // ファイル削除
+          if (imagePath) {
+            deletePromises.push(
+              bucket.file(imagePath).delete().catch(err => {
+                console.error(`Failed to delete image: ${imagePath}`, err);
+                return undefined;
+              }).then(() => undefined)
+            );
+          }
+
+          if (thumbnailPath) {
+            deletePromises.push(
+              bucket.file(thumbnailPath).delete().catch(err => {
+                console.error(`Failed to delete thumbnail: ${thumbnailPath}`, err);
+                return undefined;
+              }).then(() => undefined)
+            );
+          }
+        }
+
+        // すべてのファイル削除を実行
+        await Promise.all(deletePromises);
+
+        // Firestoreからドキュメントを削除
+        await artworkDoc.ref.delete();
+
+        // 関連するlikesを削除
+        const likesSnapshot = await admin
+          .firestore()
+          .collection('likes')
+          .where('artworkId', '==', artworkId)
+          .get();
+
+        const likeDeletions = likesSnapshot.docs.map(doc => doc.ref.delete());
+        await Promise.all(likeDeletions);
+
+        console.log(`Successfully deleted artwork ${artworkId} and ${deletePromises.length} files`);
+
+        response.status(200).json({
+          message: 'Artwork deleted successfully',
+          deletedFiles: deletePromises.length,
+        });
+      } catch (error) {
+        console.error('Delete artwork error:', error);
+        response.status(500).json({
+          error: 'Internal server error',
+        });
+      }
+    });
   }
 );

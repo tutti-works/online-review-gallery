@@ -44,7 +44,8 @@ function AdminImportPage() {
         setStatusMessage('');
       } catch (error) {
         console.error(error);
-        setStatusMessage(`クラスの読み込みに失敗しました。${error.message}`)
+        const errorMessage = error instanceof Error ? error.message : '不明なエラー';
+        setStatusMessage(`クラスの読み込みに失敗しました。${errorMessage}`)
       }
 
       setIsLoadingCourses(false);
@@ -80,7 +81,8 @@ function AdminImportPage() {
         setStatusMessage('');
       } catch (error) {
         console.error(error);
-        setStatusMessage(`課題の読み込みに失敗しました。${error.message}`)
+        const errorMessage = error instanceof Error ? error.message : '不明なエラー';
+        setStatusMessage(`課題の読み込みに失敗しました。${errorMessage}`)
       }
 
       setIsLoadingAssignments(false);

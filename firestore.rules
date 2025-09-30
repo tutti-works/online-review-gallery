@@ -1,10 +1,56 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read/write access to all documents to authenticated users
-    // Restrict this further based on your security requirements
+
+    // ヘルパー関数: ユーザーが管理者かどうかを確認
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/userRoles/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/userRoles/$(request.auth.token.email)).data.role == 'admin';
+    }
+
+    // ヘルパー関数: ユーザーが認証済みかどうかを確認
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // userRoles コレクション: 管理者のみ書き込み可能、認証済みユーザーは自分のロールを読み取り可能
+    match /userRoles/{email} {
+      allow read: if isAuthenticated() && request.auth.token.email == email;
+      allow write: if isAdmin();
+    }
+
+    // galleries コレクション: 管理者のみ作成・更新可能、認証済みユーザーは読み取り可能
+    match /galleries/{galleryId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // artworks コレクション: 管理者のみ作成・更新・削除可能、認証済みユーザーは読み取り可能
+    match /artworks/{artworkId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // likes コレクション: 管理者のみ作成・削除可能、認証済みユーザーは読み取り可能
+    match /likes/{likeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow delete: if isAdmin() && likeId.matches('.*_' + request.auth.token.email.replace('.', '_').replace('@', '_'));
+    }
+
+    // importJobs コレクション: 管理者のみアクセス可能
+    match /importJobs/{jobId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // その他のドキュメントへのアクセスは拒否
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }
