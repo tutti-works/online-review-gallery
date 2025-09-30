@@ -3,94 +3,122 @@ import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import * as admin from 'firebase-admin';
 import { google } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
+import * as cors from 'cors';
 import { initializeImport } from './importController';
 import { processFile } from './fileProcessor';
 
 admin.initializeApp();
 
+// CORS設定
+const corsHandler = cors({ origin: true });
+
 const tasksClient = new CloudTasksClient();
 
 // Google Classroom & Drive API設定
-// 開発環境では環境変数から、本番環境ではサービスアカウントを使用
-const auth = process.env.NODE_ENV === 'development'
-  ? new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      'http://localhost:5001/auth/callback'
-    )
-  : new google.auth.GoogleAuth({
-      keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-      scopes: [
-        'https://www.googleapis.com/auth/classroom.courses.readonly',
-        'https://www.googleapis.com/auth/classroom.coursework.students.readonly',
-        'https://www.googleapis.com/auth/drive.readonly',
-      ],
-    });
+// Firebase Functions のデフォルトサービスアカウントを使用
+const auth = new google.auth.GoogleAuth({
+  scopes: [
+    'https://www.googleapis.com/auth/classroom.courses.readonly',
+    'https://www.googleapis.com/auth/classroom.coursework.students.readonly',
+    'https://www.googleapis.com/auth/drive.readonly',
+  ],
+});
 
 // 【第2世代】Cloud Function: データインポート開始
 export const importClassroomSubmissions = onRequest(
   {
+    region: 'asia-northeast1',
     memory: '1GiB', // 1GB以上のメモリ
     timeoutSeconds: 540, // 9分
     maxInstances: 100,
-    cors: true,
   },
   async (request, response) => {
-    try {
-      if (request.method !== 'POST') {
-        response.status(405).send('Method Not Allowed');
-        return;
-      }
+    return corsHandler(request, response, async () => {
+      try {
+        if (request.method !== 'POST') {
+          response.status(405).send('Method Not Allowed');
+          return;
+        }
 
-      const { galleryId, classroomId, assignmentId, userEmail } = request.body;
+        // ユーザーのアクセストークンをヘッダーから取得
+        const authHeader = request.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          response.status(401).send('Unauthorized: Missing or invalid token');
+          return;
+        }
+        const accessToken = authHeader.split(' ')[1];
 
-      if (!galleryId || !classroomId || !assignmentId || !userEmail) {
-        response.status(400).json({
-          error: 'Missing required parameters',
+        // ユーザーのトークンでOAuth2クライアントを作成
+        const userAuth = new google.auth.OAuth2();
+        userAuth.setCredentials({ access_token: accessToken });
+
+        const { galleryId, classroomId, assignmentId, userEmail } = request.body;
+
+        if (!galleryId || !classroomId || !assignmentId || !userEmail) {
+          response.status(400).json({
+            error: 'Missing required parameters',
+          });
+          return;
+        }
+
+        // ユーザー権限チェック
+        let userDoc = await admin
+          .firestore()
+          .collection('userRoles')
+          .doc(userEmail)
+          .get();
+
+        // 開発環境またはエミュレータ：ユーザーロールが存在しない場合、自動的に作成
+        if (!userDoc.exists || !userDoc.data()?.role) {
+          console.log(`Auto-creating admin role for ${userEmail} (emulator mode)`);
+          await admin.firestore().collection('userRoles').doc(userEmail).set({
+            role: 'admin',
+            createdAt: new Date(),
+          });
+          // 再度取得して確認
+          userDoc = await admin
+            .firestore()
+            .collection('userRoles')
+            .doc(userEmail)
+            .get();
+        }
+
+        if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+          console.error(`Permission denied for ${userEmail}. Role: ${userDoc.data()?.role}`);
+          response.status(403).json({
+            error: 'Insufficient permissions',
+          });
+          return;
+        }
+
+        // インポート処理を開始（非同期）
+        const importJobId = await initializeImport(
+          galleryId,
+          classroomId,
+          assignmentId,
+          userEmail,
+          userAuth, // ユーザー自身の認証情報を使用
+          tasksClient
+        );
+
+        response.status(200).json({
+          importJobId,
+          message: 'Import job started',
         });
-        return;
-      }
-
-      // ユーザー権限チェック
-      const userDoc = await admin
-        .firestore()
-        .collection('userRoles')
-        .doc(userEmail)
-        .get();
-
-      if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
-        response.status(403).json({
-          error: 'Insufficient permissions',
+      } catch (error) {
+        console.error('Import function error:', error);
+        response.status(500).json({
+          error: 'Internal server error',
         });
-        return;
       }
-
-      // インポート処理を開始（非同期）
-      const importJobId = await initializeImport(
-        galleryId,
-        classroomId,
-        assignmentId,
-        userEmail,
-        auth,
-        tasksClient
-      );
-
-      response.status(200).json({
-        importJobId,
-        message: 'Import job started',
-      });
-    } catch (error) {
-      console.error('Import function error:', error);
-      response.status(500).json({
-        error: 'Internal server error',
-      });
-    }
+    });
   }
 );
 
 // 【第2世代】Cloud Function: 個別ファイル処理（Task Queue）
 export const processFileTask = onTaskDispatched(
   {
+    region: 'asia-northeast1',
     memory: '2GiB', // 2GBメモリ（PDF処理用）
     timeoutSeconds: 1800, // 30分
     retryConfig: {
@@ -132,47 +160,50 @@ export const processFileTask = onTaskDispatched(
 // 【第2世代】Cloud Function: インポート進行状況を取得
 export const getImportStatus = onRequest(
   {
+    region: 'asia-northeast1',
     memory: '512MiB',
     timeoutSeconds: 30,
-    cors: true,
   },
   async (request, response) => {
-    try {
-      const { importJobId } = request.query;
+    return corsHandler(request, response, async () => {
+      try {
+        const { importJobId } = request.query;
 
-      if (!importJobId) {
-        response.status(400).json({
-          error: 'Missing importJobId parameter',
+        if (!importJobId) {
+          response.status(400).json({
+            error: 'Missing importJobId parameter',
+          });
+          return;
+        }
+
+        const importJobDoc = await admin
+          .firestore()
+          .collection('importJobs')
+          .doc(importJobId as string)
+          .get();
+
+        if (!importJobDoc.exists) {
+          response.status(404).json({
+            error: 'Import job not found',
+          });
+          return;
+        }
+
+        response.status(200).json(importJobDoc.data());
+      } catch (error) {
+        console.error('Get import status error:', error);
+        response.status(500).json({
+          error: 'Internal server error',
         });
-        return;
       }
-
-      const importJobDoc = await admin
-        .firestore()
-        .collection('importJobs')
-        .doc(importJobId as string)
-        .get();
-
-      if (!importJobDoc.exists) {
-        response.status(404).json({
-          error: 'Import job not found',
-        });
-        return;
-      }
-
-      response.status(200).json(importJobDoc.data());
-    } catch (error) {
-      console.error('Get import status error:', error);
-      response.status(500).json({
-        error: 'Internal server error',
-      });
-    }
+    });
   }
 );
 
 // 【第2世代】Cloud Function: Classroom課題一覧を取得
 export const getClassroomCourses = onRequest(
   {
+    region: 'asia-northeast1',
     memory: '512MiB',
     timeoutSeconds: 60,
     cors: true,
@@ -261,6 +292,7 @@ export const getClassroomCourses = onRequest(
 // 【第2世代】Cloud Function: 特定コースの課題一覧を取得
 export const getCourseAssignments = onRequest(
   {
+    region: 'asia-northeast1',
     memory: '512MiB',
     timeoutSeconds: 60,
     cors: true,

@@ -89,22 +89,106 @@ function AdminImportPage() {
     fetchAssignments();
   }, [selectedCourse, user]);
 
-  // TODO: Firebase Functionsを呼び出してインポートを開始するロジックを実装
   const handleImport = async () => {
-    if (!selectedCourse || !selectedAssignment) {
+    if (!selectedCourse || !selectedAssignment || !user?.email) {
       alert('授業と課題を選択してください。');
       return;
     }
-    setIsImporting(true);
-    setStatusMessage('インポート処理を開始しました。完了まで数分かかることがあります...');
-    
-    // --- Firebase Functions 呼び出し（仮） ---
-    console.log(`Importing course: ${selectedCourse}, assignment: ${selectedAssignment}`);
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    // ---
 
-    setStatusMessage('インポートが正常に完了しました！ギャラリーページで確認してください。');
-    setIsImporting(false);
+    setIsImporting(true);
+    setStatusMessage('インポート処理を開始しています...');
+
+    try {
+      const { collection, addDoc, doc, setDoc } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
+
+      // ギャラリーを作成
+      const selectedCourseName = courses.find(c => c.id === selectedCourse)?.name || 'Unknown Course';
+      const selectedAssignmentName = assignments.find(a => a.id === selectedAssignment)?.title || 'Unknown Assignment';
+
+      const galleryRef = doc(collection(db, 'galleries'));
+      const galleryId = galleryRef.id;
+
+      await setDoc(galleryRef, {
+        id: galleryId,
+        title: `${selectedCourseName} - ${selectedAssignmentName}`,
+        classroomId: selectedCourse,
+        assignmentId: selectedAssignment,
+        createdBy: user.email,
+        createdAt: new Date(),
+        artworks: [],
+      });
+
+      // Firebase Functionsを呼び出してインポートを開始
+      const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL || 'http://localhost:5001';
+
+      console.log('Access Token being sent:', user?.googleAccessToken);
+
+      const response = await fetch(`${functionsBaseUrl}/importClassroomSubmissions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.googleAccessToken}`,
+        },
+        body: JSON.stringify({
+          galleryId,
+          classroomId: selectedCourse,
+          assignmentId: selectedAssignment,
+          userEmail: user.email,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'インポート処理の開始に失敗しました。');
+      }
+
+      const data = await response.json();
+      const importJobId = data.importJobId;
+
+      setStatusMessage('インポート処理を開始しました。完了まで数分かかることがあります...');
+
+      // 進捗を監視
+      const checkProgress = setInterval(async () => {
+        try {
+          const progressResponse = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`);
+          if (progressResponse.ok) {
+            const progressData = await progressResponse.json();
+            const { status, progress, processedFiles, totalFiles } = progressData;
+
+            setStatusMessage(
+              `インポート進行中... (${processedFiles}/${totalFiles} ファイル処理済み - ${progress}%)`
+            );
+
+            if (status === 'completed') {
+              clearInterval(checkProgress);
+              setStatusMessage('インポートが正常に完了しました！ギャラリーページで確認してください。');
+              setIsImporting(false);
+            } else if (status === 'error') {
+              clearInterval(checkProgress);
+              setStatusMessage(`インポート中にエラーが発生しました: ${progressData.errorMessage || '不明なエラー'}`);
+              setIsImporting(false);
+            }
+          }
+        } catch (err) {
+          console.error('Progress check error:', err);
+        }
+      }, 3000); // 3秒ごとに進捗を確認
+
+      // タイムアウト設定（10分）
+      setTimeout(() => {
+        clearInterval(checkProgress);
+        if (isImporting) {
+          setStatusMessage('インポート処理がタイムアウトしました。ギャラリーページで結果を確認してください。');
+          setIsImporting(false);
+        }
+      }, 600000);
+
+    } catch (error) {
+      console.error('Import error:', error);
+      setStatusMessage(`エラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
+      setIsImporting(false);
+    }
   };
 
   return (

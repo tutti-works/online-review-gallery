@@ -32,8 +32,10 @@ googleProvider.setCustomParameters({
 
 // データインポート機能で必要なAPIスコープを追加
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
-googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.students.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.students.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.photos');
 googleProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
 
 

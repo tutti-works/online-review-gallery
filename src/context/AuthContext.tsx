@@ -39,6 +39,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (roleDoc.exists()) {
         return roleDoc.data().role as 'admin' | 'viewer';
       }
+
+      // 開発環境：ユーザーロールが存在しない場合、自動的にadminとして登録
+      if (process.env.NODE_ENV === 'development') {
+        const { setDoc } = await import('firebase/firestore');
+        await setDoc(doc(db, 'userRoles', email), {
+          role: 'admin',
+          createdAt: new Date()
+        });
+        console.log(`Auto-created admin role for ${email} in development mode`);
+        return 'admin';
+      }
+
       return 'viewer'; // Default role
     } catch (error) {
       console.error('Error fetching user role:', error);
@@ -56,6 +68,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (firebaseUser.email) {
         const role = await getUserRole(firebaseUser.email);
+
+        // トークンをsessionStorageに保存
+        if (token) {
+          sessionStorage.setItem('googleAccessToken', token);
+        }
 
         const userData: User = {
           uid: firebaseUser.uid,
@@ -77,6 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     try {
       await signOut(auth);
+      sessionStorage.removeItem('googleAccessToken');
       setUser(null);
     } catch (error) {
       console.error('Error signing out:', error);
@@ -89,12 +107,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (firebaseUser && firebaseUser.email) {
         const role = await getUserRole(firebaseUser.email);
 
+        // sessionStorageからトークンを取得
+        const token = sessionStorage.getItem('googleAccessToken') || undefined;
+
         const userData: User = {
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: firebaseUser.displayName || '',
           photoURL: firebaseUser.photoURL || undefined,
-          role
+          role,
+          googleAccessToken: token
         };
 
         setUser(userData);
