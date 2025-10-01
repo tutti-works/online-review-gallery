@@ -4,9 +4,8 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
 import { google } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
-import { initializeImport } from './importController';
+import { initializeImport, checkImportCompletion } from './importController';
 import { processFile } from './fileProcessor';
-import { FieldValue } from 'firebase-admin/firestore';
 
 // エミュレーター環境の設定（initializeApp前に設定）
 if (process.env.FUNCTIONS_EMULATOR === 'true') {
@@ -171,14 +170,20 @@ export const processFileTask = onTaskDispatched(
       );
 
       console.log(`File processed successfully: ${fileName}`);
+
+      // ファイル処理完了後、インポート全体の完了状態をチェック
+      await checkImportCompletion(importJobId);
     } catch (error) {
       console.error(`File processing error for ${fileName}:`, error);
 
-      // エラーを記録
-      await admin.firestore().collection('importJobs').doc(importJobId).update({
-        errorFiles: FieldValue.arrayUnion(tempFilePath),
-      });
+      // エラー時もインポート完了状態をチェック（他のファイルは完了している可能性があるため）
+      try {
+        await checkImportCompletion(importJobId);
+      } catch (checkError) {
+        console.error('Error checking import completion:', checkError);
+      }
 
+      // エラーハンドリングはprocessFile内で行われる
       throw error; // Cloud Tasksにリトライさせるために再スロー
     }
   }

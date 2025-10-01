@@ -182,17 +182,21 @@ export async function initializeImport(
 
         const serviceAccountEmail = '816131605069-compute@developer.gserviceaccount.com';
 
+        // Cloud Run URLを環境変数から取得、なければCloud Functionsのデフォルトを使用
+        const processFileTaskUrl = process.env.PROCESS_FILE_TASK_URL ||
+          `https://${region}-${projectId}.cloudfunctions.net/processFileTask`;
+
         const request = {
           parent,
           task: {
             httpRequest: {
               httpMethod: 'POST' as const,
-              url: `https://${region}-${projectId}.cloudfunctions.net/processFileTask`,
+              url: processFileTaskUrl,
               headers: { 'Content-Type': 'application/json' },
               body: Buffer.from(JSON.stringify({ data: payload })),
               oidcToken: { serviceAccountEmail },
             },
-            scheduleTime: { seconds: Math.floor(Date.now() / 1000) + 5 + (index * 2) },
+            scheduleTime: { seconds: Math.floor(Date.now() / 1000) + 10 + (index * 2) },
           },
         };
 
@@ -262,12 +266,20 @@ async function finalizeGallery(galleryId: string, importJobId: string): Promise<
     const artworksSnapshot = await db.collection('artworks').where('importedBy', '==', importJobId).get();
     const artworkIds = artworksSnapshot.docs.map(doc => doc.id);
 
-    await db.collection('galleries').doc(galleryId).update({
-      artworks: FieldValue.arrayUnion(...artworkIds),
-      updatedAt: FieldValue.serverTimestamp(),
-      lastImportAt: FieldValue.serverTimestamp(),
-    });
-    console.log(`Gallery ${galleryId} finalized with ${artworkIds.length} artworks`);
+    if (artworkIds.length > 0) {
+      await db.collection('galleries').doc(galleryId).update({
+        artworks: FieldValue.arrayUnion(...artworkIds),
+        updatedAt: FieldValue.serverTimestamp(),
+        lastImportAt: FieldValue.serverTimestamp(),
+      });
+      console.log(`Gallery ${galleryId} finalized with ${artworkIds.length} artworks`);
+    } else {
+      console.log(`Gallery ${galleryId} has no artworks to add (all files failed)`);
+      await db.collection('galleries').doc(galleryId).update({
+        updatedAt: FieldValue.serverTimestamp(),
+        lastImportAt: FieldValue.serverTimestamp(),
+      });
+    }
   } catch (error) {
     console.error('Error finalizing gallery:', error);
   }
