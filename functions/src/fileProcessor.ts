@@ -95,6 +95,7 @@ export async function processFile(
       id: artworkId,
       title: fileName,
       originalFileUrl,
+      thumbnailUrl: processedImages[0]?.thumbnailUrl || '', // フロントエンド表示用のトップレベルサムネイル
       images: processedImages,
       fileType,
       studentName,
