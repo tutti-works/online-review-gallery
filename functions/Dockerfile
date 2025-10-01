@@ -24,10 +24,14 @@ RUN npm ci --omit=dev
 # ビルド済みのコードをコピー
 COPY lib/ ./lib/
 
+# node_modulesとGraphicsMagickが正しくインストールされているか確認
+RUN ls -la node_modules/@google-cloud/functions-framework || echo "functions-framework not found"
+RUN which gm && gm version || echo "GraphicsMagick not found"
+
 # Cloud Run用の環境変数を設定
 ENV PORT=8080
 ENV FUNCTION_TARGET=processFileTask
 
 # Cloud Runでコンテナを起動（Cloud Tasks用のHTTPリクエストを処理）
 # cloudrun.tsをエントリーポイントとして使用
-CMD ["npx", "@google-cloud/functions-framework", "--target=processFileTask", "--signature-type=http", "--source=lib/cloudrun.js"]
+CMD ["node", "node_modules/@google-cloud/functions-framework/build/src/main.js", "--target=processFileTask", "--signature-type=http", "--source=lib/cloudrun.js", "--port=8080"]

@@ -708,7 +708,13 @@ function GalleryPage() {
             </div>
           ) : (
             <MasonryGrid>
-              {artworks.map((artwork) => (
+              {artworks.map((artwork) => {
+                // 画像データが存在しない場合はスキップ
+                if (!artwork.images || artwork.images.length === 0) {
+                  return null;
+                }
+
+                return (
                 <div key={artwork.id} className="break-inside-avoid">
                   <div
                     className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
@@ -753,7 +759,8 @@ function GalleryPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </MasonryGrid>
           )}
       </main>
