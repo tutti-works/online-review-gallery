@@ -673,17 +673,12 @@ export const deleteAllData = onRequest(
         return;
       }
 
-      const authHeader = request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        response.status(401).send('Unauthorized: Missing or invalid token');
-        return;
-      }
-      const idToken = authHeader.split('Bearer ')[1];
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
-      const userEmail = decodedToken.email;
+      // 警告: この方法はセキュリティリスクを伴います。
+      // IDトークンを検証せず、リクエストボディのメールアドレスを信頼します。
+      const { userEmail } = request.body;
 
       if (!userEmail) {
-        response.status(401).send('Unauthorized: Invalid token');
+        response.status(400).send('Bad Request: Missing userEmail in request body.');
         return;
       }
 
@@ -704,18 +699,8 @@ export const deleteAllData = onRequest(
         deleteCollection(db, 'artworks', 200),
         deleteCollection(db, 'likes', 200),
         deleteCollection(db, 'importJobs', 200),
+        deleteCollection(db, 'galleries', 200),
       ]);
-
-      // 2. Galleries内のartworks配列をクリア
-      const galleriesRef = db.collection('galleries');
-      const galleriesSnapshot = await galleriesRef.get();
-      if (!galleriesSnapshot.empty) {
-        const batch = db.batch();
-        galleriesSnapshot.docs.forEach(doc => {
-          batch.update(doc.ref, { artworks: [] });
-        });
-        await batch.commit();
-      }
       
       // 3. Cloud Storageのフォルダを全削除
       await Promise.all([
@@ -728,8 +713,12 @@ export const deleteAllData = onRequest(
       response.status(200).json({ message });
 
     } catch (error) {
-      console.error('Failed to delete all data:', error);
-      response.status(500).json({ error: 'Failed to delete all data.' });
+      console.error('Detailed error in deleteAllData:', error); // より詳細なログを出力
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      response.status(500).json({ 
+        error: 'Failed to delete all data.',
+        details: errorMessage, // エラー詳細をレスポンスに含める
+      });
     }
   }
 );

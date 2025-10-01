@@ -24,11 +24,37 @@ function DashboardPage() {
       if (window.confirm('最終確認：この操作を実行すると、関連データがすべて完全に削除されます。よろしいですか？')) {
         setIsDeleting(true);
         try {
-          const functions = getFunctions();
-          const deleteAllData = httpsCallable(functions, 'deleteAllData');
-          const result = await deleteAllData();
+          if (!user?.email) {
+            throw new Error('ユーザー情報が見つかりません。');
+          }
+
+          const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL;
+          if (!functionsBaseUrl) {
+            throw new Error('Cloud FunctionsのURLが設定されていません。');
+          }
+          const deleteAllDataUrl = `${functionsBaseUrl}/deleteAllData`;
+          
+          const response = await fetch(deleteAllDataUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ userEmail: user.email }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            try {
+              const errorData = JSON.parse(errorText);
+              throw new Error(errorData.error || `データのリセットに失敗しました: ${response.statusText}`);
+            } catch (e) {
+              throw new Error(`データのリセットに失敗しました: ${errorText}`);
+            }
+          }
+
+          const result = await response.json();
           alert('すべてのデータが正常にリセットされました。');
-          console.log(result.data);
+          console.log(result);
         } catch (error) {
           console.error('Data reset error:', error);
           const message = error instanceof Error ? error.message : '不明なエラーが発生しました。';
@@ -146,17 +172,17 @@ function DashboardPage() {
                   </div>
 
                   {/* システムリセット機能 */}
-                  <div className="mt-8 bg-red-50 border border-red-200 rounded-lg p-6">
-                    <h4 className="text-lg font-bold text-red-900 mb-2">
+                  <div className="mt-8 border-t border-gray-200 pt-6 text-left">
+                    <h4 className="text-base font-semibold text-gray-800 mb-2">
                       システムリセット
                     </h4>
-                    <p className="text-sm text-red-700 mb-4">
-                      すべての作品、ギャラリー情報、画像ファイルを削除し、システムを初期状態に戻します。この操作は元に戻すことができず、非常に危険です。
+                    <p className="text-sm text-gray-500 mb-4">
+                      すべての作品、ギャラリー情報、ファイルを削除し、システムを初期状態に戻します。
                     </p>
                     <button
                       onClick={handleResetData}
                       disabled={isDeleting}
-                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-red-300 disabled:cursor-not-allowed"
+                      className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
                     >
                       {isDeleting ? '削除を実行中...' : '全データをリセット'}
                     </button>
