@@ -26,8 +26,52 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, u
   const [commentText, setCommentText] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [zoom, setZoom] = useState(1); // 画像のズーム倍率
+  const [panPosition, setPanPosition] = useState({ x: 0, y: 0 }); // 画像のパン位置
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   if (!isOpen) return null;
+
+  const handleZoomIn = () => {
+    setZoom(prev => Math.min(prev + 0.25, 3)); // 最大3倍
+  };
+
+  const handleZoomOut = () => {
+    setZoom(prev => Math.max(prev - 0.25, 0.5)); // 最小0.5倍
+  };
+
+  const resetZoom = () => {
+    setZoom(1);
+    setPanPosition({ x: 0, y: 0 });
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoom > 1) {
+      setIsDragging(true);
+      setDragStart({
+        x: e.clientX - panPosition.x,
+        y: e.clientY - panPosition.y,
+      });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && zoom > 1) {
+      setPanPosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
 
   const handleLike = () => {
     if (onLike && userRole === 'admin') {
@@ -70,186 +114,232 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, u
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        {/* Backdrop */}
-        <div className="fixed inset-0 bg-black bg-opacity-75 transition-opacity" onClick={onClose}></div>
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-90">
+      {/* 全画面モーダル（周囲に隙間） */}
+      <div className="h-full w-full p-4 flex">
+        <div className="bg-white rounded-lg shadow-2xl w-full h-full flex overflow-hidden">
 
-        {/* Modal */}
-        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-6xl sm:w-full">
-          <div className="bg-white">
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900">{artwork.title}</h3>
-                <p className="text-sm text-gray-500">
-                  {artwork.studentName} ({artwork.studentEmail})
-                </p>
-                <p className="text-xs text-gray-400">
-                  提出日: {toDate(artwork.submittedAt).toLocaleString('ja-JP')}
-                </p>
+          {/* 左側: 画像表示エリア */}
+          <div className="flex-1 flex flex-col bg-gray-100 relative">
+            {/* 閉じるボタン（左上） */}
+            <button
+              onClick={onClose}
+              className="absolute top-4 left-4 z-10 p-2 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-colors"
+            >
+              <svg className="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* 画像表示エリア */}
+            <div
+              className="flex-1 overflow-hidden flex items-center justify-center relative"
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+            >
+              <div
+                className="transition-transform duration-200 ease-out w-full h-full flex items-center justify-center p-8"
+                style={{
+                  transform: `scale(${zoom}) translate(${panPosition.x / zoom}px, ${panPosition.y / zoom}px)`,
+                  pointerEvents: 'none',
+                  userSelect: 'none'
+                }}
+              >
+                <img
+                  src={artwork.images[currentPage].url}
+                  alt={`${artwork.title} - Page ${currentPage + 1}`}
+                  className="max-w-full max-h-full object-contain select-none pointer-events-none"
+                  draggable={false}
+                  onDragStart={handleDragStart}
+                />
               </div>
-              <div className="flex items-center space-x-2">
-                {userRole === 'admin' && (
-                  <button
-                    onClick={handleDelete}
-                    disabled={isDeleting}
-                    className="px-3 py-1 text-sm text-white bg-red-600 hover:bg-red-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isDeleting ? '削除中...' : '削除'}
-                  </button>
+
+              {/* 半透明グレーゾーンでのコントロール（画像の上に重ねて下部中央に配置） */}
+              <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800 bg-opacity-70 rounded-2xl px-6 py-3 flex items-center space-x-4 backdrop-blur-sm">
+                {/* ページナビゲーション */}
+                {artwork.images.length > 1 && (
+                  <>
+                    <button
+                      onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                      disabled={currentPage === 0}
+                      className="p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                      title="前のページ"
+                    >
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <span className="text-sm text-white font-medium min-w-[60px] text-center">
+                      {currentPage + 1} / {artwork.images.length}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(Math.min(artwork.images.length - 1, currentPage + 1))}
+                      disabled={currentPage === artwork.images.length - 1}
+                      className="p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                      title="次のページ"
+                    >
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                    <div className="w-px h-6 bg-white bg-opacity-30"></div>
+                  </>
                 )}
+
+                {/* ズームコントロール */}
                 <button
-                  onClick={onClose}
-                  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:text-gray-600"
+                  onClick={handleZoomOut}
+                  className="p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+                  title="縮小"
                 >
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" />
                   </svg>
+                </button>
+                <span className="text-sm text-white font-medium min-w-[50px] text-center">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <button
+                  onClick={handleZoomIn}
+                  className="p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+                  title="拡大"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+                <button
+                  onClick={resetZoom}
+                  className="ml-2 px-3 py-1.5 text-xs font-medium text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+                  title="リセット"
+                >
+                  リセット
                 </button>
               </div>
             </div>
 
-            {/* Content */}
-            <div className="p-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Image Display */}
-                <div className="space-y-4">
-                  <div className="relative bg-gray-100 rounded-lg overflow-hidden">
-                    <Image
-                      src={artwork.images[currentPage].url}
-                      alt={`${artwork.title} - Page ${currentPage + 1}`}
-                      width={artwork.images[currentPage].width}
-                      height={artwork.images[currentPage].height}
-                      className="w-full h-auto object-contain max-h-96"
-                      unoptimized
-                    />
-                  </div>
-
-                  {/* Page Navigation */}
-                  {artwork.images.length > 1 && (
-                    <div className="flex items-center justify-center space-x-4">
-                      <button
-                        onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
-                        disabled={currentPage === 0}
-                        className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        前へ
-                      </button>
-                      <span className="text-sm text-gray-500">
-                        {currentPage + 1} / {artwork.images.length}
-                      </span>
-                      <button
-                        onClick={() => setCurrentPage(Math.min(artwork.images.length - 1, currentPage + 1))}
-                        disabled={currentPage === artwork.images.length - 1}
-                        className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        次へ
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Page Thumbnails */}
-                  {artwork.images.length > 1 && (
-                    <div className="flex space-x-2 overflow-x-auto py-2">
-                      {artwork.images.map((image, index) => (
-                        <button
-                          key={image.id}
-                          onClick={() => setCurrentPage(index)}
-                          className={`flex-shrink-0 w-16 h-16 rounded border-2 overflow-hidden ${
-                            currentPage === index ? 'border-blue-500' : 'border-gray-200'
-                          }`}
-                        >
-                          <Image
-                            src={image.thumbnailUrl || image.url}
-                            alt={`Page ${index + 1} thumbnail`}
-                            width={64}
-                            height={64}
-                            className="w-full h-full object-cover"
-                            unoptimized
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  )}
+            {/* ページサムネイル */}
+            {artwork.images.length > 1 && (
+              <div className="bg-white border-t border-gray-200 p-3">
+                <div className="flex space-x-2 overflow-x-auto">
+                  {artwork.images.map((image, index) => (
+                    <button
+                      key={image.id}
+                      onClick={() => setCurrentPage(index)}
+                      className={`flex-shrink-0 w-20 h-14 rounded border-2 overflow-hidden transition-all ${
+                        currentPage === index ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <Image
+                        src={image.thumbnailUrl || image.url}
+                        alt={`Page ${index + 1} thumbnail`}
+                        width={80}
+                        height={56}
+                        className="w-full h-full object-cover"
+                        unoptimized
+                      />
+                    </button>
+                  ))}
                 </div>
+              </div>
+            )}
+          </div>
 
-                {/* Actions and Comments */}
-                <div className="space-y-6">
-                  {/* Like Button (Admin Only) */}
-                  {userRole === 'admin' && (
-                    <div className="flex items-center space-x-4">
-                      <button
-                        onClick={handleLike}
-                        className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                      >
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                        </svg>
-                        <span>いいね ({artwork.likeCount})</span>
-                      </button>
-                    </div>
-                  )}
+          {/* 右側: サイドバー（310px固定幅） */}
+          <div className="w-[310px] bg-white flex flex-col border-l border-gray-200">
+            {/* サイドバーヘッダー */}
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">{artwork.studentName}</h3>
+              <p className="text-sm text-gray-600 mt-1">{artwork.title}</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {artwork.studentEmail}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                提出日: {toDate(artwork.submittedAt).toLocaleString('ja-JP')}
+              </p>
+            </div>
 
-                  {/* Like Count (Viewer) */}
-                  {userRole === 'viewer' && (
-                    <div className="flex items-center space-x-2 text-gray-600">
+            {/* サイドバーコンテンツ（スクロール可能） */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* いいねボタン・削除ボタン */}
+              <div className="space-y-3">
+                {userRole === 'admin' && (
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={handleLike}
+                      className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
                       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                       </svg>
-                      <span>いいね {artwork.likeCount}</span>
-                    </div>
-                  )}
-
-                  {/* Comments */}
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-medium text-gray-900">コメント</h4>
-
-                    {/* Comment Form (Admin Only) */}
-                    {userRole === 'admin' && (
-                      <form onSubmit={handleCommentSubmit} className="space-y-3">
-                        <textarea
-                          value={commentText}
-                          onChange={(e) => setCommentText(e.target.value)}
-                          placeholder="コメントを入力してください..."
-                          rows={3}
-                          className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                        />
-                        <button
-                          type="submit"
-                          disabled={!commentText.trim() || isSubmittingComment}
-                          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isSubmittingComment ? '送信中...' : 'コメントを投稿'}
-                        </button>
-                      </form>
-                    )}
-
-                    {/* Comments List */}
-                    <div className="space-y-3 max-h-64 overflow-y-auto">
-                      {artwork.comments.length > 0 ? (
-                        artwork.comments.map((comment) => (
-                          <div key={comment.id} className="bg-gray-50 rounded-lg p-3">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center space-x-2 mb-1">
-                                  <span className="text-sm font-medium text-gray-900">
-                                    {comment.authorName}
-                                  </span>
-                                  <span className="text-xs text-gray-500">
-                                    {toDate(comment.createdAt).toLocaleString('ja-JP')}
-                                  </span>
-                                </div>
-                                <p className="text-sm text-gray-700">{comment.content}</p>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-gray-500">まだコメントはありません。</p>
-                      )}
-                    </div>
+                      <span>いいね ({artwork.likeCount})</span>
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                      className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isDeleting ? '削除中...' : '削除'}
+                    </button>
                   </div>
+                )}
+
+                {userRole === 'viewer' && (
+                  <div className="flex items-center space-x-2 text-gray-600 p-3 bg-gray-50 rounded-md">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                    <span>いいね {artwork.likeCount}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* コメントセクション */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-semibold text-gray-900">コメント</h4>
+
+                {/* コメント入力フォーム（管理者のみ） */}
+                {userRole === 'admin' && (
+                  <form onSubmit={handleCommentSubmit} className="space-y-3">
+                    <textarea
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      placeholder="コメントを入力してください..."
+                      rows={4}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm resize-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!commentText.trim() || isSubmittingComment}
+                      className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmittingComment ? '送信中...' : 'コメントを投稿'}
+                    </button>
+                  </form>
+                )}
+
+                {/* コメント一覧 */}
+                <div className="space-y-3 flex-1 overflow-y-auto">
+                  {artwork.comments.length > 0 ? (
+                    artwork.comments.map((comment) => (
+                      <div key={comment.id} className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="text-sm font-medium text-gray-900">
+                            {comment.authorName}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {toDate(comment.createdAt).toLocaleString('ja-JP')}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700">{comment.content}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">まだコメントはありません。</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -266,10 +356,73 @@ function GalleryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
+  const [importProgress, setImportProgress] = useState<{
+    importJobId: string;
+    galleryId: string;
+    status: string;
+    progress: number;
+    processedFiles: number;
+    totalFiles: number;
+  } | null>(null);
 
   useEffect(() => {
     fetchArtworks();
+    checkActiveImport();
   }, []);
+
+  const checkActiveImport = async () => {
+    // localStorageから進行中のインポートジョブを確認
+    const activeImportStr = localStorage.getItem('activeImportJob');
+    if (!activeImportStr) return;
+
+    try {
+      const activeImport = JSON.parse(activeImportStr);
+      const { importJobId, galleryId, startedAt } = activeImport;
+
+      // 開始から30分以上経過していたらクリア
+      const startTime = new Date(startedAt).getTime();
+      if (Date.now() - startTime > 30 * 60 * 1000) {
+        localStorage.removeItem('activeImportJob');
+        return;
+      }
+
+      // 進捗を監視
+      const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL || 'http://localhost:5001';
+      const checkProgress = setInterval(async () => {
+        try {
+          const response = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`);
+          if (response.ok) {
+            const data = await response.json();
+            setImportProgress({
+              importJobId,
+              galleryId,
+              status: data.status,
+              progress: data.progress,
+              processedFiles: data.processedFiles,
+              totalFiles: data.totalFiles,
+            });
+
+            if (data.status === 'completed' || data.status === 'error') {
+              clearInterval(checkProgress);
+              localStorage.removeItem('activeImportJob');
+              // 完了したら作品リストを再取得
+              fetchArtworks();
+              // 5秒後に進捗表示を非表示
+              setTimeout(() => setImportProgress(null), 5000);
+            }
+          }
+        } catch (err) {
+          console.error('Progress check error:', err);
+        }
+      }, 3000);
+
+      // クリーンアップ
+      return () => clearInterval(checkProgress);
+    } catch (err) {
+      console.error('Error checking active import:', err);
+      localStorage.removeItem('activeImportJob');
+    }
+  };
 
   const fetchArtworks = async () => {
     try {
@@ -454,9 +607,9 @@ function GalleryPage() {
     }
   };
 
-  // Masonryレイアウト用のグリッド設定
+  // Masonryレイアウト用のグリッド設定（横幅全体を使用）
   const MasonryGrid = ({ children }: { children: React.ReactNode }) => (
-    <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4 space-y-4">
+    <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 2xl:columns-7 gap-3 space-y-3">
       {children}
     </div>
   );
@@ -501,8 +654,32 @@ function GalleryPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
+      <main className="w-full mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div className="py-6">
+          {/* インポート進捗表示 */}
+          {importProgress && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-blue-900">
+                  {importProgress.status === 'completed' ? '✅ インポート完了' : '⏳ インポート進行中'}
+                </h3>
+                <span className="text-sm text-blue-700">
+                  {importProgress.progress}%
+                </span>
+              </div>
+              <div className="w-full bg-blue-200 rounded-full h-2 mb-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${importProgress.progress}%` }}
+                ></div>
+              </div>
+              <p className="text-xs text-blue-700">
+                {importProgress.processedFiles} / {importProgress.totalFiles} ファイル処理済み
+                {importProgress.status === 'completed' && ' - 作品が追加されました！'}
+              </p>
+            </div>
+          )}
+
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
               {error}
@@ -542,36 +719,35 @@ function GalleryPage() {
                     className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
                     onClick={() => setSelectedArtwork(artwork)}
                   >
-                    <div className="aspect-auto">
+                    <div className="relative w-full" style={{ aspectRatio: '420 / 297' }}>
                       <Image
                         src={artwork.images[0].thumbnailUrl || artwork.images[0].url}
                         alt={artwork.title}
-                        width={artwork.images[0].width}
-                        height={artwork.images[0].height}
-                        className="w-full h-auto object-cover"
+                        width={420}
+                        height={297}
+                        className="w-full h-full object-cover"
                         unoptimized
                       />
                     </div>
-                    <div className="p-4">
-                      <p className="text-sm text-gray-900 font-medium mb-2">{artwork.studentName}</p>
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span>{toDate(artwork.submittedAt).toLocaleDateString('ja-JP')}</span>
-                        <div className="flex items-center space-x-3">
+                    <div className="p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-gray-900 font-medium truncate">{artwork.studentName}</p>
+                        <div className="flex items-center space-x-2 text-xs text-gray-500 ml-2 flex-shrink-0">
                           <span className="flex items-center">
-                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                             </svg>
                             {artwork.likeCount}
                           </span>
                           <span className="flex items-center">
-                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                             </svg>
                             {artwork.comments.length}
                           </span>
                           {artwork.images.length > 1 && (
                             <span className="flex items-center">
-                              <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <svg className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                               </svg>
                               {artwork.images.length}

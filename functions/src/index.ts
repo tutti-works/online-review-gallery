@@ -1,5 +1,6 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
 import { google } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
@@ -148,20 +149,31 @@ export const processFileTask = onTaskDispatched(
     },
   },
   async (req) => {
-    const { importJobId, fileId, fileName, fileType, studentName, studentEmail, galleryId } = req.data;
+    const {
+      importJobId,
+      tempFilePath,
+      fileName,
+      fileType,
+      studentName,
+      studentEmail,
+      galleryId,
+      originalFileUrl,
+      submittedAt,
+    } = req.data;
 
     console.log(`Processing file: ${fileName} (${fileType})`);
 
     try {
       await processFile(
         importJobId,
-        fileId,
+        tempFilePath,
         fileName,
         fileType,
         studentName,
         studentEmail,
         galleryId,
-        auth
+        originalFileUrl,
+        submittedAt
       );
 
       console.log(`File processed successfully: ${fileName}`);
@@ -170,7 +182,7 @@ export const processFileTask = onTaskDispatched(
 
       // エラーを記録
       await admin.firestore().collection('importJobs').doc(importJobId).update({
-        errorFiles: FieldValue.arrayUnion(fileId),
+        errorFiles: FieldValue.arrayUnion(tempFilePath),
       });
 
       throw error; // Cloud Tasksにリトライさせるために再スロー
@@ -558,5 +570,52 @@ export const deleteArtwork = onRequest(
         });
       }
     });
+  }
+);
+
+// 【第2世代】Cloud Function: 一時ファイルの定期クリーンアップ
+// 毎日午前3時（JST）に実行され、24時間以上経過した一時ファイルを削除
+export const cleanupTempFiles = onSchedule(
+  {
+    schedule: 'every day 03:00',
+    timeZone: 'Asia/Tokyo',
+    region: 'asia-northeast1',
+    memory: '512MiB',
+    timeoutSeconds: 300,
+  },
+  async (event) => {
+    console.log('Starting cleanup of temporary files...');
+
+    const bucket = admin.storage().bucket();
+    const cutoffTime = Date.now() - (24 * 60 * 60 * 1000); // 24時間前
+
+    try {
+      // unprocessed/ 配下のファイルを取得
+      const [files] = await bucket.getFiles({ prefix: 'unprocessed/' });
+
+      let deletedCount = 0;
+      let skippedCount = 0;
+
+      for (const file of files) {
+        const [metadata] = await file.getMetadata();
+        const createdTime = new Date(metadata.timeCreated as string).getTime();
+
+        if (createdTime < cutoffTime) {
+          try {
+            await file.delete();
+            deletedCount++;
+            console.log(`Deleted old temp file: ${file.name}`);
+          } catch (error) {
+            console.error(`Failed to delete ${file.name}:`, error);
+          }
+        } else {
+          skippedCount++;
+        }
+      }
+
+      console.log(`Cleanup completed: ${deletedCount} files deleted, ${skippedCount} files kept`);
+    } catch (error) {
+      console.error('Cleanup error:', error);
+    }
   }
 );
