@@ -2,8 +2,8 @@ import sharp from 'sharp';
 const pdf2pic = require('pdf2pic');
 import * as admin from 'firebase-admin';
 import { v4 as uuidv4 } from 'uuid';
-import { google, Auth } from 'googleapis';
-import { FieldValue } from 'firebase-admin/firestore';
+
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 interface ProcessedImage {
   id: string;
@@ -14,37 +14,53 @@ interface ProcessedImage {
   thumbnailUrl?: string;
 }
 
+// ファイルサイズ制限（バイト）
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+const MAX_PDF_PAGES = 50; // PDFの最大ページ数
+
+// 画像最適化設定
+// A3サイズ横向き（420mm×297mm）を全画面表示しても綺麗に見えるサイズ（200 DPI相当）
+// 計算: 420mm ÷ 25.4mm × 200 DPI = 3,307px ≈ 3400px
+const OPTIMIZED_IMAGE_SIZE = 3400; // 長辺の最大サイズ（px）
+const THUMBNAIL_WIDTH = 420; // サムネイル幅（A3比率）
+const THUMBNAIL_HEIGHT = 297; // サムネイル高さ（A3比率）
+const IMAGE_QUALITY = 85; // JPEG品質（0-100）
+
 export async function processFile(
   importJobId: string,
-  fileId: string,
+  tempFilePath: string,
   fileName: string,
   fileType: string,
   studentName: string,
   studentEmail: string,
   galleryId: string,
-  auth: Auth.GoogleAuth | Auth.OAuth2Client
+  originalFileUrl: string,
+  submittedAt?: string
 ): Promise<void> {
   const db = admin.firestore();
   const storage = admin.storage();
+  const bucket = storage.bucket();
+  const tempFile = bucket.file(tempFilePath);
 
   try {
-    console.log(`Processing file: ${fileName} for student: ${studentName}`);
+    console.log(`Processing file: ${fileName} for student: ${studentName} from ${tempFilePath}`);
 
-    // Google Driveからファイルをダウンロード
-    const drive = google.drive({ version: 'v3', auth });
-    const fileResponse = await drive.files.get({
-      fileId,
-      alt: 'media',
-    }, { responseType: 'arraybuffer' });
+    // Firebase Storageからファイルをダウンロード
+    const [fileBuffer] = await tempFile.download();
 
-    const fileBuffer = Buffer.from(fileResponse.data as ArrayBuffer);
+    // ファイルサイズチェック
+    if (fileBuffer.length > MAX_FILE_SIZE) {
+      throw new Error(`File too large: ${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB (max: ${MAX_FILE_SIZE / 1024 / 1024}MB)`);
+    }
+
+    console.log(`File size: ${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB`);
 
     // ファイルタイプに応じて処理
     let processedImages: ProcessedImage[];
     if (fileType === 'image') {
       processedImages = await processImageFile(fileBuffer, fileName, storage, galleryId);
     } else if (fileType === 'pdf') {
-      processedImages = await processPdfFile(fileBuffer, fileName, storage, galleryId);
+      processedImages = await processPdfFile(fileBuffer, fileName, storage, galleryId, MAX_PDF_PAGES);
     } else {
       throw new Error(`Unsupported file type: ${fileType}`);
     }
@@ -54,12 +70,12 @@ export async function processFile(
     const artwork = {
       id: artworkId,
       title: fileName,
-      originalFileUrl: `https://drive.google.com/file/d/${fileId}/view`,
+      originalFileUrl,
       images: processedImages,
       fileType,
       studentName,
       studentEmail,
-      submittedAt: FieldValue.serverTimestamp(),
+      submittedAt: submittedAt ? Timestamp.fromDate(new Date(submittedAt)) : FieldValue.serverTimestamp(),
       classroomId: '', // importControllerから取得する必要がある場合は追加
       assignmentId: '', // importControllerから取得する必要がある場合は追加
       likeCount: 0,
@@ -75,14 +91,28 @@ export async function processFile(
       processedFiles: FieldValue.increment(1),
     });
 
-    console.log(`Successfully processed file: ${fileName}`);
+    // 一時ファイルを削除
+    await tempFile.delete();
+
+    console.log(`Successfully processed file: ${fileName} and deleted temp file.`);
 
   } catch (error) {
     console.error(`Error processing file ${fileName}:`, error);
 
+    // エラー時も一時ファイルを削除
+    try {
+      const exists = (await tempFile.exists())[0];
+      if (exists) {
+        await tempFile.delete();
+        console.log(`Deleted temp file after error: ${tempFilePath}`);
+      }
+    } catch (deleteError) {
+      console.error(`Failed to delete temp file ${tempFilePath}:`, deleteError);
+    }
+
     // エラーログを記録
     await db.collection('importJobs').doc(importJobId).update({
-      errorFiles: FieldValue.arrayUnion(fileId),
+      errorFiles: FieldValue.arrayUnion(tempFilePath),
     });
 
     throw error;
@@ -100,14 +130,14 @@ async function processImageFile(
   const imageId = uuidv4();
   const fileExtension = '.jpg';
 
-  // 画像を最適化
+  // 画像を最適化（A3全画面表示対応: 2400px）
   const optimizedBuffer = await sharp(imageBuffer)
-    .resize(1920, 1920, {
+    .resize(OPTIMIZED_IMAGE_SIZE, OPTIMIZED_IMAGE_SIZE, {
       fit: 'inside',
       withoutEnlargement: true
     })
     .jpeg({
-      quality: 85,
+      quality: IMAGE_QUALITY,
       progressive: true
     })
     .toBuffer();
@@ -117,9 +147,9 @@ async function processImageFile(
   const width = metadata.width || 0;
   const height = metadata.height || 0;
 
-  // サムネイルを生成
+  // サムネイルを生成（A3比率: 420×297px）
   const thumbnailBuffer = await sharp(imageBuffer)
-    .resize(400, 400, {
+    .resize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, {
       fit: 'cover',
       position: 'center'
     })
@@ -192,7 +222,8 @@ async function processPdfFile(
   pdfBuffer: Buffer,
   fileName: string,
   storage: admin.storage.Storage,
-  galleryId: string
+  galleryId: string,
+  maxPages?: number
 ): Promise<ProcessedImage[]> {
 
   const bucket = storage.bucket();
@@ -207,18 +238,26 @@ async function processPdfFile(
   }
 
   try {
-    // PDFを画像に変換
+    // PDFを画像に変換（A3サイズ対応: 200 DPI相当）
     const convertOptions = {
-      density: 150, // DPI
+      density: 200, // DPI（A3を綺麗に表示するため）
       saveFilename: 'page',
       savePath: '/tmp',
       format: 'jpeg',
-      width: 1920,
-      height: 1920,
+      width: OPTIMIZED_IMAGE_SIZE,
+      height: OPTIMIZED_IMAGE_SIZE,
     };
 
     const converter = pdf2pic.fromBuffer(pdfBuffer, convertOptions);
     const pages = await converter.bulk(-1); // 全ページを変換
+
+    // ページ数チェック
+    const pageLimit = maxPages || 50; // デフォルト50ページ
+    if (pages.length > pageLimit) {
+      throw new Error(`PDF has too many pages: ${pages.length} (max: ${pageLimit}). Please split the PDF or reduce page count.`);
+    }
+
+    console.log(`Processing PDF with ${pages.length} pages...`)
 
     // 各ページを処理
     for (let i = 0; i < pages.length; i++) {
@@ -228,14 +267,14 @@ async function processPdfFile(
 
       if (!page.buffer) continue;
 
-      // 画像を最適化
+      // 画像を最適化（A3全画面表示対応: 2400px）
       const optimizedBuffer = await sharp(page.buffer)
-        .resize(1920, 1920, {
+        .resize(OPTIMIZED_IMAGE_SIZE, OPTIMIZED_IMAGE_SIZE, {
           fit: 'inside',
           withoutEnlargement: true
         })
         .jpeg({
-          quality: 85,
+          quality: IMAGE_QUALITY,
           progressive: true
         })
         .toBuffer();
@@ -245,11 +284,11 @@ async function processPdfFile(
       const width = metadata.width || 0;
       const height = metadata.height || 0;
 
-      // サムネイルを生成（1ページ目のみ）
+      // サムネイルを生成（1ページ目のみ、A3比率: 420×297px）
       let thumbnailUrl: string | undefined;
       if (pageNumber === 1) {
         const thumbnailBuffer = await sharp(page.buffer)
-          .resize(400, 400, {
+          .resize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, {
             fit: 'cover',
             position: 'center'
           })

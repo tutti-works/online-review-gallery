@@ -92,6 +92,7 @@ function AdminImportPage() {
   }, [selectedCourse, user]);
 
   const handleImport = async () => {
+    console.log('読み込まれたFunctionsのURL:', process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL); // ← この行を追加
     if (!selectedCourse || !selectedAssignment || !user?.email) {
       alert('授業と課題を選択してください。');
       return;
@@ -148,9 +149,21 @@ function AdminImportPage() {
       const data = await response.json();
       const importJobId = data.importJobId;
 
-      setStatusMessage('インポート処理を開始しました。完了まで数分かかることがあります...');
+      setStatusMessage('インポート処理を開始しました。ギャラリーページで進捗を確認できます...');
 
-      // 進捗を監視
+      // インポートジョブ情報をlocalStorageに保存
+      localStorage.setItem('activeImportJob', JSON.stringify({
+        importJobId,
+        galleryId,
+        startedAt: new Date().toISOString(),
+      }));
+
+      // 2秒後にギャラリーページへリダイレクト
+      setTimeout(() => {
+        window.location.href = '/gallery';
+      }, 2000);
+
+      // 進捗を監視（リダイレクト前の短い間のみ）
       const checkProgress = setInterval(async () => {
         try {
           const progressResponse = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`);

@@ -10,6 +10,14 @@ service firebase.storage {
         && firestore.get(/databases/(default)/documents/userRoles/$(request.auth.token.email)).data.role == 'admin';
     }
 
+    // 一時ファイル: Cloud Functionsのみアクセス可能
+    // 注意: Storage Rulesにはファイル自動削除機能がないため、
+    // 定期的なクリーンアップFunctionを別途実装することを推奨
+    match /unprocessed/{importJobId}/{fileName} {
+      // Cloud Functionsからのアクセスのみ許可（認証なしのリクエストを想定）
+      allow read, write: if request.auth == null; // Service Accountからのアクセス
+    }
+
     // その他のパスは拒否
     match /{allPaths=**} {
       allow read, write: if false;
