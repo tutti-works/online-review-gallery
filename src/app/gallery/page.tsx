@@ -603,9 +603,9 @@ function GalleryPage() {
     }
   };
 
-  // Masonryレイアウト用のグリッド設定（横幅全体を使用）
+  // Masonryレイアウト用のグリッド設定（横幅全体を使用、自動で折り返し）
   const MasonryGrid = ({ children }: { children: React.ReactNode }) => (
-    <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 2xl:columns-7 gap-3 space-y-3">
+    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
       {children}
     </div>
   );
@@ -625,7 +625,7 @@ function GalleryPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <h1 className="text-xl font-semibold text-gray-900">
               作品ギャラリー
@@ -650,10 +650,9 @@ function GalleryPage() {
         </div>
       </header>
 
-      <main className="w-full mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <div className="py-6">
-          {/* インポート進捗表示 */}
-          {importProgress && (
+      <main className="w-full py-6 px-4 sm:px-6 lg:px-8">
+        {/* インポート進捗表示 */}
+        {importProgress && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-medium text-blue-900">
@@ -757,7 +756,6 @@ function GalleryPage() {
               ))}
             </MasonryGrid>
           )}
-        </div>
       </main>
 
       {/* Artwork Modal */}

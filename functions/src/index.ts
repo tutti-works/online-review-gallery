@@ -4,7 +4,6 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
 import { google } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
-import cors from 'cors';
 import { initializeImport } from './importController';
 import { processFile } from './fileProcessor';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -18,9 +17,6 @@ if (process.env.FUNCTIONS_EMULATOR === 'true') {
 }
 
 admin.initializeApp();
-
-// CORS設定
-const corsHandler = cors({ origin: true });
 
 const tasksClient = new CloudTasksClient();
 
@@ -44,7 +40,7 @@ export const importClassroomSubmissions = onRequest(
     cors: true, // CORS を有効化
   },
   async (request, response) => {
-    // CORS ヘッダーを明示的に設定（エミュレーター対応）
+    // CORS ヘッダーを明示的に設定
     response.set('Access-Control-Allow-Origin', '*');
     response.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -55,12 +51,11 @@ export const importClassroomSubmissions = onRequest(
       return;
     }
 
-    return corsHandler(request, response, async () => {
-      try {
-        if (request.method !== 'POST') {
-          response.status(405).send('Method Not Allowed');
-          return;
-        }
+    try {
+      if (request.method !== 'POST') {
+        response.status(405).send('Method Not Allowed');
+        return;
+      }
 
         // ユーザーのアクセストークンをヘッダーから取得
         const authHeader = request.headers.authorization;
@@ -123,17 +118,16 @@ export const importClassroomSubmissions = onRequest(
           tasksClient
         );
 
-        response.status(200).json({
-          importJobId,
-          message: 'Import job started',
-        });
-      } catch (error) {
-        console.error('Import function error:', error);
-        response.status(500).json({
-          error: 'Internal server error',
-        });
-      }
-    });
+      response.status(200).json({
+        importJobId,
+        message: 'Import job started',
+      });
+    } catch (error) {
+      console.error('Import function error:', error);
+      response.status(500).json({
+        error: 'Internal server error',
+      });
+    }
   }
 );
 
@@ -199,7 +193,7 @@ export const getImportStatus = onRequest(
     cors: true, // CORS を有効化
   },
   async (request, response) => {
-    // CORS ヘッダーを明示的に設定（エミュレーター対応）
+    // CORS ヘッダーを明示的に設定
     response.set('Access-Control-Allow-Origin', '*');
     response.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -210,9 +204,8 @@ export const getImportStatus = onRequest(
       return;
     }
 
-    return corsHandler(request, response, async () => {
-      try {
-        const { importJobId } = request.query;
+    try {
+      const { importJobId } = request.query;
 
         if (!importJobId) {
           response.status(400).json({
@@ -235,13 +228,12 @@ export const getImportStatus = onRequest(
         }
 
         response.status(200).json(importJobDoc.data());
-      } catch (error) {
-        console.error('Get import status error:', error);
-        response.status(500).json({
-          error: 'Internal server error',
-        });
-      }
-    });
+    } catch (error) {
+      console.error('Get import status error:', error);
+      response.status(500).json({
+        error: 'Internal server error',
+      });
+    }
   }
 );
 
@@ -424,7 +416,7 @@ export const deleteArtwork = onRequest(
     cors: true,
   },
   async (request, response) => {
-    // CORS ヘッダーを明示的に設定（エミュレーター対応）
+    // CORS ヘッダーを明示的に設定
     response.set('Access-Control-Allow-Origin', '*');
     response.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
     response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -435,12 +427,11 @@ export const deleteArtwork = onRequest(
       return;
     }
 
-    return corsHandler(request, response, async () => {
-      try {
-        if (request.method !== 'POST') {
-          response.status(405).send('Method Not Allowed');
-          return;
-        }
+    try {
+      if (request.method !== 'POST') {
+        response.status(405).send('Method Not Allowed');
+        return;
+      }
 
         const { artworkId, userEmail } = request.body;
 
@@ -559,17 +550,16 @@ export const deleteArtwork = onRequest(
 
         console.log(`Successfully deleted artwork ${artworkId} and ${deletePromises.length} files`);
 
-        response.status(200).json({
-          message: 'Artwork deleted successfully',
-          deletedFiles: deletePromises.length,
-        });
-      } catch (error) {
-        console.error('Delete artwork error:', error);
-        response.status(500).json({
-          error: 'Internal server error',
-        });
-      }
-    });
+      response.status(200).json({
+        message: 'Artwork deleted successfully',
+        deletedFiles: deletePromises.length,
+      });
+    } catch (error) {
+      console.error('Delete artwork error:', error);
+      response.status(500).json({
+        error: 'Internal server error',
+      });
+    }
   }
 );
 

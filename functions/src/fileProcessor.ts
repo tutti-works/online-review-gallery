@@ -235,19 +235,20 @@ async function processPdfFile(
 
   const bucket = storage.bucket();
   const processedImages: ProcessedImage[] = [];
-
-  // エミュレーター環境ではPDF処理をスキップ（pdf2picがWindows環境で動作しないため）
   const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+
+  // エミュレーター環境ではPDF処理をスキップ
   if (isEmulator) {
     console.warn(`⚠️ PDF processing skipped in emulator mode: ${fileName}`);
-    console.warn('PDF processing requires GraphicsMagick/ImageMagick which is not available in Windows emulator environment');
-    throw new Error('PDF processing is not supported in emulator mode. Please test with image files instead.');
+    console.warn('PDF processing requires GraphicsMagick which is not available in Windows emulator environment');
+    console.warn('PDF processing will work in production (Cloud Functions with Linux environment)');
+    throw new Error('PDF processing is not supported in emulator mode. Please deploy to production to test PDF files, or test with image files instead.');
   }
 
   try {
     // PDFを画像に変換（A3サイズ対応: 200 DPI相当）
     const convertOptions = {
-      density: 200, // DPI（A3を綺麗に表示するため）
+      density: 200,
       saveFilename: 'page',
       savePath: '/tmp',
       format: 'jpeg',
@@ -256,17 +257,15 @@ async function processPdfFile(
     };
 
     const converter = pdf2pic.fromBuffer(pdfBuffer, convertOptions);
-    const pages = await converter.bulk(-1); // 全ページを変換
+    const pages = await converter.bulk(-1);
 
-    // ページ数チェック
-    const pageLimit = maxPages || 50; // デフォルト50ページ
+    const pageLimit = maxPages || 50;
     if (pages.length > pageLimit) {
       throw new Error(`PDF has too many pages: ${pages.length} (max: ${pageLimit}). Please split the PDF or reduce page count.`);
     }
 
-    console.log(`Processing PDF with ${pages.length} pages...`)
+    console.log(`Processing PDF with ${pages.length} pages...`);
 
-    // 各ページを処理
     for (let i = 0; i < pages.length; i++) {
       const page = pages[i];
       const pageNumber = i + 1;
@@ -274,7 +273,7 @@ async function processPdfFile(
 
       if (!page.buffer) continue;
 
-      // 画像を最適化（A3全画面表示対応: 2400px）
+      // 画像を最適化
       const optimizedBuffer = await sharp(page.buffer)
         .resize(OPTIMIZED_IMAGE_SIZE, OPTIMIZED_IMAGE_SIZE, {
           fit: 'inside',
@@ -286,12 +285,11 @@ async function processPdfFile(
         })
         .toBuffer();
 
-      // メタデータを取得
       const metadata = await sharp(optimizedBuffer).metadata();
       const width = metadata.width || 0;
       const height = metadata.height || 0;
 
-      // サムネイルを生成（1ページ目のみ、A3比率: 420×297px）
+      // サムネイルを生成（1ページ目のみ）
       let thumbnailUrl: string | undefined;
       if (pageNumber === 1) {
         const thumbnailBuffer = await sharp(page.buffer)
@@ -317,13 +315,8 @@ async function processPdfFile(
           }
         });
 
-        // エミュレーター環境ではmakePublicを呼ばない
-        if (isEmulator) {
-          thumbnailUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(thumbnailPath)}?alt=media`;
-        } else {
-          await thumbnailFile.makePublic();
-          thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailPath}`;
-        }
+        await thumbnailFile.makePublic();
+        thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailPath}`;
       }
 
       // メイン画像をアップロード
