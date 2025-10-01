@@ -9,6 +9,9 @@ RUN apt-get update && \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# gmコマンドのパスを環境変数で明示的に指定
+ENV GM_COMMAND="/usr/bin/gm"
+
 # 作業ディレクトリを設定
 WORKDIR /workspace
 

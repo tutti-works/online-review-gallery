@@ -193,7 +193,7 @@ export async function initializeImport(
               httpMethod: 'POST' as const,
               url: processFileTaskUrl,
               headers: { 'Content-Type': 'application/json' },
-              body: Buffer.from(JSON.stringify({ data: payload })),
+              body: Buffer.from(JSON.stringify(payload)),
               oidcToken: { serviceAccountEmail },
             },
             scheduleTime: { seconds: Math.floor(Date.now() / 1000) + 10 + (index * 2) },
