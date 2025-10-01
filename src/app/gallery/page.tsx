@@ -367,10 +367,7 @@ function GalleryPage() {
 
   useEffect(() => {
     fetchArtworks();
-    checkActiveImport();
-  }, []);
 
-  const checkActiveImport = async () => {
     // localStorageから進行中のインポートジョブを確認
     const activeImportStr = localStorage.getItem('activeImportJob');
     if (!activeImportStr) return;
@@ -405,10 +402,9 @@ function GalleryPage() {
             if (data.status === 'completed' || data.status === 'error') {
               clearInterval(checkProgress);
               localStorage.removeItem('activeImportJob');
+              setImportProgress(null);
               // 完了したら作品リストを再取得
               fetchArtworks();
-              // 5秒後に進捗表示を非表示
-              setTimeout(() => setImportProgress(null), 5000);
             }
           }
         } catch (err) {
@@ -422,7 +418,7 @@ function GalleryPage() {
       console.error('Error checking active import:', err);
       localStorage.removeItem('activeImportJob');
     }
-  };
+  }, []);
 
   const fetchArtworks = async () => {
     try {

@@ -45,6 +45,13 @@ export async function processFile(
   try {
     console.log(`Processing file: ${fileName} for student: ${studentName} from ${tempFilePath}`);
 
+    // ファイルの存在確認（本番環境での同期問題対策）
+    const [exists] = await tempFile.exists();
+    if (!exists) {
+      console.error(`File not found in storage: ${tempFilePath}`);
+      throw new Error(`File not found in storage: ${tempFilePath}. The file may not have been uploaded yet.`);
+    }
+
     // Firebase Storageからファイルをダウンロード
     const [fileBuffer] = await tempFile.download();
 

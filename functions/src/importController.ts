@@ -192,7 +192,7 @@ export async function initializeImport(
               body: Buffer.from(JSON.stringify({ data: payload })),
               oidcToken: { serviceAccountEmail },
             },
-            scheduleTime: { seconds: Math.floor(Date.now() / 1000) + (index * 2) },
+            scheduleTime: { seconds: Math.floor(Date.now() / 1000) + 5 + (index * 2) },
           },
         };
 
