@@ -1,0 +1,9 @@
+[[build.env]]
+name = "GOOGLE_RUNTIME_VERSION"
+value = "18"
+
+[[build.buildpacks]]
+uri = "gcr.io/buildpacks/nodejs"
+
+[[build.buildpacks]]
+uri = "gcr.io/buildpacks/apt"

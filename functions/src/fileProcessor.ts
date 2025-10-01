@@ -40,6 +40,17 @@ export async function processFile(
   const db = admin.firestore();
   const storage = admin.storage();
   const bucket = storage.bucket();
+
+  // tempFilePathの検証
+  if (!tempFilePath || tempFilePath.trim() === '') {
+    const error = new Error(`Invalid tempFilePath: "${tempFilePath}" for file: ${fileName}`);
+    console.error(error.message);
+    await db.collection('importJobs').doc(importJobId).update({
+      errorFiles: FieldValue.arrayUnion(fileName || 'unknown_file'),
+    });
+    throw error;
+  }
+
   const tempFile = bucket.file(tempFilePath);
 
   try {
@@ -49,7 +60,13 @@ export async function processFile(
     const [exists] = await tempFile.exists();
     if (!exists) {
       console.error(`File not found in storage: ${tempFilePath}`);
-      throw new Error(`File not found in storage: ${tempFilePath}. The file may not have been uploaded yet.`);
+      // ファイルが存在しない場合、リトライしても無駄なのでエラーとして記録して終了
+      await db.collection('importJobs').doc(importJobId).update({
+        errorFiles: FieldValue.arrayUnion(fileName),
+        processedFiles: FieldValue.increment(1), // カウントを増やして完了判定に含める
+      });
+      console.log(`Marked file as error and incremented processedFiles: ${fileName}`);
+      return; // throwせずにreturnすることでCloud Tasksのリトライを防ぐ
     }
 
     // Firebase Storageからファイルをダウンロード
