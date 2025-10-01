@@ -1,10 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import withAuth from '@/components/withAuth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 function DashboardPage() {
   const { user, logout } = useAuth();
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -15,6 +18,27 @@ function DashboardPage() {
       alert('ログアウトに失敗しました。');
     }
   };
+
+  const handleResetData = async () => {
+    if (window.confirm('本当にすべての作品、ギャラリー情報、画像ファイルを削除しますか？この操作は元に戻せません。')) {
+      if (window.confirm('最終確認：この操作を実行すると、関連データがすべて完全に削除されます。よろしいですか？')) {
+        setIsDeleting(true);
+        try {
+          const functions = getFunctions();
+          const deleteAllData = httpsCallable(functions, 'deleteAllData');
+          const result = await deleteAllData();
+          alert('すべてのデータが正常にリセットされました。');
+          console.log(result.data);
+        } catch (error) {
+          console.error('Data reset error:', error);
+          alert(`データのリセットに失敗しました。: ${error.message}`);
+        } finally {
+          setIsDeleting(false);
+        }
+      }
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -118,6 +142,23 @@ function DashboardPage() {
                         ギャラリー表示
                       </a>
                     </div>
+                  </div>
+
+                  {/* システムリセット機能 */}
+                  <div className="mt-8 bg-red-50 border border-red-200 rounded-lg p-6">
+                    <h4 className="text-lg font-bold text-red-900 mb-2">
+                      システムリセット
+                    </h4>
+                    <p className="text-sm text-red-700 mb-4">
+                      すべての作品、ギャラリー情報、画像ファイルを削除し、システムを初期状態に戻します。この操作は元に戻すことができず、非常に危険です。
+                    </p>
+                    <button
+                      onClick={handleResetData}
+                      disabled={isDeleting}
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-red-300 disabled:cursor-not-allowed"
+                    >
+                      {isDeleting ? '削除を実行中...' : '全データをリセット'}
+                    </button>
                   </div>
                 </div>
               )}

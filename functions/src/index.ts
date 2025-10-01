@@ -614,3 +614,122 @@ export const cleanupTempFiles = onSchedule(
     }
   }
 );
+
+// Firestoreのコレクションをバッチで削除するためのヘルパー関数
+async function deleteCollection(db: admin.firestore.Firestore, collectionPath: string, batchSize: number) {
+  const collectionRef = db.collection(collectionPath);
+  const query = collectionRef.orderBy('__name__').limit(batchSize);
+
+  return new Promise((resolve, reject) => {
+    deleteQueryBatch(db, query, resolve, reject).catch(reject);
+  });
+}
+
+async function deleteQueryBatch(
+  db: admin.firestore.Firestore, 
+  query: admin.firestore.Query, 
+  resolve: (value: unknown) => void, 
+  reject: (reason?: any) => void
+) {
+  const snapshot = await query.get();
+
+  if (snapshot.size === 0) {
+    resolve(true);
+    return;
+  }
+
+  const batch = db.batch();
+  snapshot.docs.forEach((doc) => {
+    batch.delete(doc.ref);
+  });
+  await batch.commit();
+
+  process.nextTick(() => {
+    deleteQueryBatch(db, query, resolve, reject);
+  });
+}
+
+// 【第2世代】Cloud Function: 全データリセット（管理者専用）
+export const deleteAllData = onRequest(
+  {
+    region: 'asia-northeast1',
+    memory: '1GiB',
+    timeoutSeconds: 540, // 9分
+    cors: true,
+  },
+  async (request, response) => {
+    response.set('Access-Control-Allow-Origin', '*');
+    response.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (request.method === 'OPTIONS') {
+      response.status(204).send('');
+      return;
+    }
+
+    try {
+      if (request.method !== 'POST') {
+        response.status(405).send('Method Not Allowed');
+        return;
+      }
+
+      const authHeader = request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        response.status(401).send('Unauthorized: Missing or invalid token');
+        return;
+      }
+      const idToken = authHeader.split('Bearer ')[1];
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const userEmail = decodedToken.email;
+
+      if (!userEmail) {
+        response.status(401).send('Unauthorized: Invalid token');
+        return;
+      }
+
+      const userDoc = await admin.firestore().collection('userRoles').doc(userEmail).get();
+      if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+        console.error(`Permission denied for ${userEmail}. Role: ${userDoc.data()?.role}`);
+        response.status(403).json({ error: 'Insufficient permissions' });
+        return;
+      }
+
+      console.log(`Data reset initiated by admin: ${userEmail}`);
+
+      const db = admin.firestore();
+      const bucket = admin.storage().bucket();
+
+      // 1. コレクションの全削除
+      await Promise.all([
+        deleteCollection(db, 'artworks', 200),
+        deleteCollection(db, 'likes', 200),
+        deleteCollection(db, 'importJobs', 200),
+      ]);
+
+      // 2. Galleries内のartworks配列をクリア
+      const galleriesRef = db.collection('galleries');
+      const galleriesSnapshot = await galleriesRef.get();
+      if (!galleriesSnapshot.empty) {
+        const batch = db.batch();
+        galleriesSnapshot.docs.forEach(doc => {
+          batch.update(doc.ref, { artworks: [] });
+        });
+        await batch.commit();
+      }
+      
+      // 3. Cloud Storageのフォルダを全削除
+      await Promise.all([
+        bucket.deleteFiles({ prefix: 'galleries/' }),
+        bucket.deleteFiles({ prefix: 'unprocessed/' })
+      ]);
+
+      const message = `Successfully reset all data.`;
+      console.log(message);
+      response.status(200).json({ message });
+
+    } catch (error) {
+      console.error('Failed to delete all data:', error);
+      response.status(500).json({ error: 'Failed to delete all data.' });
+    }
+  }
+);
