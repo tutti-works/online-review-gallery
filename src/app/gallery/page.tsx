@@ -390,6 +390,7 @@ function GalleryPage() {
           const response = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`);
           if (response.ok) {
             const data = await response.json();
+            console.log('[Gallery] Import progress update:', data);
             setImportProgress({
               importJobId,
               galleryId,
@@ -400,11 +401,21 @@ function GalleryPage() {
             });
 
             if (data.status === 'completed' || data.status === 'error') {
+              console.log('[Gallery] Import finished, clearing interval and localStorage');
               clearInterval(checkProgress);
               localStorage.removeItem('activeImportJob');
               setImportProgress(null);
               // 完了したら作品リストを再取得
               fetchArtworks();
+            }
+          } else {
+            console.error('[Gallery] Failed to fetch import status:', response.status);
+            // 404の場合はインポートジョブが存在しないので、localStorageをクリア
+            if (response.status === 404) {
+              console.log('[Gallery] Import job not found, clearing localStorage');
+              clearInterval(checkProgress);
+              localStorage.removeItem('activeImportJob');
+              setImportProgress(null);
             }
           }
         } catch (err) {

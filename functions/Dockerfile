@@ -21,8 +21,15 @@ COPY package*.json ./
 # 依存関係をインストール（本番環境用のみ）
 RUN npm ci --omit=dev
 
-# ビルド済みのコードをコピー
-COPY lib/ ./lib/
+# ビルド済みのコードをコピー（Cloud Run用のファイルのみ）
+COPY lib/cloudrun.js ./lib/
+COPY lib/cloudrun.js.map ./lib/
+COPY lib/processFileTaskHttp.js ./lib/
+COPY lib/processFileTaskHttp.js.map ./lib/
+COPY lib/fileProcessor.js ./lib/
+COPY lib/fileProcessor.js.map ./lib/
+COPY lib/importController.js ./lib/
+COPY lib/importController.js.map ./lib/
 
 # node_modulesとGraphicsMagickが正しくインストールされているか確認
 RUN ls -la node_modules/@google-cloud/functions-framework || echo "functions-framework not found"
