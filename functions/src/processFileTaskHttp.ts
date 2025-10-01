@@ -16,7 +16,7 @@ export async function processFileTaskHttp(req: Request, res: Response): Promise<
       galleryId,
       originalFileUrl,
       submittedAt,
-    } = req.body.data || req.body;
+    } = req.body;
 
     console.log(`Processing file: ${fileName} (${fileType})`);
 
