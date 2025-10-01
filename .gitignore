@@ -67,3 +67,18 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Next.js
+.next/
+
+# Local Environment Variables
+.env.local
+
+# TypeScript
+tsconfig.tsbuildinfo
+
+# Firebase Functions build output
+functions/lib
+
+# Claude-specific settings
+.claude/
