@@ -270,14 +270,14 @@ async function processPdfFile(
     // 一時ファイル名を一意にするためのプレフィックス
     const uniquePrefix = `pdf-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-    // PDFを画像に変換（A3サイズ: 2400x1697px, 比率1.414:1）
+    // PDFを画像に変換（3400x2404px）
     const convertOptions = {
       density: 200,
       saveFilename: uniquePrefix,
       savePath: '/tmp',
       format: 'jpeg',
-      width: 2400,  // A3横幅
-      height: 1697, // A3縦幅 (2400 / 1.414 ≈ 1697)
+      width: 3400,
+      height: 2404,
     };
 
     console.log(`Using unique filename prefix: ${uniquePrefix}`);
