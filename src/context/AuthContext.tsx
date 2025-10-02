@@ -12,7 +12,7 @@ import {
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, googleProvider, db } from '@/lib/firebase';
 import { User } from '@/types';
-import type { UserRole } from '@/utils/roles';
+import { ROLES, type UserRole } from '@/utils/roles';
 
 interface AuthContextType {
   user: User | null;
@@ -36,9 +36,9 @@ const buildGuestUser = (firebaseUser: FirebaseUser): User => {
   return {
     uid: firebaseUser.uid,
     email: `guest_${firebaseUser.uid}@anonymous.local`,
-    displayName: 'ゲストユーザー',
+    displayName: '\u30b2\u30b9\u30c8\u30e6\u30fc\u30b6\u30fc',
     photoURL: firebaseUser.photoURL || undefined,
-    role: 'guest',
+    role: ROLES.GUEST,
   };
 };
 
@@ -48,7 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const getUserRole = async (email?: string | null): Promise<UserRole> => {
     if (!email) {
-      return 'guest';
+      return ROLES.GUEST;
     }
 
     try {
@@ -57,21 +57,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return roleDoc.data().role as UserRole;
       }
 
-      // In development we create an admin role automatically when none exists
       if (process.env.NODE_ENV === 'development') {
         const { setDoc } = await import('firebase/firestore');
         await setDoc(doc(db, 'userRoles', email), {
-          role: 'admin',
+          role: ROLES.ADMIN,
           createdAt: new Date()
         });
         console.log(`Auto-created admin role for ${email} in development mode`);
-        return 'admin';
+        return ROLES.ADMIN;
       }
 
-      return 'guest';
+      console.warn(`No role found for ${email}. Defaulting to guest.`);
+      return ROLES.GUEST;
     } catch (error) {
       console.error('Error fetching user role:', error);
-      return 'guest';
+      return ROLES.GUEST;
     }
   };
 
@@ -81,27 +81,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const token = credential?.accessToken;
 
-      const firebaseUser = result.user;
+      if (token) {
+        sessionStorage.setItem('googleAccessToken', token);
+      }
 
-      if (firebaseUser.email) {
-        const role = await getUserRole(firebaseUser.email);
-
-        if (token) {
-          sessionStorage.setItem('googleAccessToken', token);
-        }
-
-        const userData: User = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName || '',
-          photoURL: firebaseUser.photoURL || undefined,
-          role,
-          googleAccessToken: token,
-        };
-
-        setUser(userData);
-      } else {
-        setUser(buildGuestUser(firebaseUser));
+      if (!result.user.email) {
+        console.warn('Signed in with Google but email was missing. Treating as guest.');
       }
     } catch (error) {
       console.error('Error signing in with Google:', error);
@@ -112,8 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInAsGuest = async () => {
     try {
       sessionStorage.removeItem('googleAccessToken');
-      const credential = await signInAnonymously(auth);
-      setUser(buildGuestUser(credential.user));
+      await signInAnonymously(auth);
     } catch (error) {
       console.error('Error signing in as guest:', error);
       throw error;

@@ -1,34 +1,39 @@
 'use client';
 
 import { useEffect, ComponentType } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { UserRole } from '@/utils/roles';
+import { ROLES, type UserRole } from '@/utils/roles';
 
 const withAuth = <P extends object>(
   WrappedComponent: ComponentType<P>,
-  requiredRole: UserRole = 'viewer'
+  requiredRole: UserRole = ROLES.VIEWER
 ) => {
   const AuthenticatedComponent = (props: P) => {
     const { user, loading } = useAuth();
+    const router = useRouter();
 
     useEffect(() => {
-      if (!loading && !user) {
-        window.location.href = '/login';
+      if (loading) {
         return;
       }
 
-      if (!loading && user && requiredRole !== 'guest' && user.role === 'guest') {
-        alert('ゲストアカウントではギャラリーページのみ閲覧できます。');
-        window.location.href = '/gallery';
+      if (!user) {
+        router.replace('/login');
         return;
       }
 
-      if (!loading && user && requiredRole === 'admin' && user.role !== 'admin') {
-        alert('このページにアクセスする権限がありません。');
-        window.location.href = '/';
+      if (requiredRole !== ROLES.GUEST && user.role === ROLES.GUEST) {
+        console.warn('Guest accounts can only view the gallery.');
+        router.replace('/gallery');
         return;
       }
-    }, [user, loading, requiredRole]);
+
+      if (requiredRole === ROLES.ADMIN && user.role !== ROLES.ADMIN) {
+        console.warn('User does not have permission to access this page.');
+        router.replace('/');
+      }
+    }, [user, loading, requiredRole, router]);
 
     if (loading) {
       return (
@@ -42,30 +47,30 @@ const withAuth = <P extends object>(
       return (
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
-            <h2 className="text-xl font-semibold mb-4">ログインが必要です</h2>
-            <p>このページを表示するにはログインしてください。</p>
+            <h2 className="text-xl font-semibold mb-4">{'\u30ed\u30b0\u30a4\u30f3\u304c\u5fc5\u8981\u3067\u3059'}</h2>
+            <p>{'\u3053\u306e\u30da\u30fc\u30b8\u3092\u8868\u793a\u3059\u308b\u306b\u306f\u30ed\u30b0\u30a4\u30f3\u3057\u3066\u304f\u3060\u3055\u3044\u3002'}</p>
           </div>
         </div>
       );
     }
 
-    if (requiredRole !== 'guest' && user.role === 'guest') {
+    if (requiredRole !== ROLES.GUEST && user.role === ROLES.GUEST) {
       return (
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
-            <h2 className="text-xl font-semibold mb-4">ゲスト権限では利用できません</h2>
-            <p>このページの利用には権限が必要です。管理者にアクセス権の付与を依頼してください。</p>
+            <h2 className="text-xl font-semibold mb-4">{'\u30b2\u30b9\u30c8\u6a29\u9650\u3067\u306f\u5229\u7528\u3067\u304d\u307e\u305b\u3093'}</h2>
+            <p>{'\u3053\u306e\u30da\u30fc\u30b8\u306e\u5229\u7528\u306b\u306f\u6a29\u9650\u304c\u5fc5\u8981\u3067\u3059\u3002\u7ba1\u7406\u8005\u306b\u30a2\u30af\u30bb\u30b9\u6a29\u306e\u4ed8\u4e0e\u3092\u4f9d\u983c\u3057\u3066\u304f\u3060\u3055\u3044\u3002'}</p>
           </div>
         </div>
       );
     }
 
-    if (requiredRole === 'admin' && user.role !== 'admin') {
+    if (requiredRole === ROLES.ADMIN && user.role !== ROLES.ADMIN) {
       return (
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
-            <h2 className="text-xl font-semibold mb-4">アクセス権限がありません</h2>
-            <p>このページにアクセスする権限がありません。</p>
+            <h2 className="text-xl font-semibold mb-4">{'\u30a2\u30af\u30bb\u30b9\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093'}</h2>
+            <p>{'\u3053\u306e\u30da\u30fc\u30b8\u306b\u30a2\u30af\u30bb\u30b9\u3059\u308b\u6a29\u9650\u304c\u3042\u308a\u307e\u305b\u3093\u3002'}</p>
           </div>
         </div>
       );
