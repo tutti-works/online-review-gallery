@@ -4,13 +4,18 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function LoginPage() {
-  const { user, signInWithGoogle, loading } = useAuth();
+  const { user, signInWithGoogle, signInAsGuest, loading } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isGuestSigningIn, setIsGuestSigningIn] = useState(false);
 
   useEffect(() => {
     if (user && !loading) {
-      // Redirect to home if already logged in
-      window.location.href = '/dashboard';
+      // ゲストユーザーはギャラリーへ、それ以外はダッシュボードへ
+      if (user.role === 'guest') {
+        window.location.href = '/gallery';
+      } else {
+        window.location.href = '/dashboard';
+      }
     }
   }, [user, loading]);
 
@@ -20,9 +25,22 @@ export default function LoginPage() {
       await signInWithGoogle();
     } catch (error) {
       console.error('Sign-in error:', error);
-      alert('ログインに失敗しました。再度お試しください。');
+      alert('Googleでのログインに失敗しました。再度お試しください。');
     } finally {
       setIsSigningIn(false);
+    }
+  };
+
+  const handleGuestSignIn = async () => {
+    try {
+      setIsGuestSigningIn(true);
+      await signInAsGuest();
+      window.location.href = '/gallery';
+    } catch (error) {
+      console.error('Guest sign-in error:', error);
+      alert('ゲストでのログインに失敗しました。時間をおいて再度お試しください。');
+    } finally {
+      setIsGuestSigningIn(false);
     }
   };
 
@@ -38,7 +56,7 @@ export default function LoginPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
         <div className="text-center">
-          <p className="text-lg">ダッシュボードにリダイレクト中...</p>
+          <p className="text-lg">ダッシュボードへリダイレクトしています...</p>
         </div>
       </div>
     );
@@ -48,12 +66,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            オンライン講評会ギャラリー
-          </h1>
-          <p className="text-gray-600 mb-8">
-            Googleアカウントでログインしてください
-          </p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">オンライン講評会ギャラリー</h1>
+          <p className="text-gray-600 mb-8">Googleアカウントでログインするか、ゲストとして閲覧できます。</p>
 
           <button
             onClick={handleGoogleSignIn}
@@ -82,14 +96,20 @@ export default function LoginPage() {
                 />
               </svg>
             )}
-            {isSigningIn ? 'ログイン中...' : 'Googleでログイン'}
+            {isSigningIn ? 'ログインしています...' : 'Googleでログイン'}
+          </button>
+
+          <button
+            onClick={handleGuestSignIn}
+            disabled={isGuestSigningIn || isSigningIn}
+            className="w-full mt-4 flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isGuestSigningIn ? 'ゲストでログイン中...' : 'ゲストとして閲覧'}
           </button>
 
           <div className="mt-6 text-sm text-gray-500">
             <p>
-              ログインすることで、
-              <br />
-              利用規約とプライバシーポリシーに同意したことになります。
+              ログインすると利用規約とプライバシーポリシーに同意したことになります。
             </p>
           </div>
         </div>

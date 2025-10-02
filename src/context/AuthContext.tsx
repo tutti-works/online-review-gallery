@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   User as FirebaseUser,
   signInWithPopup,
+  signInAnonymously,
   signOut,
   onAuthStateChanged,
   GoogleAuthProvider
@@ -11,11 +12,13 @@ import {
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, googleProvider, db } from '@/lib/firebase';
 import { User } from '@/types';
+import type { UserRole } from '@/utils/roles';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInAsGuest: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -29,18 +32,32 @@ export const useAuth = () => {
   return context;
 };
 
+const buildGuestUser = (firebaseUser: FirebaseUser): User => {
+  return {
+    uid: firebaseUser.uid,
+    email: `guest_${firebaseUser.uid}@anonymous.local`,
+    displayName: 'ゲストユーザー',
+    photoURL: firebaseUser.photoURL || undefined,
+    role: 'guest',
+  };
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const getUserRole = async (email: string): Promise<'admin' | 'viewer'> => {
+  const getUserRole = async (email?: string | null): Promise<UserRole> => {
+    if (!email) {
+      return 'guest';
+    }
+
     try {
       const roleDoc = await getDoc(doc(db, 'userRoles', email));
       if (roleDoc.exists()) {
-        return roleDoc.data().role as 'admin' | 'viewer';
+        return roleDoc.data().role as UserRole;
       }
 
-      // 開発環境：ユーザーロールが存在しない場合、自動的にadminとして登録
+      // In development we create an admin role automatically when none exists
       if (process.env.NODE_ENV === 'development') {
         const { setDoc } = await import('firebase/firestore');
         await setDoc(doc(db, 'userRoles', email), {
@@ -51,10 +68,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return 'admin';
       }
 
-      return 'viewer'; // Default role
+      return 'guest';
     } catch (error) {
       console.error('Error fetching user role:', error);
-      return 'viewer'; // Default role on error
+      return 'guest';
     }
   };
 
@@ -69,7 +86,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (firebaseUser.email) {
         const role = await getUserRole(firebaseUser.email);
 
-        // トークンをsessionStorageに保存
         if (token) {
           sessionStorage.setItem('googleAccessToken', token);
         }
@@ -84,9 +100,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         setUser(userData);
+      } else {
+        setUser(buildGuestUser(firebaseUser));
       }
     } catch (error) {
       console.error('Error signing in with Google:', error);
+      throw error;
+    }
+  };
+
+  const signInAsGuest = async () => {
+    try {
+      sessionStorage.removeItem('googleAccessToken');
+      const credential = await signInAnonymously(auth);
+      setUser(buildGuestUser(credential.user));
+    } catch (error) {
+      console.error('Error signing in as guest:', error);
       throw error;
     }
   };
@@ -106,8 +135,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       if (firebaseUser && firebaseUser.email) {
         const role = await getUserRole(firebaseUser.email);
-
-        // sessionStorageからトークンを取得
         const token = sessionStorage.getItem('googleAccessToken') || undefined;
 
         const userData: User = {
@@ -120,6 +147,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         setUser(userData);
+      } else if (firebaseUser) {
+        setUser(buildGuestUser(firebaseUser));
       } else {
         setUser(null);
       }
@@ -133,6 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
     loading,
     signInWithGoogle,
+    signInAsGuest,
     logout
   };
 
