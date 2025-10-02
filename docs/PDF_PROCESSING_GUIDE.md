@@ -4,14 +4,15 @@
 
 ### 処理フロー
 ```
-PDF (Drive) → 一時Storage → pdf2pic変換 → Sharp最適化 → Storage保存
+PDF (Drive) → 一時Storage → Cloud Tasks → Cloud Run (pdf2pic + GraphicsMagick) → Sharp最適化 → Storage保存
 ```
 
-### リソース設定
+### リソース設定（Cloud Run）
 - **メモリ**: 2GB
-- **タイムアウト**: 30分
-- **リトライ**: 最大3回
-- **同時実行**: 最大100インスタンス
+- **タイムアウト**: 1800秒（30分）
+- **リトライ**: Cloud Tasks経由で最大3回
+- **同時実行**: 最大20インスタンス
+- **最小インスタンス**: 0（アイドル時は課金なし）
 
 ---
 
@@ -67,16 +68,26 @@ const MAX_PDF_PAGES = 50; // 最大50ページ
 
 ## さらなる最適化オプション
 
-### オプション1: DPI削減（品質とのトレードオフ）
+### オプション1: 解像度削減（品質とのトレードオフ）
 
 **現在:**
 ```typescript
-density: 150, // DPI
+const convertOptions = {
+  density: 200,
+  width: 2400,  // A3横幅
+  height: 1697, // A3縦幅 (2400 / 1.414 ≈ 1697)
+  format: 'jpeg',
+};
 ```
 
 **低負荷モード:**
 ```typescript
-density: 100, // DPI削減 → 処理速度30%向上
+const convertOptions = {
+  density: 150,
+  width: 1800,  // 25%削減
+  height: 1273,
+  format: 'jpeg',
+};
 ```
 
 **メリット:**
@@ -89,18 +100,18 @@ density: 100, // DPI削減 → 処理速度30%向上
 
 ---
 
-### オプション2: 画像サイズ削減
+### オプション2: サムネイルサイズ削減
 
 **現在:**
 ```typescript
-width: 1920,
-height: 1920,
+const THUMBNAIL_WIDTH = 420;
+const THUMBNAIL_HEIGHT = 297;
 ```
 
 **提案:**
 ```typescript
-width: 1280,  // フルHD以下
-height: 1280,
+const THUMBNAIL_WIDTH = 300;
+const THUMBNAIL_HEIGHT = 212;
 ```
 
 **メリット:**
@@ -115,9 +126,17 @@ height: 1280,
 
 ### オプション3: ストリーミング処理（高度）
 
-**現在の問題:**
+**現在の実装:**
 ```typescript
 const pages = await converter.bulk(-1); // 全ページを一度にメモリ展開
+
+// 各ページを処理
+for (let i = 0; i < pages.length; i++) {
+  const pageBuffer = fs.readFileSync(pages[i].path);
+  // 処理後に一時ファイルを削除
+  fs.unlinkSync(pages[i].path);
+  // ...
+}
 ```
 
 **改善案:**
@@ -125,8 +144,9 @@ const pages = await converter.bulk(-1); // 全ページを一度にメモリ展�
 // 1ページずつ処理してメモリを即座に解放
 for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
   const page = await converter.convert(pageNum);
-  await processAndUploadPage(page);
-  // ページ処理後、メモリを解放
+  const pageBuffer = fs.readFileSync(page.path);
+  await processAndUploadPage(pageBuffer);
+  fs.unlinkSync(page.path); // 即座にファイル削除
 }
 ```
 
