@@ -158,7 +158,7 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, u
               </div>
 
               {/* 半透明グレーゾーンでのコントロール（画像の上に重ねて下部中央に配置） */}
-              <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800 bg-opacity-70 rounded-2xl px-6 py-3 flex items-center space-x-4 backdrop-blur-sm">
+              <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-700 bg-opacity-70 rounded-full px-3 py-1 flex items-center space-x-4 backdrop-blur-sm">
                 {/* ページナビゲーション */}
                 {artwork.images.length > 1 && (
                   <>
@@ -350,12 +350,15 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, u
   );
 }
 
+type SortOption = 'submittedAt-desc' | 'submittedAt-asc' | 'email-asc' | 'email-desc';
+
 function GalleryPage() {
   const { user } = useAuth();
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
+  const [sortOption, setSortOption] = useState<SortOption>('submittedAt-desc');
   const [importProgress, setImportProgress] = useState<{
     importJobId: string;
     galleryId: string;
@@ -473,6 +476,40 @@ function GalleryPage() {
       console.error('Fetch artworks error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 並び替えされた作品リストを取得
+  const getSortedArtworks = () => {
+    const sorted = [...artworks];
+
+    switch (sortOption) {
+      case 'submittedAt-desc':
+        return sorted.sort((a, b) => {
+          const dateA = toDate(a.submittedAt).getTime();
+          const dateB = toDate(b.submittedAt).getTime();
+          return dateB - dateA; // 新しい順
+        });
+      case 'submittedAt-asc':
+        return sorted.sort((a, b) => {
+          const dateA = toDate(a.submittedAt).getTime();
+          const dateB = toDate(b.submittedAt).getTime();
+          return dateA - dateB; // 古い順
+        });
+      case 'email-asc':
+        return sorted.sort((a, b) => {
+          const emailA = a.studentEmail.split('@')[0].toLowerCase();
+          const emailB = b.studentEmail.split('@')[0].toLowerCase();
+          return emailA.localeCompare(emailB); // A→Z
+        });
+      case 'email-desc':
+        return sorted.sort((a, b) => {
+          const emailA = a.studentEmail.split('@')[0].toLowerCase();
+          const emailB = b.studentEmail.split('@')[0].toLowerCase();
+          return emailB.localeCompare(emailA); // Z→A
+        });
+      default:
+        return sorted;
     }
   };
 
@@ -642,6 +679,17 @@ function GalleryPage() {
               作品ギャラリー
             </h1>
             <div className="flex items-center space-x-4">
+              {/* 並び替えセレクトボックス */}
+              <select
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value as SortOption)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="submittedAt-desc">提出日時: 新しい順</option>
+                <option value="submittedAt-asc">提出日時: 古い順</option>
+                <option value="email-asc">学籍番号: A→Z</option>
+                <option value="email-desc">学籍番号: Z→A</option>
+              </select>
               <a
                 href="/dashboard"
                 className="text-gray-500 hover:text-gray-700 px-3 py-2 text-sm font-medium"
@@ -692,7 +740,7 @@ function GalleryPage() {
             </div>
           )}
 
-          {artworks.length === 0 ? (
+          {getSortedArtworks().length === 0 ? (
             <div className="text-center py-12">
               <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                 <svg className="w-12 h-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -719,7 +767,7 @@ function GalleryPage() {
             </div>
           ) : (
             <MasonryGrid>
-              {artworks.map((artwork) => {
+              {getSortedArtworks().map((artwork) => {
                 // 画像データが存在しない場合はスキップ
                 if (!artwork.images || artwork.images.length === 0) {
                   return null;
