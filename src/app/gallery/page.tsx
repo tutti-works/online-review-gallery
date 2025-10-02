@@ -353,7 +353,7 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, u
 type SortOption = 'submittedAt-desc' | 'submittedAt-asc' | 'email-asc' | 'email-desc';
 
 function GalleryPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -651,6 +651,16 @@ function GalleryPage() {
     }
   };
 
+  const handleLoginClick = async () => {
+    try {
+      await logout();
+      window.location.href = '/login';
+    } catch (error) {
+      console.error('Logout error:', error);
+      window.location.href = '/login';
+    }
+  };
+
   // Masonryレイアウト用のグリッド設定（横幅全体を使用、自動で折り返し）
   const MasonryGrid = ({ children }: { children: React.ReactNode }) => (
     <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
@@ -690,19 +700,30 @@ function GalleryPage() {
                 <option value="email-asc">学籍番号: A→Z</option>
                 <option value="email-desc">学籍番号: Z→A</option>
               </select>
-              <a
-                href="/dashboard"
-                className="text-gray-500 hover:text-gray-700 px-3 py-2 text-sm font-medium"
-              >
-                ダッシュボード
-              </a>
-              {user?.role === 'admin' && (
-                <a
-                  href="/admin/import"
+              {user?.role === 'guest' ? (
+                <button
+                  onClick={handleLoginClick}
                   className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
                 >
-                  新しいインポート
-                </a>
+                  ログイン
+                </button>
+              ) : (
+                <>
+                  <a
+                    href="/dashboard"
+                    className="text-gray-500 hover:text-gray-700 px-3 py-2 text-sm font-medium"
+                  >
+                    ダッシュボード
+                  </a>
+                  {user?.role === 'admin' && (
+                    <a
+                      href="/admin/import"
+                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+                    >
+                      新しいインポート
+                    </a>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -840,4 +861,4 @@ function GalleryPage() {
   );
 }
 
-export default withAuth(GalleryPage);
+export default withAuth(GalleryPage, 'guest');

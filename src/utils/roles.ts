@@ -1,7 +1,7 @@
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-export type UserRole = 'admin' | 'viewer';
+export type UserRole = 'admin' | 'viewer' | 'guest';
 
 export const setUserRole = async (email: string, role: UserRole): Promise<void> => {
   try {
@@ -23,10 +23,10 @@ export const getUserRole = async (email: string): Promise<UserRole> => {
     if (roleDoc.exists()) {
       return roleDoc.data().role as UserRole;
     }
-    return 'viewer'; // Default role
+    return 'guest'; // Default role
   } catch (error) {
     console.error('Error fetching user role:', error);
-    return 'viewer'; // Default role on error
+    return 'guest'; // Default role on error
   }
 };
 
