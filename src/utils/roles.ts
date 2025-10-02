@@ -1,7 +1,13 @@
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-export type UserRole = 'admin' | 'viewer' | 'guest';
+export const ROLES = {
+  ADMIN: 'admin',
+  VIEWER: 'viewer',
+  GUEST: 'guest',
+} as const;
+
+export type UserRole = (typeof ROLES)[keyof typeof ROLES];
 
 export const setUserRole = async (email: string, role: UserRole): Promise<void> => {
   try {
@@ -23,25 +29,29 @@ export const getUserRole = async (email: string): Promise<UserRole> => {
     if (roleDoc.exists()) {
       return roleDoc.data().role as UserRole;
     }
-    return 'guest'; // Default role
+    return ROLES.GUEST; // Default role
   } catch (error) {
     console.error('Error fetching user role:', error);
-    return 'guest'; // Default role on error
+    return ROLES.GUEST; // Default role on error
   }
 };
 
 export const isAdmin = (role: UserRole): boolean => {
-  return role === 'admin';
+  return role === ROLES.ADMIN;
 };
 
 export const isViewer = (role: UserRole): boolean => {
-  return role === 'viewer';
+  return role === ROLES.VIEWER;
+};
+
+export const isGuest = (role: UserRole): boolean => {
+  return role === ROLES.GUEST;
 };
 
 // Initial setup function to set default admin users
 export const setupDefaultAdminUsers = async (adminEmails: string[]): Promise<void> => {
   try {
-    const promises = adminEmails.map(email => setUserRole(email, 'admin'));
+    const promises = adminEmails.map(email => setUserRole(email, ROLES.ADMIN));
     await Promise.all(promises);
     console.log('Default admin users set up successfully');
   } catch (error) {
