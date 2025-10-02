@@ -267,16 +267,20 @@ async function processPdfFile(
   }
 
   try {
+    // 一時ファイル名を一意にするためのプレフィックス
+    const uniquePrefix = `pdf-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+
     // PDFを画像に変換（A3サイズ: 2400x1697px, 比率1.414:1）
     const convertOptions = {
       density: 200,
-      saveFilename: 'page',
+      saveFilename: uniquePrefix,
       savePath: '/tmp',
       format: 'jpeg',
       width: 2400,  // A3横幅
       height: 1697, // A3縦幅 (2400 / 1.414 ≈ 1697)
     };
 
+    console.log(`Using unique filename prefix: ${uniquePrefix}`);
     const converter = pdf2pic.fromBuffer(pdfBuffer, convertOptions);
     const pages = await converter.bulk(-1);
 

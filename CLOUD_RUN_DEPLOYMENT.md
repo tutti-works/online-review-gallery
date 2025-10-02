@@ -14,6 +14,8 @@ Firebase Cloud Functions Gen2では、カスタムDockerfileを使用したシ�
 
 ## デプロイ手順
 
+**重要:** Cloud BuildとCloud Runへのデプロイは、現在のところ手動で実行する必要があります。自動化スクリプトは使用しないでください。
+
 ### ステップ1: TypeScriptをビルド
 
 ```bash
@@ -23,9 +25,9 @@ npm run build
 
 ### ステップ2: Dockerイメージをビルド（Cloud Build使用）
 
-PowerShellまたはBashで実行：
+**functionsディレクトリから実行してください：**
 
-```powershell
+```bash
 cd functions
 gcloud builds submit --tag gcr.io/online-review-gallery/processfiletask --project=online-review-gallery
 ```
@@ -37,41 +39,13 @@ gcloud builds submit --tag gcr.io/online-review-gallery/processfiletask --projec
 
 ### ステップ3: Cloud Runにデプロイ
 
-PowerShell（バッククォート `` ` `` で改行）：
-
-```powershell
-gcloud run deploy processfiletask `
-  --image gcr.io/online-review-gallery/processfiletask `
-  --project=online-review-gallery `
-  --region=asia-northeast1 `
-  --platform=managed `
-  --no-allow-unauthenticated `
-  --memory=2Gi `
-  --timeout=1800 `
-  --min-instances=0 `
-  --max-instances=20 `
-  --cpu=1 `
-  --service-account=816131605069-compute@developer.gserviceaccount.com `
-  --set-env-vars=FUNCTION_TARGET=processFileTask,GCLOUD_PROJECT=online-review-gallery
-```
-
-Bash（バックスラッシュ `\` で改行）：
+**1行コマンド（改行なし）で実行してください：**
 
 ```bash
-gcloud run deploy processfiletask \
-  --image gcr.io/online-review-gallery/processfiletask \
-  --project=online-review-gallery \
-  --region=asia-northeast1 \
-  --platform=managed \
-  --no-allow-unauthenticated \
-  --memory=2Gi \
-  --timeout=1800 \
-  --min-instances=0 \
-  --max-instances=20 \
-  --cpu=1 \
-  --service-account=816131605069-compute@developer.gserviceaccount.com \
-  --set-env-vars=FUNCTION_TARGET=processFileTask,GCLOUD_PROJECT=online-review-gallery
+gcloud run deploy processfiletask --image gcr.io/online-review-gallery/processfiletask --project=online-review-gallery --region=asia-northeast1 --platform=managed --no-allow-unauthenticated --memory=2Gi --timeout=1800 --min-instances=0 --max-instances=20 --cpu=1 --service-account=816131605069-compute@developer.gserviceaccount.com --set-env-vars=FUNCTION_TARGET=processFileTask,GCLOUD_PROJECT=online-review-gallery
 ```
+
+**注意:** PowerShellやBashの改行記号（`` ` ``や`\`）は使用せず、すべて1行で実行してください。
 
 ### ステップ3: Cloud Run URLを取得
 
