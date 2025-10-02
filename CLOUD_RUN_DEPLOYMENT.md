@@ -21,22 +21,45 @@ cd functions
 npm run build
 ```
 
-### ステップ2: Cloud Runにデプロイ
+### ステップ2: Dockerイメージをビルド（Cloud Build使用）
 
-Bashが使える環境（Git Bash、WSL、Linux、macOS）の場合：
+PowerShellまたはBashで実行：
 
-```bash
+```powershell
 cd functions
-chmod +x deploy-with-docker.sh
-./deploy-with-docker.sh
+gcloud builds submit --tag gcr.io/online-review-gallery/processfiletask --project=online-review-gallery
 ```
 
-または、手動でデプロイ：
+このコマンドは：
+- Dockerfileを使ってイメージをビルド
+- GraphicsMagickとGhostscriptをインストール
+- Google Container Registryにプッシュ
+
+### ステップ3: Cloud Runにデプロイ
+
+PowerShell（バッククォート `` ` `` で改行）：
+
+```powershell
+gcloud run deploy processfiletask `
+  --image gcr.io/online-review-gallery/processfiletask `
+  --project=online-review-gallery `
+  --region=asia-northeast1 `
+  --platform=managed `
+  --no-allow-unauthenticated `
+  --memory=2Gi `
+  --timeout=1800 `
+  --min-instances=0 `
+  --max-instances=20 `
+  --cpu=1 `
+  --service-account=816131605069-compute@developer.gserviceaccount.com `
+  --set-env-vars=FUNCTION_TARGET=processFileTask,GCLOUD_PROJECT=online-review-gallery
+```
+
+Bash（バックスラッシュ `\` で改行）：
 
 ```bash
-cd functions
 gcloud run deploy processfiletask \
-  --source . \
+  --image gcr.io/online-review-gallery/processfiletask \
   --project=online-review-gallery \
   --region=asia-northeast1 \
   --platform=managed \
@@ -47,7 +70,7 @@ gcloud run deploy processfiletask \
   --max-instances=20 \
   --cpu=1 \
   --service-account=816131605069-compute@developer.gserviceaccount.com \
-  --set-env-vars="FUNCTION_TARGET=processFileTask,FIREBASE_CONFIG={\"projectId\":\"online-review-gallery\",\"storageBucket\":\"online-review-gallery.firebasestorage.app\"},GCLOUD_PROJECT=online-review-gallery"
+  --set-env-vars=FUNCTION_TARGET=processFileTask,GCLOUD_PROJECT=online-review-gallery
 ```
 
 ### ステップ3: Cloud Run URLを取得

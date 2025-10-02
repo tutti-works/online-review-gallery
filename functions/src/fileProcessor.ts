@@ -91,6 +91,8 @@ export async function processFile(
 
     // アートワークをFirestoreに保存
     const artworkId = db.collection('artworks').doc().id;
+    console.log(`Saving artwork to Firestore with ${processedImages.length} images`);
+
     const artwork = {
       id: artworkId,
       title: fileName,
@@ -110,6 +112,7 @@ export async function processFile(
     };
 
     await db.collection('artworks').doc(artworkId).set(artwork);
+    console.log(`✅ Artwork saved to Firestore: ${artworkId}`);
 
     // インポートジョブの進捗を更新
     await db.collection('importJobs').doc(importJobId).update({
@@ -264,14 +267,14 @@ async function processPdfFile(
   }
 
   try {
-    // PDFを画像に変換（A3サイズ対応: 200 DPI相当）
+    // PDFを画像に変換（A3サイズ: 2400x1697px, 比率1.414:1）
     const convertOptions = {
       density: 200,
       saveFilename: 'page',
       savePath: '/tmp',
       format: 'jpeg',
-      width: OPTIMIZED_IMAGE_SIZE,
-      height: OPTIMIZED_IMAGE_SIZE,
+      width: 2400,  // A3横幅
+      height: 1697, // A3縦幅 (2400 / 1.414 ≈ 1697)
     };
 
     const converter = pdf2pic.fromBuffer(pdfBuffer, convertOptions);
@@ -283,16 +286,33 @@ async function processPdfFile(
     }
 
     console.log(`Processing PDF with ${pages.length} pages...`);
+    if (pages.length > 0) {
+      console.log(`Page 0 keys:`, Object.keys(pages[0]));
+      console.log(`Page 0 structure:`, JSON.stringify(pages[0]).substring(0, 200));
+    }
 
     for (let i = 0; i < pages.length; i++) {
       const page = pages[i];
       const pageNumber = i + 1;
       const imageId = uuidv4();
 
-      if (!page.buffer) continue;
+      if (!page.path) {
+        console.warn(`⚠️ Page ${pageNumber} has no path, skipping`);
+        continue;
+      }
+
+      console.log(`Processing page ${pageNumber}/${pages.length} from ${page.path}...`);
+
+      // 一時ファイルから画像を読み込み
+      const fs = require('fs');
+      const pageBuffer = fs.readFileSync(page.path);
+
+      // PDF変換後のサイズを確認
+      const originalMetadata = await sharp(pageBuffer).metadata();
+      console.log(`Original PDF page size: ${originalMetadata.width}x${originalMetadata.height}`);
 
       // 画像を最適化
-      const optimizedBuffer = await sharp(page.buffer)
+      const optimizedBuffer = await sharp(pageBuffer)
         .resize(OPTIMIZED_IMAGE_SIZE, OPTIMIZED_IMAGE_SIZE, {
           fit: 'inside',
           withoutEnlargement: true
@@ -306,14 +326,15 @@ async function processPdfFile(
       const metadata = await sharp(optimizedBuffer).metadata();
       const width = metadata.width || 0;
       const height = metadata.height || 0;
+      console.log(`Optimized size: ${width}x${height}`);
 
       // サムネイルを生成（1ページ目のみ）
       let thumbnailUrl: string | undefined;
       if (pageNumber === 1) {
-        const thumbnailBuffer = await sharp(page.buffer)
+        const thumbnailBuffer = await sharp(pageBuffer)
           .resize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, {
-            fit: 'cover',
-            position: 'center'
+            fit: 'inside', // 縦横比を保持（クロップしない）
+            withoutEnlargement: true
           })
           .jpeg({ quality: 80 })
           .toBuffer();
@@ -360,16 +381,33 @@ async function processPdfFile(
         imageUrl = `https://storage.googleapis.com/${bucket.name}/${imagePath}`;
       }
 
-      processedImages.push({
+      const imageData: any = {
         id: imageId,
         url: imageUrl,
         pageNumber,
         width,
         height,
-        thumbnailUrl,
-      });
+      };
+
+      // thumbnailUrlがある場合のみ追加（undefinedを避ける）
+      if (thumbnailUrl) {
+        imageData.thumbnailUrl = thumbnailUrl;
+      }
+
+      processedImages.push(imageData);
+
+      console.log(`✅ Page ${pageNumber} processed: ${imageUrl}`);
+
+      // 一時ファイルを削除
+      try {
+        fs.unlinkSync(page.path);
+        console.log(`Deleted temp file: ${page.path}`);
+      } catch (err) {
+        console.warn(`Failed to delete temp file ${page.path}:`, err);
+      }
     }
 
+    console.log(`PDF processing complete: ${processedImages.length} images generated`);
     return processedImages;
 
   } catch (error) {

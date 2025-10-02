@@ -85,7 +85,62 @@ gcloud tasks queues create file-processing-queue \
   --max-retry-duration=600s
 ```
 
-## 7. Firebase Functionsのデプロイ（本番環境）
+## 7. Cloud Runへのデプロイ（processFileTask）
+
+PDF処理機能（`processFileTask`）はGraphicsMagickが必要なため、Cloud Runにデプロイします。
+
+### ステップ1: TypeScriptをビルド
+
+```bash
+cd functions
+npm run build
+```
+
+### ステップ2: Dockerイメージをビルド（Cloud Build使用）
+
+```bash
+gcloud builds submit --tag gcr.io/online-review-gallery/processfiletask --project=online-review-gallery
+```
+
+### ステップ3: Cloud Runにデプロイ
+
+PowerShellの場合：
+```powershell
+gcloud run deploy processfiletask `
+  --image gcr.io/online-review-gallery/processfiletask `
+  --project=online-review-gallery `
+  --region=asia-northeast1 `
+  --platform=managed `
+  --no-allow-unauthenticated `
+  --memory=2Gi `
+  --timeout=1800 `
+  --min-instances=0 `
+  --max-instances=20 `
+  --cpu=1 `
+  --service-account=816131605069-compute@developer.gserviceaccount.com `
+  --set-env-vars=FUNCTION_TARGET=processFileTask,GCLOUD_PROJECT=online-review-gallery
+```
+
+Bashの場合：
+```bash
+gcloud run deploy processfiletask \
+  --image gcr.io/online-review-gallery/processfiletask \
+  --project=online-review-gallery \
+  --region=asia-northeast1 \
+  --platform=managed \
+  --no-allow-unauthenticated \
+  --memory=2Gi \
+  --timeout=1800 \
+  --min-instances=0 \
+  --max-instances=20 \
+  --cpu=1 \
+  --service-account=816131605069-compute@developer.gserviceaccount.com \
+  --set-env-vars=FUNCTION_TARGET=processFileTask,GCLOUD_PROJECT=online-review-gallery
+```
+
+詳細は [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) を参照してください。
+
+## 8. Firebase Functionsのデプロイ（その他の関数）
 
 ```bash
 # Functionsのビルド
@@ -96,13 +151,13 @@ npm run build
 firebase deploy --only functions
 ```
 
-## 8. Firestore Security Rulesのデプロイ
+## 9. Firestore Security Rulesのデプロイ
 
 ```bash
 firebase deploy --only firestore:rules
 ```
 
-## 9. Storage Rulesのデプロイ
+## 10. Storage Rulesのデプロイ
 
 ```bash
 firebase deploy --only storage
