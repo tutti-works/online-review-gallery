@@ -131,7 +131,9 @@ export const importClassroomSubmissions = onRequest(
 );
 
 // 【第2世代】Cloud Function: 個別ファイル処理（Task Queue）
-export const processFileTask = onTaskDispatched(
+// 注意: 本番環境ではCloud Runを使用。この関数はエミュレーター環境でのみ使用。
+// 本番デプロイ時はこの関数をスキップするため、条件付きエクスポート。
+const processFileTaskFunction = onTaskDispatched(
   {
     region: 'asia-northeast1',
     memory: '2GiB', // 2GBメモリ（PDF処理用）
@@ -188,6 +190,13 @@ export const processFileTask = onTaskDispatched(
     }
   }
 );
+
+// エミュレーター環境でのみprocessFileTaskをエクスポート
+// 本番環境ではCloud Runを使用するため、Firebase Functionsにはデプロイしない
+if (process.env.FUNCTIONS_EMULATOR === 'true') {
+  exports.processFileTask = processFileTaskFunction;
+  console.log('🔧 processFileTask enabled for emulator environment');
+}
 
 // 【第2世代】Cloud Function: インポート進行状況を取得
 export const getImportStatus = onRequest(
