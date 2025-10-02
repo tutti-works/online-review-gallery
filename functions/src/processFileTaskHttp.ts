@@ -49,10 +49,12 @@ export async function processFileTaskHttp(req: Request, res: Response): Promise<
         console.error('Error checking import completion:', checkError);
       }
 
-      // エラーをCloud Tasksに返す（リトライされる）
-      res.status(500).send({
+      // processFile内でエラーは既に処理されているため、
+      // 200を返してCloud Tasksにリトライさせない
+      res.status(200).send({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error',
+        note: 'Error logged in Firestore, task marked as completed to prevent retry'
       });
     }
   } catch (error) {

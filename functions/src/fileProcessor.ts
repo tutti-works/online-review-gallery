@@ -125,7 +125,16 @@ export async function processFile(
     console.log(`Successfully processed file: ${fileName} and deleted temp file.`);
 
   } catch (error) {
-    console.error(`Error processing file ${fileName}:`, error);
+    console.error(`❌ Error processing file ${fileName}:`, error);
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      fileName,
+      tempFilePath,
+      fileType,
+      studentName,
+      studentEmail,
+    });
 
     // エラー時も一時ファイルを削除
     try {
@@ -138,12 +147,18 @@ export async function processFile(
       console.error(`Failed to delete temp file ${tempFilePath}:`, deleteError);
     }
 
-    // エラーログを記録
+    // エラーログを記録 & processedFilesをインクリメント（完了判定のため）
+    // throwせずにreturnすることで、Cloud Tasksの無限リトライを防ぐ
     await db.collection('importJobs').doc(importJobId).update({
-      errorFiles: FieldValue.arrayUnion(tempFilePath),
+      errorFiles: FieldValue.arrayUnion(fileName),
+      processedFiles: FieldValue.increment(1), // エラー時もカウントを増やす
     });
 
-    throw error;
+    console.log(`Marked file as error and incremented processedFiles: ${fileName}`);
+
+    // エラー情報は既にFirestoreに記録済みなのでthrowしない
+    // これによりCloud Tasksがリトライせず、次のタスクに進む
+    return;
   }
 }
 
@@ -197,6 +212,7 @@ async function processImageFile(
     imageFile.save(optimizedBuffer, {
       metadata: {
         contentType: 'image/jpeg',
+        cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
         metadata: {
           originalName: fileName,
           galleryId,
@@ -206,6 +222,7 @@ async function processImageFile(
     thumbnailFile.save(thumbnailBuffer, {
       metadata: {
         contentType: 'image/jpeg',
+        cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
         metadata: {
           originalName: fileName,
           galleryId,
@@ -349,6 +366,7 @@ async function processPdfFile(
         await thumbnailFile.save(thumbnailBuffer, {
           metadata: {
             contentType: 'image/jpeg',
+            cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
             metadata: {
               originalName: fileName,
               galleryId,
@@ -369,6 +387,7 @@ async function processPdfFile(
       await imageFile.save(optimizedBuffer, {
         metadata: {
           contentType: 'image/jpeg',
+          cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
           metadata: {
             originalName: fileName,
             galleryId,
