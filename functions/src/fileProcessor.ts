@@ -106,6 +106,7 @@ export async function processFile(
       classroomId: '', // importControllerから取得する必要がある場合は追加
       assignmentId: '', // importControllerから取得する必要がある場合は追加
       likeCount: 0,
+      labels: [],
       comments: [],
       createdAt: FieldValue.serverTimestamp(),
       importedBy: importJobId,

@@ -7,6 +7,14 @@ export interface User {
   googleAccessToken?: string; // Google API呼び出し用のアクセストークン
 }
 
+export type LabelType =
+  | 'red-heart'
+  | 'red-circle'
+  | 'red-question'
+  | 'blue-heart'
+  | 'blue-circle'
+  | 'blue-question';
+
 export interface Artwork {
   id: string;
   title: string;
@@ -20,6 +28,7 @@ export interface Artwork {
   classroomId: string;
   assignmentId: string;
   likeCount: number;
+  labels: LabelType[]; // 管理者が設定できるラベル
   comments: Comment[];
   createdAt: Date | string;
   importedBy: string; // インポート実行者

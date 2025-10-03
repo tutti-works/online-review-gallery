@@ -3,12 +3,34 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import withAuth from '@/components/withAuth';
-import type { Artwork } from '@/types';
+import type { Artwork, LabelType } from '@/types';
 import Image from 'next/image';
 
 // 日付変換ヘルパー関数
 const toDate = (dateValue: Date | string): Date => {
   return typeof dateValue === 'string' ? new Date(dateValue) : dateValue;
+};
+
+// ラベル設定
+const LABELS: { type: LabelType; symbol: string; color: string; bgColor: string }[] = [
+  { type: 'red-heart', symbol: '♡', color: 'text-red-600', bgColor: 'bg-red-100 hover:bg-red-200' },
+  { type: 'red-circle', symbol: '〇', color: 'text-red-600', bgColor: 'bg-red-100 hover:bg-red-200' },
+  { type: 'red-question', symbol: '？', color: 'text-red-600', bgColor: 'bg-red-100 hover:bg-red-200' },
+  { type: 'blue-heart', symbol: '♡', color: 'text-blue-600', bgColor: 'bg-blue-100 hover:bg-blue-200' },
+  { type: 'blue-circle', symbol: '〇', color: 'text-blue-600', bgColor: 'bg-blue-100 hover:bg-blue-200' },
+  { type: 'blue-question', symbol: '？', color: 'text-blue-600', bgColor: 'bg-blue-100 hover:bg-blue-200' },
+];
+
+// ラベル表示用コンポーネント
+const LabelBadge = ({ label }: { label: LabelType }) => {
+  const config = LABELS.find(l => l.type === label);
+  if (!config) return null;
+
+  return (
+    <span className={`inline-flex items-center justify-center w-5 h-5 text-xs font-bold ${config.color}`}>
+      {config.symbol}
+    </span>
+  );
 };
 
 interface ArtworkModalProps {
@@ -18,10 +40,11 @@ interface ArtworkModalProps {
   onLike?: (artworkId: string) => void;
   onComment?: (artworkId: string, comment: string) => void;
   onDelete?: (artworkId: string) => void;
+  onToggleLabel?: (artworkId: string, label: LabelType) => void;
   userRole: string;
 }
 
-function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, userRole }: ArtworkModalProps) {
+function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, onToggleLabel, userRole }: ArtworkModalProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const [commentText, setCommentText] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
@@ -297,6 +320,33 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, u
                 )}
               </div>
 
+              {/* ラベルセクション（管理者のみ） */}
+              {userRole === 'admin' && onToggleLabel && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-gray-900">ラベル</h4>
+                  <div className="grid grid-cols-3 gap-2">
+                    {LABELS.map((label) => {
+                      const isActive = artwork.labels?.includes(label.type);
+                      return (
+                        <button
+                          key={label.type}
+                          onClick={() => onToggleLabel(artwork.id, label.type)}
+                          className={`flex items-center justify-center px-3 py-2 text-lg font-bold rounded-md border transition-colors ${
+                            isActive
+                              ? `${label.bgColor} border-gray-300 ${label.color}`
+                              : 'bg-white border-gray-300 text-gray-400 hover:bg-gray-50'
+                          }`}
+                        >
+                          <span className={isActive ? label.color : 'text-gray-400'}>
+                            {label.symbol}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* コメントセクション */}
               <div className="space-y-4">
                 <h4 className="text-sm font-semibold text-gray-900">コメント</h4>
@@ -350,7 +400,17 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, u
   );
 }
 
-type SortOption = 'submittedAt-desc' | 'submittedAt-asc' | 'email-asc' | 'email-desc';
+type SortOption =
+  | 'submittedAt-desc'
+  | 'submittedAt-asc'
+  | 'email-asc'
+  | 'email-desc'
+  | 'red-heart'
+  | 'red-circle'
+  | 'red-question'
+  | 'blue-heart'
+  | 'blue-circle'
+  | 'blue-question';
 
 function GalleryPage() {
   const { user, logout } = useAuth();
@@ -461,6 +521,7 @@ function GalleryPage() {
           classroomId: data.classroomId || '',
           assignmentId: data.assignmentId || '',
           likeCount: data.likeCount || 0,
+          labels: data.labels || [],
           comments: (data.comments || []).map((comment: any) => ({
             ...comment,
             createdAt: comment.createdAt?.toDate ? comment.createdAt.toDate() : comment.createdAt,
@@ -507,6 +568,19 @@ function GalleryPage() {
           const emailA = a.studentEmail.split('@')[0].toLowerCase();
           const emailB = b.studentEmail.split('@')[0].toLowerCase();
           return emailB.localeCompare(emailA); // Z→A
+        });
+      case 'red-heart':
+      case 'red-circle':
+      case 'red-question':
+      case 'blue-heart':
+      case 'blue-circle':
+      case 'blue-question':
+        return sorted.sort((a, b) => {
+          const hasLabelA = (a.labels || []).includes(sortOption as LabelType);
+          const hasLabelB = (b.labels || []).includes(sortOption as LabelType);
+          if (hasLabelA && !hasLabelB) return -1;
+          if (!hasLabelA && hasLabelB) return 1;
+          return 0; // 同じ場合は元の順序を保持
         });
       default:
         return sorted;
@@ -651,6 +725,48 @@ function GalleryPage() {
     }
   };
 
+  const handleToggleLabel = async (artworkId: string, label: LabelType) => {
+    if (user?.role !== 'admin') return;
+
+    try {
+      const { doc, updateDoc, arrayUnion, arrayRemove } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
+
+      const artwork = artworks.find(a => a.id === artworkId);
+      const currentLabels = artwork?.labels || [];
+      const hasLabel = currentLabels.includes(label);
+
+      const artworkRef = doc(db, 'artworks', artworkId);
+      await updateDoc(artworkRef, {
+        labels: hasLabel ? arrayRemove(label) : arrayUnion(label)
+      });
+
+      // 楽観的更新
+      setArtworks(prev => prev.map(artwork =>
+        artwork.id === artworkId
+          ? {
+              ...artwork,
+              labels: hasLabel
+                ? (artwork.labels || []).filter(l => l !== label)
+                : [...(artwork.labels || []), label]
+            }
+          : artwork
+      ));
+
+      if (selectedArtwork?.id === artworkId) {
+        setSelectedArtwork(prev => prev ? {
+          ...prev,
+          labels: hasLabel
+            ? (prev.labels || []).filter(l => l !== label)
+            : [...(prev.labels || []), label]
+        } : null);
+      }
+    } catch (error) {
+      console.error('Label toggle error:', error);
+      alert('ラベルの更新に失敗しました');
+    }
+  };
+
   const handleLoginClick = async () => {
     try {
       await logout();
@@ -699,6 +815,12 @@ function GalleryPage() {
                 <option value="submittedAt-asc">提出日時: 古い順</option>
                 <option value="email-asc">学籍番号: A→Z</option>
                 <option value="email-desc">学籍番号: Z→A</option>
+                <option value="red-heart">ラベル: 赤♡</option>
+                <option value="red-circle">ラベル: 赤〇</option>
+                <option value="red-question">ラベル: 赤？</option>
+                <option value="blue-heart">ラベル: 青♡</option>
+                <option value="blue-circle">ラベル: 青〇</option>
+                <option value="blue-question">ラベル: 青？</option>
               </select>
               {user?.role === 'guest' ? (
                 <button
@@ -814,6 +936,14 @@ function GalleryPage() {
                       <div className="flex items-center justify-between">
                         <p className="text-sm text-gray-900 font-medium truncate">{artwork.studentName}</p>
                         <div className="flex items-center space-x-2 text-xs text-gray-500 ml-2 flex-shrink-0">
+                          {/* ラベル表示 */}
+                          {artwork.labels && artwork.labels.length > 0 && (
+                            <div className="flex items-center space-x-0.5">
+                              {artwork.labels.map((label) => (
+                                <LabelBadge key={label} label={label} />
+                              ))}
+                            </div>
+                          )}
                           <span className="flex items-center">
                             <svg className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
@@ -854,6 +984,7 @@ function GalleryPage() {
           onLike={handleLike}
           onComment={handleComment}
           onDelete={handleDelete}
+          onToggleLabel={handleToggleLabel}
           userRole={user?.role || 'viewer'}
         />
       )}
