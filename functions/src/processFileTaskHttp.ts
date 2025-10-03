@@ -16,6 +16,7 @@ export async function processFileTaskHttp(req: Request, res: Response): Promise<
       galleryId,
       originalFileUrl,
       submittedAt,
+      isLate,
     } = req.body;
 
     console.log(`Processing file: ${fileName} (${fileType})`);
@@ -30,7 +31,8 @@ export async function processFileTaskHttp(req: Request, res: Response): Promise<
         studentEmail,
         galleryId,
         originalFileUrl,
-        submittedAt
+        submittedAt,
+        isLate
       );
 
       console.log(`File processed successfully: ${fileName}`);

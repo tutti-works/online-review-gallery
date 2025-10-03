@@ -46,6 +46,18 @@ export async function initializeImport(
     });
 
     const submissions = submissionsResponse.data.studentSubmissions || [];
+
+    // デバッグ: submissions 全体をログ出力
+    console.log(`📊 Total submissions count: ${submissions.length}`);
+    if (submissions.length > 0) {
+      console.log('=== FIRST SUBMISSION OBJECT ===');
+      console.log(JSON.stringify(submissions[0], null, 2));
+      console.log('================================');
+    } else {
+      console.log('⚠️ No submissions found');
+      console.log('Response:', JSON.stringify(submissionsResponse.data, null, 2));
+    }
+
     let totalFiles = 0;
     const tasks: Array<{
       tempFilePath: string;
@@ -55,10 +67,16 @@ export async function initializeImport(
       studentEmail: string;
       originalFileUrl: string;
       submittedAt: string;
+      isLate: boolean;
     }> = [];
 
     // 各提出物からファイル情報を収集
     for (const submission of submissions) {
+      // デバッグ: submission オブジェクト全体をログ出力
+      console.log('=== SUBMISSION OBJECT ===');
+      console.log(JSON.stringify(submission, null, 2));
+      console.log('========================');
+
       if (!submission.assignmentSubmission?.attachments) continue;
 
       // 学生情報を取得
@@ -79,6 +97,9 @@ export async function initializeImport(
 
       // 提出日時を取得（updateTimeまたはcreationTime）
       const submittedAt = submission.updateTime || submission.creationTime || new Date().toISOString();
+
+      // 遅延提出かどうかを取得
+      const isLate = submission.late || false;
 
       // 各添付ファイルを処理対象に追加
       for (const attachment of submission.assignmentSubmission.attachments) {
@@ -121,6 +142,7 @@ export async function initializeImport(
             studentEmail,
             originalFileUrl: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
             submittedAt,
+            isLate,
           });
 
           totalFiles++;
@@ -151,7 +173,8 @@ export async function initializeImport(
             task.studentEmail,
             galleryId,
             task.originalFileUrl,
-            task.submittedAt
+            task.submittedAt,
+            task.isLate
           );
         } catch (error) {
           console.error(`❌ Failed to process file ${task.fileName}:`, error);
@@ -178,6 +201,7 @@ export async function initializeImport(
           galleryId,
           originalFileUrl: task.originalFileUrl,
           submittedAt: task.submittedAt,
+          isLate: task.isLate,
         };
 
         const serviceAccountEmail = '816131605069-compute@developer.gserviceaccount.com';
