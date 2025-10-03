@@ -29,6 +29,7 @@ export interface Artwork {
   studentName: string;
   studentEmail: string;
   submittedAt: Date | string;
+  isLate: boolean; // 提出期限に遅れたかどうか
   classroomId: string;
   assignmentId: string;
   likeCount: number;

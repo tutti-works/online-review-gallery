@@ -35,7 +35,8 @@ export async function processFile(
   studentEmail: string,
   galleryId: string,
   originalFileUrl: string,
-  submittedAt?: string
+  submittedAt?: string,
+  isLate?: boolean
 ): Promise<void> {
   const db = admin.firestore();
   const storage = admin.storage();
@@ -103,6 +104,7 @@ export async function processFile(
       studentName,
       studentEmail,
       submittedAt: submittedAt ? Timestamp.fromDate(new Date(submittedAt)) : FieldValue.serverTimestamp(),
+      isLate: isLate || false, // 提出期限に遅れたかどうか
       classroomId: '', // importControllerから取得する必要がある場合は追加
       assignmentId: '', // importControllerから取得する必要がある場合は追加
       likeCount: 0,

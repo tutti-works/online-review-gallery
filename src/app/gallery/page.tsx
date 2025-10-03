@@ -446,7 +446,7 @@ function GalleryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
-  const [sortOption, setSortOption] = useState<SortOption>('submittedAt-desc');
+  const [sortOption, setSortOption] = useState<SortOption>('submittedAt-asc');
   const [selectedLabels, setSelectedLabels] = useState<LabelType[]>([]);
   const [importProgress, setImportProgress] = useState<{
     importJobId: string;
@@ -547,6 +547,7 @@ function GalleryPage() {
           studentName: data.studentName || '',
           studentEmail: data.studentEmail || '',
           submittedAt: data.submittedAt?.toDate ? data.submittedAt.toDate() : data.submittedAt,
+          isLate: data.isLate || false,
           classroomId: data.classroomId || '',
           assignmentId: data.assignmentId || '',
           likeCount: data.likeCount || 0,
@@ -876,8 +877,8 @@ function GalleryPage() {
                 onChange={(e) => setSortOption(e.target.value as SortOption)}
                 className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="submittedAt-desc">提出日時: 新しい順</option>
-                <option value="submittedAt-asc">提出日時: 古い順</option>
+                <option value="submittedAt-asc">提出日時: 早い順</option>
+                <option value="submittedAt-desc">提出日時: 遅い順</option>
                 <option value="email-asc">学籍番号: A→Z</option>
                 <option value="email-desc">学籍番号: Z→A</option>
               </select>
@@ -1002,6 +1003,11 @@ function GalleryPage() {
                                 <LabelBadge key={label} label={label} />
                               ))}
                             </div>
+                          )}
+                          {artwork.isLate && (
+                            <span className="flex items-center text-orange-500" title="提出期限に遅れています">
+                              ⚠️
+                            </span>
                           )}
                           <span className="flex items-center">
                             <svg className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
