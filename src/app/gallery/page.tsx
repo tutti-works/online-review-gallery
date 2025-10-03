@@ -12,13 +12,17 @@ const toDate = (dateValue: Date | string): Date => {
 };
 
 // ラベル設定
-const LABELS: { type: LabelType; symbol: string; color: string; bgColor: string }[] = [
-  { type: 'red-heart', symbol: '♡', color: 'text-red-600', bgColor: 'bg-red-100 hover:bg-red-200' },
-  { type: 'red-circle', symbol: '〇', color: 'text-red-600', bgColor: 'bg-red-100 hover:bg-red-200' },
-  { type: 'red-question', symbol: '？', color: 'text-red-600', bgColor: 'bg-red-100 hover:bg-red-200' },
-  { type: 'blue-heart', symbol: '♡', color: 'text-blue-600', bgColor: 'bg-blue-100 hover:bg-blue-200' },
-  { type: 'blue-circle', symbol: '〇', color: 'text-blue-600', bgColor: 'bg-blue-100 hover:bg-blue-200' },
-  { type: 'blue-question', symbol: '？', color: 'text-blue-600', bgColor: 'bg-blue-100 hover:bg-blue-200' },
+const LABELS: { type: LabelType; symbol: string; color: string; inactiveColor: string; bgColor: string }[] = [
+  { type: 'red-1', symbol: '1', color: 'text-red-600', inactiveColor: 'text-red-300', bgColor: 'bg-red-100 hover:bg-red-200' },
+  { type: 'red-2', symbol: '2', color: 'text-red-600', inactiveColor: 'text-red-300', bgColor: 'bg-red-100 hover:bg-red-200' },
+  { type: 'red-3', symbol: '3', color: 'text-red-600', inactiveColor: 'text-red-300', bgColor: 'bg-red-100 hover:bg-red-200' },
+  { type: 'red-4', symbol: '4', color: 'text-red-600', inactiveColor: 'text-red-300', bgColor: 'bg-red-100 hover:bg-red-200' },
+  { type: 'red-5', symbol: '5', color: 'text-red-600', inactiveColor: 'text-red-300', bgColor: 'bg-red-100 hover:bg-red-200' },
+  { type: 'blue-1', symbol: '1', color: 'text-blue-600', inactiveColor: 'text-blue-300', bgColor: 'bg-blue-100 hover:bg-blue-200' },
+  { type: 'blue-2', symbol: '2', color: 'text-blue-600', inactiveColor: 'text-blue-300', bgColor: 'bg-blue-100 hover:bg-blue-200' },
+  { type: 'blue-3', symbol: '3', color: 'text-blue-600', inactiveColor: 'text-blue-300', bgColor: 'bg-blue-100 hover:bg-blue-200' },
+  { type: 'blue-4', symbol: '4', color: 'text-blue-600', inactiveColor: 'text-blue-300', bgColor: 'bg-blue-100 hover:bg-blue-200' },
+  { type: 'blue-5', symbol: '5', color: 'text-blue-600', inactiveColor: 'text-blue-300', bgColor: 'bg-blue-100 hover:bg-blue-200' },
 ];
 
 // ラベル表示用コンポーネント
@@ -53,6 +57,7 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, o
   const [panPosition, setPanPosition] = useState({ x: 0, y: 0 }); // 画像のパン位置
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // サイドバーの開閉状態（デフォルトで閉じる）
 
   if (!isOpen) return null;
 
@@ -140,7 +145,7 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, o
     <div className="fixed inset-0 z-50 bg-black bg-opacity-90">
       {/* 全画面モーダル（周囲に隙間） */}
       <div className="h-full w-full p-4 flex">
-        <div className="bg-white rounded-lg shadow-2xl w-full h-full flex overflow-hidden">
+        <div className="bg-white rounded-lg shadow-2xl w-full h-full flex overflow-hidden relative">
 
           {/* 左側: 画像表示エリア */}
           <div className="flex-1 flex flex-col bg-gray-100 relative">
@@ -181,7 +186,7 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, o
               </div>
 
               {/* 半透明グレーゾーンでのコントロール（画像の上に重ねて下部中央に配置） */}
-              <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-700 bg-opacity-70 rounded-full px-3 py-1 flex items-center space-x-4 backdrop-blur-sm">
+              <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-700 bg-opacity-70 rounded-full px-3 py-1 flex items-center space-x-4 backdrop-blur-sm transition-all duration-300 ease-in-out">
                 {/* ページナビゲーション */}
                 {artwork.images.length > 1 && (
                   <>
@@ -271,8 +276,37 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, o
             )}
           </div>
 
+          {/* サイドバー開閉ボタン */}
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="absolute top-1/2 right-0 transform -translate-y-1/2 z-20 bg-white rounded-l-lg shadow-lg p-2 hover:bg-gray-50 transition-all"
+            style={{
+              right: isSidebarOpen ? '310px' : '0px',
+              transition: 'right 300ms ease-in-out'
+            }}
+            title={isSidebarOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
+          >
+            <svg
+              className="h-5 w-5 text-gray-600 transition-transform"
+              style={{
+                transform: isSidebarOpen ? 'rotate(0deg)' : 'rotate(180deg)',
+                transition: 'transform 300ms ease-in-out'
+              }}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+
           {/* 右側: サイドバー（310px固定幅） */}
-          <div className="w-[310px] bg-white flex flex-col border-l border-gray-200">
+          <div
+            className="absolute top-0 right-0 h-full w-[310px] bg-white flex flex-col border-l border-gray-200 transition-transform duration-300 ease-in-out z-10"
+            style={{
+              transform: isSidebarOpen ? 'translateX(0)' : 'translateX(100%)'
+            }}
+          >
             {/* サイドバーヘッダー */}
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">{artwork.studentName}</h3>
@@ -324,20 +358,20 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, o
               {userRole === 'admin' && onToggleLabel && (
                 <div className="space-y-3">
                   <h4 className="text-sm font-semibold text-gray-900">ラベル</h4>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-5 gap-2">
                     {LABELS.map((label) => {
                       const isActive = artwork.labels?.includes(label.type);
                       return (
                         <button
                           key={label.type}
                           onClick={() => onToggleLabel(artwork.id, label.type)}
-                          className={`flex items-center justify-center px-3 py-2 text-lg font-bold rounded-md border transition-colors ${
+                          className={`flex items-center justify-center w-8 h-8 text-sm font-bold rounded border transition-colors ${
                             isActive
-                              ? `${label.bgColor} border-gray-300 ${label.color}`
-                              : 'bg-white border-gray-300 text-gray-400 hover:bg-gray-50'
+                              ? `${label.bgColor} border-gray-300`
+                              : 'bg-white border-gray-300 hover:bg-gray-50'
                           }`}
                         >
-                          <span className={isActive ? label.color : 'text-gray-400'}>
+                          <span className={isActive ? label.color : label.inactiveColor}>
                             {label.symbol}
                           </span>
                         </button>
@@ -404,13 +438,7 @@ type SortOption =
   | 'submittedAt-desc'
   | 'submittedAt-asc'
   | 'email-asc'
-  | 'email-desc'
-  | 'red-heart'
-  | 'red-circle'
-  | 'red-question'
-  | 'blue-heart'
-  | 'blue-circle'
-  | 'blue-question';
+  | 'email-desc';
 
 function GalleryPage() {
   const { user, logout } = useAuth();
@@ -419,6 +447,7 @@ function GalleryPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
   const [sortOption, setSortOption] = useState<SortOption>('submittedAt-desc');
+  const [selectedLabels, setSelectedLabels] = useState<LabelType[]>([]);
   const [importProgress, setImportProgress] = useState<{
     importJobId: string;
     galleryId: string;
@@ -569,22 +598,32 @@ function GalleryPage() {
           const emailB = b.studentEmail.split('@')[0].toLowerCase();
           return emailB.localeCompare(emailA); // Z→A
         });
-      case 'red-heart':
-      case 'red-circle':
-      case 'red-question':
-      case 'blue-heart':
-      case 'blue-circle':
-      case 'blue-question':
-        return sorted.sort((a, b) => {
-          const hasLabelA = (a.labels || []).includes(sortOption as LabelType);
-          const hasLabelB = (b.labels || []).includes(sortOption as LabelType);
-          if (hasLabelA && !hasLabelB) return -1;
-          if (!hasLabelA && hasLabelB) return 1;
-          return 0; // 同じ場合は元の順序を保持
-        });
       default:
         return sorted;
     }
+  };
+
+  // ラベルでフィルタリングされた作品リストを取得（OR条件）
+  const getFilteredArtworks = () => {
+    const sorted = getSortedArtworks();
+
+    if (selectedLabels.length === 0) {
+      return sorted;
+    }
+
+    return sorted.filter(artwork => {
+      const artworkLabels = artwork.labels || [];
+      return selectedLabels.some(label => artworkLabels.includes(label));
+    });
+  };
+
+  // ラベルフィルターのトグル
+  const toggleLabelFilter = (label: LabelType) => {
+    setSelectedLabels(prev =>
+      prev.includes(label)
+        ? prev.filter(l => l !== label)
+        : [...prev, label]
+    );
   };
 
   const handleLike = async (artworkId: string) => {
@@ -805,6 +844,32 @@ function GalleryPage() {
               作品ギャラリー
             </h1>
             <div className="flex items-center space-x-4">
+              {/* ラベルフィルター（管理者のみ） */}
+              {user?.role === 'admin' && (
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-700">フィルター:</span>
+                  <div className="flex items-center space-x-1">
+                    {LABELS.map((label) => {
+                      const isSelected = selectedLabels.includes(label.type);
+                      return (
+                        <button
+                          key={label.type}
+                          onClick={() => toggleLabelFilter(label.type)}
+                          className={`flex items-center justify-center w-7 h-7 text-xs font-bold rounded border transition-colors ${
+                            isSelected
+                              ? `${label.bgColor} border-gray-300`
+                              : 'bg-white border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <span className={isSelected ? label.color : label.inactiveColor}>
+                            {label.symbol}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {/* 並び替えセレクトボックス */}
               <select
                 value={sortOption}
@@ -815,12 +880,6 @@ function GalleryPage() {
                 <option value="submittedAt-asc">提出日時: 古い順</option>
                 <option value="email-asc">学籍番号: A→Z</option>
                 <option value="email-desc">学籍番号: Z→A</option>
-                <option value="red-heart">ラベル: 赤♡</option>
-                <option value="red-circle">ラベル: 赤〇</option>
-                <option value="red-question">ラベル: 赤？</option>
-                <option value="blue-heart">ラベル: 青♡</option>
-                <option value="blue-circle">ラベル: 青〇</option>
-                <option value="blue-question">ラベル: 青？</option>
               </select>
               {user?.role === 'guest' ? (
                 <button
@@ -883,7 +942,7 @@ function GalleryPage() {
             </div>
           )}
 
-          {getSortedArtworks().length === 0 ? (
+          {getFilteredArtworks().length === 0 ? (
             <div className="text-center py-12">
               <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                 <svg className="w-12 h-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -910,7 +969,7 @@ function GalleryPage() {
             </div>
           ) : (
             <MasonryGrid>
-              {getSortedArtworks().map((artwork) => {
+              {getFilteredArtworks().map((artwork) => {
                 // 画像データが存在しない場合はスキップ
                 if (!artwork.images || artwork.images.length === 0) {
                   return null;

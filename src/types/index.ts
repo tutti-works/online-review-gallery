@@ -8,12 +8,16 @@ export interface User {
 }
 
 export type LabelType =
-  | 'red-heart'
-  | 'red-circle'
-  | 'red-question'
-  | 'blue-heart'
-  | 'blue-circle'
-  | 'blue-question';
+  | 'red-1'
+  | 'red-2'
+  | 'red-3'
+  | 'red-4'
+  | 'red-5'
+  | 'blue-1'
+  | 'blue-2'
+  | 'blue-3'
+  | 'blue-4'
+  | 'blue-5';
 
 export interface Artwork {
   id: string;
