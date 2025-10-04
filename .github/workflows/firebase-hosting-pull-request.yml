@@ -24,4 +24,5 @@ jobs:
           FIREBASE_TOKEN: '${{ secrets.FIREBASE_TOKEN }}'
         run: |
           npm install -g firebase-tools
+          firebase experiments:enable webframeworks
           firebase hosting:channel:deploy pr-${{ github.event.pull_request.number }} --token "$FIREBASE_TOKEN"
