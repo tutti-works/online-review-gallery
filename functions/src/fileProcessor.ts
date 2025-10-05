@@ -441,3 +441,146 @@ async function processPdfFile(
     throw new Error(`Failed to process PDF: ${error}`);
   }
 }
+
+// 複数ファイルを1つのartworkとして処理
+export async function processMultipleFiles(
+  importJobId: string,
+  studentName: string,
+  studentEmail: string,
+  submittedAt: string,
+  isLate: boolean,
+  files: Array<{
+    id: string;
+    name: string;
+    type: 'image' | 'pdf';
+    mimeType: string;
+    originalFileUrl: string;
+    tempFilePath: string;
+  }>,
+  galleryId: string,
+  classroomId: string,
+  assignmentId: string
+): Promise<void> {
+  const db = admin.firestore();
+  const storage = admin.storage();
+  const bucket = storage.bucket();
+
+  console.log(`Processing ${files.length} files for ${studentName}...`);
+
+  try {
+    const allImages: any[] = [];
+    const submittedFiles: any[] = [];
+    let currentPageNumber = 1;
+
+    // 各ファイルを処理
+    for (const file of files) {
+      const tempFile = bucket.file(file.tempFilePath);
+      const [exists] = await tempFile.exists();
+
+      if (!exists) {
+        console.error(`File not found: ${file.tempFilePath}`);
+        await db.collection('importJobs').doc(importJobId).update({
+          errorFiles: FieldValue.arrayUnion(file.name),
+          processedFiles: FieldValue.increment(1),
+        });
+        continue;
+      }
+
+      // ファイルをダウンロード
+      const [fileBuffer] = await tempFile.download();
+
+      // ファイルサイズチェック
+      if (fileBuffer.length > MAX_FILE_SIZE) {
+        console.error(`File too large: ${file.name} (${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB)`);
+        await db.collection('importJobs').doc(importJobId).update({
+          errorFiles: FieldValue.arrayUnion(file.name),
+          processedFiles: FieldValue.increment(1),
+        });
+        continue;
+      }
+
+      // ファイル情報を保存
+      submittedFiles.push({
+        id: file.id,
+        name: file.name,
+        type: file.type,
+        originalFileUrl: file.originalFileUrl,
+        mimeType: file.mimeType,
+      });
+
+      // ファイルタイプに応じて処理
+      let processedImages: any[];
+      if (file.type === 'image') {
+        processedImages = await processImageFile(fileBuffer, file.name, storage, galleryId);
+      } else if (file.type === 'pdf') {
+        processedImages = await processPdfFile(fileBuffer, file.name, storage, galleryId, MAX_PDF_PAGES);
+      } else {
+        console.error(`Unsupported file type: ${file.type}`);
+        continue;
+      }
+
+      // ページ番号を振り直して、sourceFileIdとsourceFileNameを追加
+      for (const image of processedImages) {
+        allImages.push({
+          ...image,
+          pageNumber: currentPageNumber++,
+          sourceFileId: file.id,
+          sourceFileName: file.name,
+        });
+      }
+
+      // 一時ファイルを削除
+      try {
+        await tempFile.delete();
+        console.log(`Deleted temp file: ${file.tempFilePath}`);
+      } catch (deleteError) {
+        console.warn(`Failed to delete temp file ${file.tempFilePath}:`, deleteError);
+      }
+    }
+
+    if (allImages.length === 0) {
+      console.error(`No images processed for ${studentName}`);
+      await db.collection('importJobs').doc(importJobId).update({
+        errorFiles: FieldValue.arrayUnion(...files.map(f => f.name)),
+        processedFiles: FieldValue.increment(1),
+      });
+      return;
+    }
+
+    // Firestoreにartworkを保存
+    const artworkId = db.collection('artworks').doc().id;
+    const artwork = {
+      id: artworkId,
+      title: `${studentName}の提出物`,
+      files: submittedFiles,
+      images: allImages,
+      studentName,
+      studentEmail,
+      submittedAt: new Date(submittedAt),
+      isLate,
+      classroomId,
+      assignmentId,
+      likeCount: 0,
+      labels: [],
+      comments: [],
+      createdAt: new Date(),
+      importedBy: importJobId,
+    };
+
+    await db.collection('artworks').doc(artworkId).set(artwork);
+    console.log(`✅ Artwork created for ${studentName} with ${allImages.length} images from ${files.length} files`);
+
+    // 処理完了をカウント
+    await db.collection('importJobs').doc(importJobId).update({
+      processedFiles: FieldValue.increment(1),
+    });
+
+  } catch (error) {
+    console.error(`Error processing files for ${studentName}:`, error);
+    await db.collection('importJobs').doc(importJobId).update({
+      errorFiles: FieldValue.arrayUnion(...files.map(f => f.name)),
+      processedFiles: FieldValue.increment(1),
+    });
+    throw error;
+  }
+}
