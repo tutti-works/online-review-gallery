@@ -541,6 +541,7 @@ function GalleryPage() {
           id: doc.id,
           title: data.title || '',
           description: data.description,
+          galleryId: data.galleryId || '', // ハイブリッド方式
           files: data.files || [],
           images: data.images || [],
           studentName: data.studentName || '',

@@ -23,6 +23,7 @@ export interface Artwork {
   id: string;
   title: string; // "{studentName}の提出物"
   description?: string;
+  galleryId: string; // どのギャラリーに属するか
   files: SubmittedFile[]; // 提出された元ファイル情報（複数対応）
   images: ArtworkImage[]; // Firebase Storage上の変換済み画像配列（全ファイルの全ページ統合）
   studentName: string;
@@ -74,13 +75,19 @@ export interface Like {
 
 export interface Gallery {
   id: string;
-  title: string;
+  title?: string; // 旧形式との互換性のため残す
   description?: string;
-  classroomId: string;
+  courseName: string; // 授業名（例: "デザイン基礎"）
+  assignmentName: string; // 課題名（例: "第1回課題：ロゴデザイン"）
+  courseId: string;
   assignmentId: string;
+  classroomId: string; // 旧形式との互換性のため残す
+  artworkCount: number; // 作品数（キャッシュ）
   createdBy: string;
   createdAt: Date | string;
-  artworks: Artwork[];
+  updatedAt: Date | string;
+  lastImportAt?: Date | string;
+  artworks?: Artwork[]; // 旧形式との互換性のため残す（使用しない）
 }
 
 export interface ImportJob {

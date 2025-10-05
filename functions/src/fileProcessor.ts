@@ -552,6 +552,7 @@ export async function processMultipleFiles(
     const artwork = {
       id: artworkId,
       title: `${studentName}の提出物`,
+      galleryId, // ハイブリッド方式: どのギャラリーに属するか
       files: submittedFiles,
       images: allImages,
       studentName,
@@ -569,6 +570,12 @@ export async function processMultipleFiles(
 
     await db.collection('artworks').doc(artworkId).set(artwork);
     console.log(`✅ Artwork created for ${studentName} with ${allImages.length} images from ${files.length} files`);
+
+    // galleryのartworkCountをインクリメント
+    await db.collection('galleries').doc(galleryId).update({
+      artworkCount: FieldValue.increment(1),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 
     // 処理完了をカウント
     await db.collection('importJobs').doc(importJobId).update({
