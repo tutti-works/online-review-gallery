@@ -14,6 +14,9 @@ export async function initializeImport(
 ): Promise<string> {
   const db = admin.firestore();
 
+  // galleriesコレクションを作成/更新
+  await ensureGalleryExists(galleryId, classroomId, assignmentId, userEmail, auth);
+
   // インポートジョブを作成
   const importJobRef = db.collection('importJobs').doc();
   const importJob = {
@@ -346,6 +349,80 @@ async function finalizeGallery(galleryId: string, importJobId: string): Promise<
     }
   } catch (error) {
     console.error('Error finalizing gallery:', error);
+  }
+}
+
+// galleriesコレクションを作成または更新
+async function ensureGalleryExists(
+  galleryId: string,
+  classroomId: string,
+  assignmentId: string,
+  userEmail: string,
+  auth: Auth.OAuth2Client | Auth.GoogleAuth
+): Promise<void> {
+  const db = admin.firestore();
+  const galleryRef = db.collection('galleries').doc(galleryId);
+  const galleryDoc = await galleryRef.get();
+
+  if (galleryDoc.exists) {
+    // 既存のギャラリーの場合は更新日時のみ更新
+    await galleryRef.update({
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    console.log(`Gallery ${galleryId} already exists, updated timestamp`);
+    return;
+  }
+
+  // 新規ギャラリーの場合、Google Classroom APIから授業名と課題名を取得
+  console.log(`Creating new gallery ${galleryId}...`);
+
+  try {
+    const classroom = google.classroom({ version: 'v1', auth });
+
+    // 授業情報を取得
+    const courseResponse = await classroom.courses.get({ id: classroomId });
+    const courseName = courseResponse.data.name || 'Unknown Course';
+
+    // 課題情報を取得
+    const assignmentResponse = await classroom.courses.courseWork.get({
+      courseId: classroomId,
+      id: assignmentId,
+    });
+    const assignmentName = assignmentResponse.data.title || 'Unknown Assignment';
+
+    // galleriesコレクションに新規ドキュメントを作成
+    await galleryRef.set({
+      id: galleryId,
+      courseName,
+      assignmentName,
+      courseId: classroomId, // courseIdとしても保存
+      assignmentId,
+      classroomId, // 旧互換性のため
+      artworkCount: 0,
+      createdBy: userEmail,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    console.log(`✅ Gallery created: ${courseName} > ${assignmentName}`);
+  } catch (error) {
+    console.error('Failed to fetch course/assignment info from Google Classroom:', error);
+
+    // API取得失敗時はデフォルト値で作成
+    await galleryRef.set({
+      id: galleryId,
+      courseName: 'Unknown Course',
+      assignmentName: 'Unknown Assignment',
+      courseId: classroomId,
+      assignmentId,
+      classroomId,
+      artworkCount: 0,
+      createdBy: userEmail,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    console.log(`⚠️ Gallery created with default values (API error)`);
   }
 }
 
