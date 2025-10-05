@@ -2,7 +2,7 @@ import * as admin from 'firebase-admin';
 import { google, Auth } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
 import { FieldValue } from 'firebase-admin/firestore';
-import { processFile } from './fileProcessor';
+import { processMultipleFiles } from './fileProcessor';
 
 export async function initializeImport(
   galleryId: string,
@@ -58,17 +58,21 @@ export async function initializeImport(
       console.log('Response:', JSON.stringify(submissionsResponse.data, null, 2));
     }
 
-    let totalFiles = 0;
-    const tasks: Array<{
-      tempFilePath: string;
-      fileName: string;
-      fileType: string;
+    // 学生ごとにファイルをグループ化するためのMap
+    const submissionsByStudent = new Map<string, {
       studentName: string;
       studentEmail: string;
-      originalFileUrl: string;
       submittedAt: string;
       isLate: boolean;
-    }> = [];
+      files: Array<{
+        id: string;
+        name: string;
+        type: 'image' | 'pdf';
+        mimeType: string;
+        originalFileUrl: string;
+        tempFilePath: string;
+      }>;
+    }>();
 
     // 各提出物からファイル情報を収集
     for (const submission of submissions) {
@@ -101,7 +105,20 @@ export async function initializeImport(
       // 遅延提出かどうかを取得
       const isLate = submission.late || false;
 
-      // 各添付ファイルを処理対象に追加
+      // 学生ごとにグループ化
+      if (!submissionsByStudent.has(studentEmail)) {
+        submissionsByStudent.set(studentEmail, {
+          studentName,
+          studentEmail,
+          submittedAt,
+          isLate,
+          files: [],
+        });
+      }
+
+      const studentSubmission = submissionsByStudent.get(studentEmail)!;
+
+      // 各添付ファイルをダウンロードしてStorageに保存
       for (const attachment of submission.assignmentSubmission.attachments) {
         if (!attachment.driveFile?.id) continue;
 
@@ -134,18 +151,15 @@ export async function initializeImport(
           const tempFile = bucket.file(tempFilePath);
           await tempFile.save(fileBuffer, { contentType: file.mimeType });
 
-          tasks.push({
-            tempFilePath,
-            fileName: file.name,
-            fileType,
-            studentName,
-            studentEmail,
+          // 学生のファイルリストに追加
+          studentSubmission.files.push({
+            id: file.id,
+            name: file.name,
+            type: fileType,
+            mimeType: file.mimeType,
             originalFileUrl: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
-            submittedAt,
-            isLate,
+            tempFilePath,
           });
-
-          totalFiles++;
 
         } catch (err) {
           console.error(`Failed to download file ${file.name} from Drive:`, err);
@@ -156,30 +170,50 @@ export async function initializeImport(
       }
     }
 
-    await importJobRef.update({ totalFiles, progress: 5 });
+    // 学生提出物（複数ファイルをまとめたもの）をタスクとして作成
+    const tasks: Array<{
+      studentName: string;
+      studentEmail: string;
+      submittedAt: string;
+      isLate: boolean;
+      files: Array<{
+        id: string;
+        name: string;
+        type: 'image' | 'pdf';
+        mimeType: string;
+        originalFileUrl: string;
+        tempFilePath: string;
+      }>;
+    }> = Array.from(submissionsByStudent.values());
+
+    const totalFileCount = tasks.reduce((sum, task) => sum + task.files.length, 0);
+    const totalSubmissions = tasks.length; // 学生提出数（タスク数）
+    console.log(`📦 Grouped ${totalFileCount} files into ${totalSubmissions} student submissions`);
+
+    // totalFilesは学生提出数（タスク数）をセット
+    await importJobRef.update({ totalFiles: totalSubmissions, progress: 5 });
 
     const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
 
     if (isEmulator) {
-      console.log(`🔧 Emulator mode: Processing ${tasks.length} files directly`);
+      console.log(`🔧 Emulator mode: Processing ${tasks.length} student submissions directly`);
       for (const task of tasks) {
         try {
-          await processFile(
+          await processStudentSubmission(
             importJobRef.id,
-            task.tempFilePath,
-            task.fileName,
-            task.fileType,
             task.studentName,
             task.studentEmail,
-            galleryId,
-            task.originalFileUrl,
             task.submittedAt,
-            task.isLate
+            task.isLate,
+            task.files,
+            galleryId,
+            classroomId,
+            assignmentId
           );
         } catch (error) {
-          console.error(`❌ Failed to process file ${task.fileName}:`, error);
+          console.error(`❌ Failed to process submission for ${task.studentName}:`, error);
           await importJobRef.update({
-            errorFiles: FieldValue.arrayUnion(task.tempFilePath),
+            errorFiles: FieldValue.arrayUnion(...task.files.map(f => f.tempFilePath)),
           });
         }
       }
@@ -193,15 +227,14 @@ export async function initializeImport(
       const taskPromises = tasks.map(async (task, index) => {
         const payload = {
           importJobId: importJobRef.id,
-          tempFilePath: task.tempFilePath,
-          fileName: task.fileName,
-          fileType: task.fileType,
           studentName: task.studentName,
           studentEmail: task.studentEmail,
-          galleryId,
-          originalFileUrl: task.originalFileUrl,
           submittedAt: task.submittedAt,
           isLate: task.isLate,
+          files: task.files,
+          galleryId,
+          classroomId,
+          assignmentId,
         };
 
         const serviceAccountEmail = '816131605069-compute@developer.gserviceaccount.com';
@@ -227,9 +260,9 @@ export async function initializeImport(
         try {
           await tasksClient.createTask(request);
         } catch (error) {
-          console.error(`Failed to create task for file ${task.fileName}:`, error);
+          console.error(`Failed to create task for ${task.studentName}:`, error);
           await importJobRef.update({
-            errorFiles: FieldValue.arrayUnion(task.tempFilePath),
+            errorFiles: FieldValue.arrayUnion(...task.files.map(f => f.tempFilePath)),
           });
         }
       });
@@ -262,22 +295,29 @@ export async function checkImportCompletion(importJobId: string): Promise<void> 
     if (!importJobDoc.exists) throw new Error('Import job not found');
 
     const importJob = importJobDoc.data()!;
-    if (importJob.status === 'completed' || importJob.status === 'error') return;
+    if (importJob.status === 'completed' || importJob.status === 'error') {
+      console.log(`Import job ${importJobId} already ${importJob.status}, skipping completion check`);
+      return;
+    }
 
     const { totalFiles, processedFiles, errorFiles } = importJob;
-    const completedFiles = processedFiles + (errorFiles?.length || 0);
+    const errorCount = errorFiles?.length || 0;
+    const completedSubmissions = processedFiles + errorCount;
 
-    if (completedFiles >= totalFiles) {
+    console.log(`📊 Import progress: ${completedSubmissions}/${totalFiles} submissions (${processedFiles} success, ${errorCount} errors)`);
+
+    if (completedSubmissions >= totalFiles) {
       await importJobRef.update({
         status: 'completed',
         progress: 100,
         completedAt: FieldValue.serverTimestamp(),
       });
-      console.log(`Import job ${importJobId} completed: ${processedFiles}/${totalFiles} files processed successfully`);
+      console.log(`✅ Import job ${importJobId} completed: ${processedFiles}/${totalFiles} submissions processed successfully`);
       await finalizeGallery(importJob.galleryId, importJobId);
     } else {
-      const progress = Math.min(95, Math.floor((completedFiles / totalFiles) * 85) + 10);
+      const progress = Math.min(95, Math.floor((completedSubmissions / totalFiles) * 85) + 10);
       await importJobRef.update({ progress });
+      console.log(`⏳ Import progress updated: ${progress}%`);
     }
   } catch (error) {
     console.error('Error checking import completion:', error);
@@ -307,4 +347,38 @@ async function finalizeGallery(galleryId: string, importJobId: string): Promise<
   } catch (error) {
     console.error('Error finalizing gallery:', error);
   }
+}
+
+// 学生の提出物（複数ファイル）を1つのartworkとして処理
+async function processStudentSubmission(
+  importJobId: string,
+  studentName: string,
+  studentEmail: string,
+  submittedAt: string,
+  isLate: boolean,
+  files: Array<{
+    id: string;
+    name: string;
+    type: 'image' | 'pdf';
+    mimeType: string;
+    originalFileUrl: string;
+    tempFilePath: string;
+  }>,
+  galleryId: string,
+  classroomId: string,
+  assignmentId: string
+): Promise<void> {
+  console.log(`Processing submission for ${studentName} with ${files.length} files`);
+
+  await processMultipleFiles(
+    importJobId,
+    studentName,
+    studentEmail,
+    submittedAt,
+    isLate,
+    files,
+    galleryId,
+    classroomId,
+    assignmentId
+  );
 }

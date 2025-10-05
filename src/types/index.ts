@@ -21,11 +21,10 @@ export type LabelType =
 
 export interface Artwork {
   id: string;
-  title: string;
+  title: string; // "{studentName}の提出物"
   description?: string;
-  originalFileUrl: string; // Google Drive上の元ファイル
-  images: ArtworkImage[]; // Firebase Storage上の変換済み画像配列
-  fileType: 'image' | 'pdf';
+  files: SubmittedFile[]; // 提出された元ファイル情報（複数対応）
+  images: ArtworkImage[]; // Firebase Storage上の変換済み画像配列（全ファイルの全ページ統合）
   studentName: string;
   studentEmail: string;
   submittedAt: Date | string;
@@ -39,13 +38,23 @@ export interface Artwork {
   importedBy: string; // インポート実行者
 }
 
+export interface SubmittedFile {
+  id: string; // Google Drive File ID
+  name: string; // ファイル名（例: "file1.pdf"）
+  type: 'image' | 'pdf';
+  originalFileUrl: string; // Google Drive上の元ファイルURL
+  mimeType: string; // 元のMIMEタイプ
+}
+
 export interface ArtworkImage {
   id: string;
   url: string; // Firebase Storage URL
-  pageNumber: number; // PDFの場合のページ番号（画像の場合は1）
+  pageNumber: number; // 全ファイル通しのページ番号（1から開始）
   width: number;
   height: number;
   thumbnailUrl?: string; // サムネイル画像URL
+  sourceFileId: string; // どのファイルから生成されたか（SubmittedFile.id）
+  sourceFileName: string; // 元ファイル名
 }
 
 export interface Comment {

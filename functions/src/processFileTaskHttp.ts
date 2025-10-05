@@ -1,4 +1,4 @@
-import { processFile } from './fileProcessor';
+import { processMultipleFiles } from './fileProcessor';
 import { checkImportCompletion } from './importController';
 import { Request, Response } from 'express';
 
@@ -8,41 +8,39 @@ export async function processFileTaskHttp(req: Request, res: Response): Promise<
     // Cloud Tasks からのペイロードを取得
     const {
       importJobId,
-      tempFilePath,
-      fileName,
-      fileType,
       studentName,
       studentEmail,
-      galleryId,
-      originalFileUrl,
       submittedAt,
       isLate,
+      files,
+      galleryId,
+      classroomId,
+      assignmentId,
     } = req.body;
 
-    console.log(`Processing file: ${fileName} (${fileType})`);
+    console.log(`Processing submission for ${studentName} with ${files?.length || 0} files`);
 
     try {
-      await processFile(
+      await processMultipleFiles(
         importJobId,
-        tempFilePath,
-        fileName,
-        fileType,
         studentName,
         studentEmail,
-        galleryId,
-        originalFileUrl,
         submittedAt,
-        isLate
+        isLate,
+        files,
+        galleryId,
+        classroomId,
+        assignmentId
       );
 
-      console.log(`File processed successfully: ${fileName}`);
+      console.log(`Submission processed successfully for ${studentName}`);
 
       // ファイル処理完了後、インポート全体の完了状態をチェック
       await checkImportCompletion(importJobId);
 
-      res.status(200).send({ success: true, message: `File processed: ${fileName}` });
+      res.status(200).send({ success: true, message: `Submission processed for ${studentName}` });
     } catch (error) {
-      console.error(`File processing error for ${fileName}:`, error);
+      console.error(`Submission processing error for ${studentName}:`, error);
 
       // エラー時もインポート完了状態をチェック（他のファイルは完了している可能性があるため）
       try {
@@ -51,7 +49,7 @@ export async function processFileTaskHttp(req: Request, res: Response): Promise<
         console.error('Error checking import completion:', checkError);
       }
 
-      // processFile内でエラーは既に処理されているため、
+      // processMultipleFiles内でエラーは既に処理されているため、
       // 200を返してCloud Tasksにリトライさせない
       res.status(200).send({
         success: false,
