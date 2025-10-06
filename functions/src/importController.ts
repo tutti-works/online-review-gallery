@@ -316,6 +316,9 @@ export async function checkImportCompletion(importJobId: string): Promise<void> 
         completedAt: FieldValue.serverTimestamp(),
       });
       console.log(`✅ Import job ${importJobId} completed: ${processedFiles}/${totalFiles} submissions processed successfully`);
+      if (errorCount > 0) {
+        console.log(`⚠️ ${errorCount} files failed`);
+      }
       await finalizeGallery(importJob.galleryId, importJobId);
     } else {
       const progress = Math.min(95, Math.floor((completedSubmissions / totalFiles) * 85) + 10);

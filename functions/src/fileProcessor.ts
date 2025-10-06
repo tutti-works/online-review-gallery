@@ -152,8 +152,18 @@ export async function processFile(
 
     // エラーログを記録 & processedFilesをインクリメント（完了判定のため）
     // throwせずにreturnすることで、Cloud Tasksの無限リトライを防ぐ
+    const errorInfo = {
+      fileName,
+      studentName,
+      studentEmail,
+      fileType,
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString(),
+    };
+
     await db.collection('importJobs').doc(importJobId).update({
       errorFiles: FieldValue.arrayUnion(fileName),
+      errorDetails: FieldValue.arrayUnion(errorInfo),
       processedFiles: FieldValue.increment(1), // エラー時もカウントを増やす
     });
 
@@ -290,18 +300,28 @@ async function processPdfFile(
     const uniquePrefix = `pdf-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
     // PDFを画像に変換（3400x2404px）
+    // pdf2picはWebPをサポートしていないため、一旦JPEGに変換してからSharpでWebPに変換
+    // PNGだとメモリ使用量が大きくSegmentation Faultが発生するため、JPEGを使用
     const convertOptions = {
       density: 200,
       saveFilename: uniquePrefix,
       savePath: '/tmp',
-      format: 'webp',
+      format: 'jpeg',
       width: 3400,
       height: 2404,
     };
 
     console.log(`Using unique filename prefix: ${uniquePrefix}`);
     const converter = pdf2pic.fromBuffer(pdfBuffer, convertOptions);
-    const pages = await converter.bulk(-1);
+
+    let pages;
+    try {
+      pages = await converter.bulk(-1);
+    } catch (conversionError) {
+      // GraphicsMagick/Ghostscriptのクラッシュを検出
+      console.error(`PDF conversion failed (possible segfault or corrupt PDF): ${fileName}`, conversionError);
+      throw new Error(`PDF conversion failed. The PDF may be corrupt, encrypted, or too complex for processing: ${conversionError instanceof Error ? conversionError.message : String(conversionError)}`);
+    }
 
     const pageLimit = maxPages || 50;
     if (pages.length > pageLimit) {
