@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import withAuth from '@/components/withAuth';
+import GallerySwitcher from '@/components/GallerySwitcher';
+import { useSearchParams } from 'next/navigation';
 import type { Artwork, LabelType } from '@/types';
 import Image from 'next/image';
 
@@ -442,10 +444,136 @@ type SortOption =
 
 function GalleryPage() {
   const { user, logout } = useAuth();
+  const searchParams = useSearchParams();
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
+
+  // URLパラメータまたはlocalStorageからgalleryIdを取得
+  const [currentGalleryId, setCurrentGalleryId] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [hasGalleries, setHasGalleries] = useState<boolean>(true); // ギャラリーが存在するか
+
+  useEffect(() => {
+    const initializeGalleryId = async () => {
+      if (typeof window === 'undefined') return;
+
+      console.log('[Gallery] Initializing galleryId...');
+
+      // URLパラメータを優先
+      const params = new URLSearchParams(window.location.search);
+      const urlGalleryId = params.get('galleryId');
+
+      if (urlGalleryId) {
+        console.log('[Gallery] Checking if URL galleryId exists:', urlGalleryId);
+        try {
+          const { doc, getDoc } = await import('firebase/firestore');
+          const { db } = await import('@/lib/firebase');
+
+          const galleryDoc = await getDoc(doc(db, 'galleries', urlGalleryId));
+
+          if (galleryDoc.exists()) {
+            // URLのギャラリーが存在する場合
+            console.log('[Gallery] Using galleryId from URL:', urlGalleryId);
+            setCurrentGalleryId(urlGalleryId);
+            localStorage.setItem('lastViewedGalleryId', urlGalleryId);
+            setIsInitialized(true);
+            return;
+          } else {
+            // URLのギャラリーが削除されている場合
+            console.log('[Gallery] URL gallery no longer exists, removing from URL and localStorage');
+            localStorage.removeItem('lastViewedGalleryId');
+            // URLパラメータを削除してリダイレクト
+            window.history.replaceState({}, '', '/gallery');
+          }
+        } catch (error) {
+          console.error('[Gallery] Failed to check URL gallery:', error);
+          localStorage.removeItem('lastViewedGalleryId');
+          window.history.replaceState({}, '', '/gallery');
+        }
+      }
+
+      // URLパラメータがない場合、localStorageから取得
+      const savedGalleryId = localStorage.getItem('lastViewedGalleryId');
+
+      // localStorageに保存されたIDが存在するか確認
+      if (savedGalleryId) {
+        console.log('[Gallery] Checking if saved galleryId exists:', savedGalleryId);
+        try {
+          const { doc, getDoc, collection, query, getDocs, limit } = await import('firebase/firestore');
+          const { db } = await import('@/lib/firebase');
+
+          const galleryDoc = await getDoc(doc(db, 'galleries', savedGalleryId));
+
+          if (galleryDoc.exists()) {
+            // 保存されたギャラリーが存在する場合
+            console.log('[Gallery] Using galleryId from localStorage:', savedGalleryId);
+            setCurrentGalleryId(savedGalleryId);
+            // URLパラメータにも反映（ドロップダウンが正しく表示されるように）
+            window.history.replaceState({}, '', `/gallery?galleryId=${savedGalleryId}`);
+            setIsInitialized(true);
+            return;
+          } else {
+            // 保存されたギャラリーが削除されている場合
+            console.log('[Gallery] Saved gallery no longer exists, removing from localStorage');
+            localStorage.removeItem('lastViewedGalleryId');
+          }
+        } catch (error) {
+          console.error('[Gallery] Failed to check saved gallery:', error);
+          localStorage.removeItem('lastViewedGalleryId');
+        }
+      }
+
+      // localStorageに有効なIDがない場合、ギャラリーが存在するか確認
+      console.log('[Gallery] Checking if any galleries exist...');
+      try {
+        const { collection, query, getDocs, limit } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+
+        const galleriesQuery = query(
+          collection(db, 'galleries'),
+          limit(1)
+        );
+        const galleriesSnapshot = await getDocs(galleriesQuery);
+
+        if (galleriesSnapshot.empty) {
+          // ギャラリーが1つもない場合
+          console.log('[Gallery] No galleries exist in database');
+          setHasGalleries(false);
+          setCurrentGalleryId(null);
+        } else {
+          // ギャラリーは存在するが、選択されていない場合
+          console.log('[Gallery] Galleries exist, prompting user to select');
+          setHasGalleries(true);
+          setCurrentGalleryId(null);
+        }
+      } catch (error) {
+        console.error('[Gallery] Failed to check galleries:', error);
+        setHasGalleries(false);
+        setCurrentGalleryId(null);
+      } finally {
+        setIsInitialized(true);
+      }
+    };
+
+    initializeGalleryId();
+  }, []);
+
+  // URLパラメータの変化を監視してcurrentGalleryIdを更新
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    const urlGalleryId = searchParams.get('galleryId');
+    console.log('[Gallery] URL galleryId changed to:', urlGalleryId);
+
+    if (urlGalleryId && urlGalleryId !== currentGalleryId) {
+      console.log('[Gallery] Updating currentGalleryId from URL');
+      setCurrentGalleryId(urlGalleryId);
+      localStorage.setItem('lastViewedGalleryId', urlGalleryId);
+    }
+  }, [searchParams, isInitialized]);
+
   const [sortOption, setSortOption] = useState<SortOption>('submittedAt-asc');
   const [selectedLabels, setSelectedLabels] = useState<LabelType[]>([]);
   const [importProgress, setImportProgress] = useState<{
@@ -458,6 +586,11 @@ function GalleryPage() {
   } | null>(null);
 
   useEffect(() => {
+    console.log('[Gallery] useEffect triggered - isInitialized:', isInitialized, 'currentGalleryId:', currentGalleryId);
+    if (!isInitialized) {
+      console.log('[Gallery] Not initialized yet, skipping fetchArtworks');
+      return;
+    }
     fetchArtworks();
 
     // localStorageから進行中のインポートジョブを確認
@@ -521,27 +654,41 @@ function GalleryPage() {
       console.error('Error checking active import:', err);
       localStorage.removeItem('activeImportJob');
     }
-  }, []);
+  }, [isInitialized, currentGalleryId]);
 
   const fetchArtworks = async () => {
     try {
-      const { collection, query, getDocs, orderBy } = await import('firebase/firestore');
+      console.log('[Gallery] Fetching artworks with galleryId:', currentGalleryId);
+
+      // currentGalleryIdがnullの場合は作品を取得しない
+      if (!currentGalleryId) {
+        console.log('[Gallery] No gallery selected, skipping fetch');
+        setArtworks([]);
+        setLoading(false);
+        return;
+      }
+
+      const { collection, query, getDocs, orderBy, where } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase');
 
-      // Firestoreから全作品を取得（作成日時順）
+      // 選択されたギャラリーの作品のみを取得
+      console.log('[Gallery] Fetching artworks for galleryId:', currentGalleryId);
       const artworksQuery = query(
         collection(db, 'artworks'),
+        where('galleryId', '==', currentGalleryId),
         orderBy('createdAt', 'desc')
       );
 
       const querySnapshot = await getDocs(artworksQuery);
+      console.log('[Gallery] Found', querySnapshot.docs.length, 'artworks');
+
       const fetchedArtworks: Artwork[] = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
           title: data.title || '',
           description: data.description,
-          galleryId: data.galleryId || '', // ハイブリッド方式
+          galleryId: data.galleryId || '',
           files: data.files || [],
           images: data.images || [],
           studentName: data.studentName || '',
@@ -564,7 +711,11 @@ function GalleryPage() {
       setArtworks(fetchedArtworks);
     } catch (err) {
       setError('作品の読み込みに失敗しました');
-      console.error('Fetch artworks error:', err);
+      console.error('[Gallery] Fetch artworks error:', err);
+      if (err instanceof Error) {
+        console.error('[Gallery] Error message:', err.message);
+        console.error('[Gallery] Error stack:', err.stack);
+      }
     } finally {
       setLoading(false);
     }
@@ -845,6 +996,10 @@ function GalleryPage() {
               作品ギャラリー
             </h1>
             <div className="flex items-center space-x-4">
+              {/* ギャラリー切替 */}
+              <Suspense fallback={<div className="text-sm text-gray-500">読み込み中...</div>}>
+                <GallerySwitcher />
+              </Suspense>
               {/* ラベルフィルター（管理者のみ） */}
               {user?.role === 'admin' && (
                 <div className="flex items-center space-x-2">
@@ -950,22 +1105,47 @@ function GalleryPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                まだ作品がありません
-              </h3>
-              <p className="text-gray-600 mb-6">
-                {user?.role === 'admin'
-                  ? 'Google Classroom からデータをインポートして作品を表示しましょう。'
-                  : '管理者がデータをインポートするまでお待ちください。'
-                }
-              </p>
-              {user?.role === 'admin' && (
-                <a
-                  href="/admin/import"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                >
-                  データインポートを開始
-                </a>
+              {!hasGalleries ? (
+                // ギャラリーが1つも存在しない場合
+                <>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    まだギャラリーがありません
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    {user?.role === 'admin'
+                      ? 'Google Classroom からデータをインポートして課題を作成しましょう。'
+                      : '管理者がデータをインポートするまでお待ちください。'
+                    }
+                  </p>
+                  {user?.role === 'admin' && (
+                    <a
+                      href="/admin/import"
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                    >
+                      データインポートを開始
+                    </a>
+                  )}
+                </>
+              ) : !currentGalleryId ? (
+                // ギャラリーは存在するが選択されていない場合
+                <>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    課題を選択してください
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    上部のドロップダウンから授業と課題を選択して作品を表示できます。
+                  </p>
+                </>
+              ) : (
+                // ギャラリーは選択されているが作品がない場合
+                <>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    まだ作品がありません
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    この課題にはまだ作品が登録されていません。
+                  </p>
+                </>
               )}
             </div>
           ) : (

@@ -365,11 +365,46 @@ async function ensureGalleryExists(
   const galleryDoc = await galleryRef.get();
 
   if (galleryDoc.exists) {
-    // 既存のギャラリーの場合は更新日時のみ更新
-    await galleryRef.update({
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    console.log(`Gallery ${galleryId} already exists, updated timestamp`);
+    const existingData = galleryDoc.data();
+
+    // 既存のギャラリーでcourseName/assignmentNameがない場合は追加
+    if (!existingData?.courseName || !existingData?.assignmentName) {
+      console.log(`Gallery ${galleryId} exists but missing course/assignment names, fetching...`);
+
+      try {
+        const classroom = google.classroom({ version: 'v1', auth });
+
+        // 授業情報を取得
+        const courseResponse = await classroom.courses.get({ id: classroomId });
+        const courseName = courseResponse.data.name || 'コース名未設定';
+
+        // 課題情報を取得
+        const assignmentResponse = await classroom.courses.courseWork.get({
+          courseId: classroomId,
+          id: assignmentId,
+        });
+        const assignmentName = assignmentResponse.data.title || '課題名未設定';
+
+        await galleryRef.update({
+          courseName,
+          assignmentName,
+          courseId: classroomId,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        console.log(`Gallery ${galleryId} updated with course/assignment names`);
+      } catch (error) {
+        console.error(`Failed to fetch course/assignment info for ${galleryId}:`, error);
+        await galleryRef.update({
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+    } else {
+      // 既存のギャラリーの場合は更新日時のみ更新
+      await galleryRef.update({
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      console.log(`Gallery ${galleryId} already exists, updated timestamp`);
+    }
     return;
   }
 
@@ -381,14 +416,14 @@ async function ensureGalleryExists(
 
     // 授業情報を取得
     const courseResponse = await classroom.courses.get({ id: classroomId });
-    const courseName = courseResponse.data.name || 'Unknown Course';
+    const courseName = courseResponse.data.name || 'コース名未設定';
 
     // 課題情報を取得
     const assignmentResponse = await classroom.courses.courseWork.get({
       courseId: classroomId,
       id: assignmentId,
     });
-    const assignmentName = assignmentResponse.data.title || 'Unknown Assignment';
+    const assignmentName = assignmentResponse.data.title || '課題名未設定';
 
     // galleriesコレクションに新規ドキュメントを作成
     await galleryRef.set({

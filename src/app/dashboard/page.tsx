@@ -1,13 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import withAuth from '@/components/withAuth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import type { Gallery } from '@/types';
 
 function DashboardPage() {
   const { user, logout } = useAuth();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeletingGallery, setIsDeletingGallery] = useState(false);
+  const [galleries, setGalleries] = useState<Gallery[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<string>('');
+  const [selectedGalleryId, setSelectedGalleryId] = useState<string>('');
 
   const handleLogout = async () => {
     try {
@@ -55,6 +60,9 @@ function DashboardPage() {
           const result = await response.json();
           alert('すべてのデータが正常にリセットされました。');
           console.log(result);
+
+          // localStorageをクリア
+          localStorage.removeItem('lastViewedGalleryId');
         } catch (error) {
           console.error('Data reset error:', error);
           const message = error instanceof Error ? error.message : '不明なエラーが発生しました。';
@@ -66,6 +74,115 @@ function DashboardPage() {
     }
   };
 
+  // ギャラリー一覧を取得
+  useEffect(() => {
+    const fetchGalleries = async () => {
+      try {
+        const { collection, getDocs, orderBy, query } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+
+        const galleriesQuery = query(
+          collection(db, 'galleries'),
+          orderBy('createdAt', 'desc')
+        );
+
+        const querySnapshot = await getDocs(galleriesQuery);
+        const fetchedGalleries: Gallery[] = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            courseName: data.courseName || 'コース名未設定',
+            assignmentName: data.assignmentName || '課題名未設定',
+            courseId: data.courseId || '',
+            assignmentId: data.assignmentId || '',
+            classroomId: data.classroomId || data.courseId || '',
+            artworkCount: data.artworkCount || 0,
+            createdBy: data.createdBy || '',
+            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+            updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : data.updatedAt,
+          };
+        });
+
+        setGalleries(fetchedGalleries);
+      } catch (err) {
+        console.error('Failed to fetch galleries:', err);
+      }
+    };
+
+    fetchGalleries();
+  }, []);
+
+  const handleDeleteGallery = async () => {
+    if (!selectedGalleryId) {
+      alert('課題を選択してください。');
+      return;
+    }
+
+    const selectedGallery = galleries.find(g => g.id === selectedGalleryId);
+    const galleryName = selectedGallery ? `${selectedGallery.courseName} > ${selectedGallery.assignmentName}` : '選択されたギャラリー';
+
+    if (window.confirm(`本当に「${galleryName}」のすべてのデータ（作品、いいね、ファイル）を削除しますか？この操作は元に戻せません。`)) {
+      if (window.confirm('最終確認：この操作を実行すると、選択された課題のデータがすべて完全に削除されます。よろしいですか？')) {
+        setIsDeletingGallery(true);
+        try {
+          if (!user?.email) {
+            throw new Error('ユーザー情報が見つかりません。');
+          }
+
+          const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL;
+          if (!functionsBaseUrl) {
+            throw new Error('Cloud FunctionsのURLが設定されていません。');
+          }
+          const deleteGalleryDataUrl = `${functionsBaseUrl}/deleteGalleryData`;
+
+          const response = await fetch(deleteGalleryDataUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ userEmail: user.email, galleryId: selectedGalleryId }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            try {
+              const errorData = JSON.parse(errorText);
+              throw new Error(errorData.error || `ギャラリーの削除に失敗しました: ${response.statusText}`);
+            } catch (e) {
+              throw new Error(`ギャラリーの削除に失敗しました: ${errorText}`);
+            }
+          }
+
+          const result = await response.json();
+          alert(`ギャラリーが正常に削除されました。削除された作品数: ${result.deletedArtworks}`);
+          console.log(result);
+
+          // localStorageから削除したgalleryIdをクリア
+          const savedGalleryId = localStorage.getItem('lastViewedGalleryId');
+          if (savedGalleryId === selectedGalleryId) {
+            localStorage.removeItem('lastViewedGalleryId');
+          }
+
+          // ギャラリー一覧を再取得
+          setSelectedCourse('');
+          setSelectedGalleryId('');
+          window.location.reload();
+        } catch (error) {
+          console.error('Gallery deletion error:', error);
+          const message = error instanceof Error ? error.message : '不明なエラーが発生しました。';
+          alert(`ギャラリーの削除に失敗しました。: ${message}`);
+        } finally {
+          setIsDeletingGallery(false);
+        }
+      }
+    }
+  };
+
+  // 授業名の一覧（重複を除く）
+  const courses = Array.from(new Set(galleries.map(g => g.courseName)));
+
+  // 選択された授業に属する課題一覧
+  const assignments = galleries.filter(g => g.courseName === selectedCourse);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -74,7 +191,7 @@ function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <h1 className="text-xl font-semibold text-gray-900">
-              オンライン講評会ギャラリー
+              ダッシュボード
             </h1>
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
@@ -108,13 +225,6 @@ function DashboardPage() {
         <div className="px-4 py-6 sm:px-0">
           <div className="border-4 border-dashed border-gray-200 rounded-lg p-8">
             <div className="text-center">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                ダッシュボード
-              </h2>
-              <p className="text-gray-600 mb-6">
-                ようこそ、{user?.displayName}さん！
-              </p>
-
               <div className="bg-white rounded-lg shadow p-6 max-w-md mx-auto">
                 <h3 className="text-lg font-semibold mb-4">アカウント情報</h3>
                 <dl className="space-y-2 text-left">
@@ -171,21 +281,76 @@ function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* システムリセット機能 */}
-                  <div className="mt-8 border-t border-gray-200 pt-6 text-left">
-                    <h4 className="text-base font-semibold text-gray-800 mb-2">
-                      システムリセット
-                    </h4>
-                    <p className="text-sm text-gray-500 mb-4">
-                      すべての作品、ギャラリー情報、ファイルを削除し、システムを初期状態に戻します。
-                    </p>
-                    <button
-                      onClick={handleResetData}
-                      disabled={isDeleting}
-                      className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
-                    >
-                      {isDeleting ? '削除を実行中...' : '全データをリセット'}
-                    </button>
+                  {/* データ削除機能 */}
+                  <div className="mt-8 border-t border-gray-200 pt-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* 課題削除 */}
+                      <div className="text-left">
+                        <h5 className="text-sm font-semibold text-gray-800 mb-2">
+                          課題データ削除
+                        </h5>
+                        <p className="text-sm text-gray-500 mb-4">
+                          選択した課題のすべてのデータ（作品、いいね、ファイル）を削除します。
+                        </p>
+
+                        {/* 授業選択ドロップダウン */}
+                        <select
+                          value={selectedCourse}
+                          onChange={(e) => {
+                            setSelectedCourse(e.target.value);
+                            setSelectedGalleryId(''); // 課題選択をリセット
+                          }}
+                          className="mb-2 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        >
+                          <option value="">授業を選択</option>
+                          {courses.map(courseName => (
+                            <option key={courseName} value={courseName}>
+                              {courseName}
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* 課題選択ドロップダウン */}
+                        <select
+                          value={selectedGalleryId}
+                          onChange={(e) => setSelectedGalleryId(e.target.value)}
+                          disabled={!selectedCourse}
+                          className="mb-4 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                        >
+                          <option value="">課題を選択</option>
+                          {assignments.map(gallery => (
+                            <option key={gallery.id} value={gallery.id}>
+                              {gallery.assignmentName} ({gallery.artworkCount}作品)
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          onClick={handleDeleteGallery}
+                          disabled={!selectedGalleryId || isDeletingGallery}
+                          className="w-full inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
+                        >
+                          {isDeletingGallery ? '削除を実行中...' : '選択した課題を削除'}
+                        </button>
+                      </div>
+
+                      {/* 全データリセット */}
+                      <div className="text-left">
+                        <h5 className="text-sm font-semibold text-gray-800 mb-2">
+                          全データリセット
+                        </h5>
+                        <p className="text-sm text-gray-500 mb-4">
+                          すべての作品、ギャラリー情報、ファイルを削除し、システムを初期状態に戻します。
+                        </p>
+                        <button
+                          onClick={handleResetData}
+                          disabled={isDeleting}
+                          className="mt-14 w-full inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
+                        >
+                          {isDeleting ? '削除を実行中...' : '全データをリセット'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
