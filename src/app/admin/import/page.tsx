@@ -182,7 +182,12 @@ function AdminImportPage() {
 
       // 2秒後にギャラリーページへリダイレクト（galleryIdパラメータ付き）
       setTimeout(() => {
-        window.location.href = `/gallery?galleryId=${galleryId}`;
+        // リダイレクト前にbeforeunload警告を無効化
+        setIsImporting(false);
+        // 少し待ってからリダイレクト（setStateが反映されるまで）
+        setTimeout(() => {
+          window.location.href = `/gallery?galleryId=${galleryId}`;
+        }, 100);
       }, 2000);
 
       // 進捗を監視（リダイレクト前の短い間のみ）
