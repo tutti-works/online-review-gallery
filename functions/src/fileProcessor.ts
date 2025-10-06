@@ -179,7 +179,8 @@ async function processImageFile(
   imageBuffer: Buffer,
   fileName: string,
   storage: admin.storage.Storage,
-  galleryId: string
+  galleryId: string,
+  startPageNumber?: number
 ): Promise<ProcessedImage[]> {
 
   const bucket = storage.bucket();
@@ -202,36 +203,57 @@ async function processImageFile(
   const width = metadata.width || 0;
   const height = metadata.height || 0;
 
-  // サムネイルを生成（A3比率: 420×297px）
-  const thumbnailBuffer = await sharp(imageBuffer)
-    .resize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, {
-      fit: 'cover',
-      position: 'center'
-    })
-    .webp({ quality: 80 })
-    .toBuffer();
+  // サムネイルを生成（全体で1ページ目のみ）
+  const globalPageNumber = startPageNumber || 1;
+  let thumbnailUrl: string | undefined;
+  let thumbnailBuffer: Buffer | undefined;
+
+  if (globalPageNumber === 1) {
+    thumbnailBuffer = await sharp(imageBuffer)
+      .resize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, {
+        fit: 'cover',
+        position: 'center'
+      })
+      .webp({ quality: 80 })
+      .toBuffer();
+  }
 
   // Firebase Storageにアップロード
   const imagePath = `galleries/${galleryId}/images/${imageId}${fileExtension}`;
-  const thumbnailPath = `galleries/${galleryId}/thumbnails/${imageId}${fileExtension}`;
+  const imageFile = bucket.file(imagePath);
 
-  const [imageFile, thumbnailFile] = await Promise.all([
-    bucket.file(imagePath),
-    bucket.file(thumbnailPath)
-  ]);
-
-  await Promise.all([
-    imageFile.save(optimizedBuffer, {
+  await imageFile.save(optimizedBuffer, {
+    metadata: {
+      contentType: 'image/webp',
+      cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
       metadata: {
-        contentType: 'image/webp',
-        cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
-        metadata: {
-          originalName: fileName,
-          galleryId,
-        }
+        originalName: fileName,
+        galleryId,
       }
-    }),
-    thumbnailFile.save(thumbnailBuffer, {
+    }
+  });
+
+  // エミュレーター環境判定
+  const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+
+  let imageUrl: string;
+
+  if (isEmulator) {
+    // エミュレーター環境: localhost URLを使用
+    imageUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(imagePath)}?alt=media`;
+    console.log(`🔧 Emulator Storage URL: ${imageUrl}`);
+  } else {
+    // 本番環境: 公開URLを使用
+    await imageFile.makePublic();
+    imageUrl = `https://storage.googleapis.com/${bucket.name}/${imagePath}`;
+  }
+
+  // サムネイルのアップロードとURL生成（1ページ目のみ）
+  if (thumbnailBuffer) {
+    const thumbnailPath = `galleries/${galleryId}/thumbnails/${imageId}${fileExtension}`;
+    const thumbnailFile = bucket.file(thumbnailPath);
+
+    await thumbnailFile.save(thumbnailBuffer, {
       metadata: {
         contentType: 'image/webp',
         cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
@@ -241,38 +263,30 @@ async function processImageFile(
           thumbnail: 'true',
         }
       }
-    })
-  ]);
+    });
 
-  // エミュレーター環境判定
-  const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
-
-  let imageUrl: string;
-  let thumbnailUrl: string;
-
-  if (isEmulator) {
-    // エミュレーター環境: localhost URLを使用
-    imageUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(imagePath)}?alt=media`;
-    thumbnailUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(thumbnailPath)}?alt=media`;
-    console.log(`🔧 Emulator Storage URL: ${imageUrl}`);
-  } else {
-    // 本番環境: 公開URLを使用
-    await Promise.all([
-      imageFile.makePublic(),
-      thumbnailFile.makePublic()
-    ]);
-    imageUrl = `https://storage.googleapis.com/${bucket.name}/${imagePath}`;
-    thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailPath}`;
+    if (isEmulator) {
+      thumbnailUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(thumbnailPath)}?alt=media`;
+    } else {
+      await thumbnailFile.makePublic();
+      thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailPath}`;
+    }
   }
 
-  return [{
+  const imageData: any = {
     id: imageId,
     url: imageUrl,
     pageNumber: 1,
     width,
     height,
-    thumbnailUrl,
-  }];
+  };
+
+  // thumbnailUrlがある場合のみ追加
+  if (thumbnailUrl) {
+    imageData.thumbnailUrl = thumbnailUrl;
+  }
+
+  return [imageData];
 }
 
 async function processPdfFile(
@@ -531,7 +545,7 @@ export async function processMultipleFiles(
       // ファイルタイプに応じて処理
       let processedImages: any[];
       if (file.type === 'image') {
-        processedImages = await processImageFile(fileBuffer, file.name, storage, galleryId);
+        processedImages = await processImageFile(fileBuffer, file.name, storage, galleryId, currentPageNumber);
       } else if (file.type === 'pdf') {
         processedImages = await processPdfFile(fileBuffer, file.name, storage, galleryId, MAX_PDF_PAGES, currentPageNumber);
       } else {
