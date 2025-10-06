@@ -280,7 +280,8 @@ async function processPdfFile(
   fileName: string,
   storage: admin.storage.Storage,
   galleryId: string,
-  maxPages?: number
+  maxPages?: number,
+  startPageNumber?: number
 ): Promise<ProcessedImage[]> {
 
   const bucket = storage.bucket();
@@ -337,6 +338,7 @@ async function processPdfFile(
     for (let i = 0; i < pages.length; i++) {
       const page = pages[i];
       const pageNumber = i + 1;
+      const globalPageNumber = (startPageNumber || 1) + i; // 全体での通しページ番号
       const imageId = uuidv4();
 
       if (!page.path) {
@@ -370,9 +372,9 @@ async function processPdfFile(
       const height = metadata.height || 0;
       console.log(`Optimized size: ${width}x${height}`);
 
-      // サムネイルを生成（1ページ目のみ）
+      // サムネイルを生成（全体で1ページ目のみ）
       let thumbnailUrl: string | undefined;
-      if (pageNumber === 1) {
+      if (globalPageNumber === 1) {
         const thumbnailBuffer = await sharp(pageBuffer)
           .resize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, {
             fit: 'inside', // 縦横比を保持（クロップしない）
@@ -531,7 +533,7 @@ export async function processMultipleFiles(
       if (file.type === 'image') {
         processedImages = await processImageFile(fileBuffer, file.name, storage, galleryId);
       } else if (file.type === 'pdf') {
-        processedImages = await processPdfFile(fileBuffer, file.name, storage, galleryId, MAX_PDF_PAGES);
+        processedImages = await processPdfFile(fileBuffer, file.name, storage, galleryId, MAX_PDF_PAGES, currentPageNumber);
       } else {
         console.error(`Unsupported file type: ${file.type}`);
         continue;
