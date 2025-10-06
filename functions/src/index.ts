@@ -624,6 +624,119 @@ export const cleanupTempFiles = onSchedule(
   }
 );
 
+// 【第2世代】Cloud Function: ギャラリー別データ削除
+export const deleteGalleryData = onRequest(
+  {
+    region: 'asia-northeast1',
+    memory: '1GiB',
+    timeoutSeconds: 540,
+    cors: true,
+  },
+  async (request, response) => {
+    response.set('Access-Control-Allow-Origin', '*');
+    response.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (request.method === 'OPTIONS') {
+      response.status(204).send('');
+      return;
+    }
+
+    try {
+      if (request.method !== 'POST') {
+        response.status(405).send('Method Not Allowed');
+        return;
+      }
+
+      const { userEmail, galleryId } = request.body;
+
+      if (!userEmail || !galleryId) {
+        response.status(400).send('Bad Request: Missing userEmail or galleryId in request body.');
+        return;
+      }
+
+      const userDoc = await admin.firestore().collection('userRoles').doc(userEmail).get();
+      if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
+        console.error(`Permission denied for ${userEmail}. Role: ${userDoc.data()?.role}`);
+        response.status(403).json({ error: 'Insufficient permissions' });
+        return;
+      }
+
+      console.log(`Gallery data deletion initiated by admin: ${userEmail} for gallery: ${galleryId}`);
+
+      const db = admin.firestore();
+      const bucket = admin.storage().bucket();
+
+      // 1. galleryIdに紐づく作品を取得して削除
+      const artworksSnapshot = await db.collection('artworks')
+        .where('galleryId', '==', galleryId)
+        .get();
+
+      const artworkIds: string[] = [];
+      const deletePromises: Promise<any>[] = [];
+
+      artworksSnapshot.forEach(doc => {
+        artworkIds.push(doc.id);
+        deletePromises.push(doc.ref.delete());
+      });
+
+      // 2. 作品に関連するいいねを削除
+      if (artworkIds.length > 0) {
+        const likesSnapshot = await db.collection('likes')
+          .where('artworkId', 'in', artworkIds.slice(0, 10)) // Firestoreの制限: in句は最大10要素
+          .get();
+
+        likesSnapshot.forEach(doc => {
+          deletePromises.push(doc.ref.delete());
+        });
+
+        // 10要素以上ある場合は分割して処理
+        for (let i = 10; i < artworkIds.length; i += 10) {
+          const batch = artworkIds.slice(i, i + 10);
+          const moreLikes = await db.collection('likes')
+            .where('artworkId', 'in', batch)
+            .get();
+          moreLikes.forEach(doc => {
+            deletePromises.push(doc.ref.delete());
+          });
+        }
+      }
+
+      // 3. ギャラリーに関連するインポートジョブを削除
+      const importJobsSnapshot = await db.collection('importJobs')
+        .where('galleryId', '==', galleryId)
+        .get();
+
+      importJobsSnapshot.forEach(doc => {
+        deletePromises.push(doc.ref.delete());
+      });
+
+      // 4. ギャラリードキュメントを削除
+      deletePromises.push(db.collection('galleries').doc(galleryId).delete());
+
+      // 5. Storage上のギャラリーフォルダを削除
+      deletePromises.push(bucket.deleteFiles({ prefix: `galleries/${galleryId}/` }));
+
+      await Promise.all(deletePromises);
+
+      const message = `Successfully deleted gallery ${galleryId} and ${artworkIds.length} artworks.`;
+      console.log(message);
+      response.status(200).json({
+        message,
+        deletedArtworks: artworkIds.length,
+      });
+
+    } catch (error) {
+      console.error('Detailed error in deleteGalleryData:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      response.status(500).json({
+        error: 'Failed to delete gallery data.',
+        details: errorMessage,
+      });
+    }
+  }
+);
+
 // Firestoreのコレクションをバッチで削除するためのヘルパー関数
 async function deleteCollection(db: admin.firestore.Firestore, collectionPath: string, batchSize: number) {
   const collectionRef = db.collection(collectionPath);

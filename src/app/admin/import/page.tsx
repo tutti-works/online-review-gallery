@@ -158,9 +158,12 @@ function AdminImportPage() {
         startedAt: new Date().toISOString(),
       }));
 
-      // 2秒後にギャラリーページへリダイレクト
+      // インポートしたギャラリーのIDをlocalStorageに保存
+      localStorage.setItem('lastViewedGalleryId', galleryId);
+
+      // 2秒後にギャラリーページへリダイレクト（galleryIdパラメータ付き）
       setTimeout(() => {
-        window.location.href = '/gallery';
+        window.location.href = `/gallery?galleryId=${galleryId}`;
       }, 2000);
 
       // 進捗を監視（リダイレクト前の短い間のみ）
