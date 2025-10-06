@@ -174,7 +174,7 @@ async function processImageFile(
 
   const bucket = storage.bucket();
   const imageId = uuidv4();
-  const fileExtension = '.jpg';
+  const fileExtension = '.webp';
 
   // 画像を最適化（A3全画面表示対応: 2400px）
   const optimizedBuffer = await sharp(imageBuffer)
@@ -182,9 +182,8 @@ async function processImageFile(
       fit: 'inside',
       withoutEnlargement: true
     })
-    .jpeg({
-      quality: IMAGE_QUALITY,
-      progressive: true
+    .webp({
+      quality: IMAGE_QUALITY
     })
     .toBuffer();
 
@@ -199,7 +198,7 @@ async function processImageFile(
       fit: 'cover',
       position: 'center'
     })
-    .jpeg({ quality: 80 })
+    .webp({ quality: 80 })
     .toBuffer();
 
   // Firebase Storageにアップロード
@@ -214,7 +213,7 @@ async function processImageFile(
   await Promise.all([
     imageFile.save(optimizedBuffer, {
       metadata: {
-        contentType: 'image/jpeg',
+        contentType: 'image/webp',
         cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
         metadata: {
           originalName: fileName,
@@ -224,7 +223,7 @@ async function processImageFile(
     }),
     thumbnailFile.save(thumbnailBuffer, {
       metadata: {
-        contentType: 'image/jpeg',
+        contentType: 'image/webp',
         cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
         metadata: {
           originalName: fileName,
@@ -295,7 +294,7 @@ async function processPdfFile(
       density: 200,
       saveFilename: uniquePrefix,
       savePath: '/tmp',
-      format: 'jpeg',
+      format: 'webp',
       width: 3400,
       height: 2404,
     };
@@ -341,9 +340,8 @@ async function processPdfFile(
           fit: 'inside',
           withoutEnlargement: true
         })
-        .jpeg({
-          quality: IMAGE_QUALITY,
-          progressive: true
+        .webp({
+          quality: IMAGE_QUALITY
         })
         .toBuffer();
 
@@ -360,15 +358,15 @@ async function processPdfFile(
             fit: 'inside', // 縦横比を保持（クロップしない）
             withoutEnlargement: true
           })
-          .jpeg({ quality: 80 })
+          .webp({ quality: 80 })
           .toBuffer();
 
-        const thumbnailPath = `galleries/${galleryId}/thumbnails/${imageId}.jpg`;
+        const thumbnailPath = `galleries/${galleryId}/thumbnails/${imageId}.webp`;
         const thumbnailFile = bucket.file(thumbnailPath);
 
         await thumbnailFile.save(thumbnailBuffer, {
           metadata: {
-            contentType: 'image/jpeg',
+            contentType: 'image/webp',
             cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
             metadata: {
               originalName: fileName,
@@ -384,12 +382,12 @@ async function processPdfFile(
       }
 
       // メイン画像をアップロード
-      const imagePath = `galleries/${galleryId}/images/${imageId}.jpg`;
+      const imagePath = `galleries/${galleryId}/images/${imageId}.webp`;
       const imageFile = bucket.file(imagePath);
 
       await imageFile.save(optimizedBuffer, {
         metadata: {
-          contentType: 'image/jpeg',
+          contentType: 'image/webp',
           cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
           metadata: {
             originalName: fileName,
