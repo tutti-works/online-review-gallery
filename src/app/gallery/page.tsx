@@ -63,6 +63,12 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, o
 
   if (!isOpen) return null;
 
+  const currentImage = artwork.images[currentPage] ?? artwork.images[0];
+  const currentFileName =
+    currentImage?.sourceFileName?.trim() ||
+    artwork.files?.find(file => file.id === currentImage?.sourceFileId)?.name ||
+    artwork.title;
+
   const handleZoomIn = () => {
     setZoom(prev => Math.min(prev + 0.25, 3)); // 最大3倍
   };
@@ -180,7 +186,7 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, o
               >
                 <img
                   src={artwork.images[currentPage].url}
-                  alt={`${artwork.title} - Page ${currentPage + 1}`}
+                  alt={`${currentFileName} - Page ${currentPage + 1}`}
                   className="max-w-full max-h-full object-contain select-none pointer-events-none"
                   draggable={false}
                   onDragStart={handleDragStart}
@@ -312,7 +318,7 @@ function ArtworkModal({ artwork, isOpen, onClose, onLike, onComment, onDelete, o
             {/* サイドバーヘッダー */}
             <div className="p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">{artwork.studentName}</h3>
-              <p className="text-sm text-gray-600 mt-1">{artwork.title}</p>
+              <p className="text-sm text-gray-600 mt-1">{currentFileName}</p>
               <p className="text-xs text-gray-400 mt-1">
                 {artwork.studentEmail}
               </p>
