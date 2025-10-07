@@ -1,16 +1,17 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   User as FirebaseUser,
   signInWithPopup,
   signInAnonymously,
   signOut,
   onAuthStateChanged,
-  GoogleAuthProvider
+  GoogleAuthProvider,
+  reauthenticateWithPopup,
 } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { auth, googleProvider, db } from '@/lib/firebase';
+import { auth, googleProvider, db, createGoogleProvider } from '@/lib/firebase';
 import { User } from '@/types';
 import { ROLES, type UserRole } from '@/utils/roles';
 
@@ -20,6 +21,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signInAsGuest: () => Promise<void>;
   logout: () => Promise<void>;
+  requestAdditionalScopes: (scopes: string[]) => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,6 +47,7 @@ const buildGuestUser = (firebaseUser: FirebaseUser): User => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const scopeRequestRef = useRef<Promise<string | null> | null>(null);
 
   const getUserRole = async (email?: string | null): Promise<UserRole> => {
     if (!email) {
@@ -115,6 +118,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const requestAdditionalScopes = async (scopes: string[]) => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('No authenticated user to extend scopes');
+    }
+
+    if (scopeRequestRef.current) {
+      return scopeRequestRef.current;
+    }
+
+    const pending = (async () => {
+      try {
+        const provider = createGoogleProvider(scopes, {
+          prompt: 'consent select_account',
+          includeGrantedScopes: true,
+          loginHint: currentUser.email ?? undefined,
+        });
+        const result = await reauthenticateWithPopup(currentUser, provider);
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        const token = credential?.accessToken ?? null;
+
+        if (token) {
+          sessionStorage.setItem('googleAccessToken', token);
+        } else {
+          sessionStorage.removeItem('googleAccessToken');
+        }
+
+        const firebaseUser = auth.currentUser;
+        let resolvedRole = user?.role;
+
+        if (!resolvedRole) {
+          resolvedRole = firebaseUser?.email ? await getUserRole(firebaseUser.email) : ROLES.GUEST;
+        }
+
+        setUser((prev) => {
+          if (prev) {
+            return {
+              ...prev,
+              googleAccessToken: token ?? prev.googleAccessToken,
+            };
+          }
+
+          if (!firebaseUser || !firebaseUser.email) {
+            return prev;
+          }
+
+          return {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName || '',
+            photoURL: firebaseUser.photoURL || undefined,
+            role: resolvedRole ?? ROLES.GUEST,
+            googleAccessToken: token ?? undefined,
+          };
+        });
+
+        return token;
+      } catch (error) {
+        console.error('Error requesting additional scopes:', error);
+        throw error;
+      }
+    })();
+
+    scopeRequestRef.current = pending;
+
+    try {
+      return await pending;
+    } finally {
+      scopeRequestRef.current = null;
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       if (firebaseUser && firebaseUser.email) {
@@ -147,7 +222,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loading,
     signInWithGoogle,
     signInAsGuest,
-    logout
+    logout,
+    requestAdditionalScopes,
   };
 
   return (
