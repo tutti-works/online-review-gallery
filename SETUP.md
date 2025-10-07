@@ -146,6 +146,10 @@ firebase deploy --only storage
 
 - ポートが既に使用されていないか確認してください
 - `firebase emulators:start --project=your-project-id` で明示的にプロジェクトIDを指定してください
+- `Cannot emulate a web framework...` というエラーが出る場合、以下のコマンドで実験的機能を有効にしてください：
+```bash
+firebase experiments:enable webframeworks
+```
 
 ### Google Classroom APIのアクセスエラー
 

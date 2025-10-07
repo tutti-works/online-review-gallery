@@ -1,7 +1,7 @@
 import { initializeApp, getApps, FirebaseApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, connectAuthEmulator } from "firebase/auth";
-import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
-import { getStorage, connectStorageEmulator } from "firebase/storage";
+import { connectAuthEmulator, getAuth, GoogleAuthProvider } from "firebase/auth";
+import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
+import { connectStorageEmulator, getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'test-api-key',
@@ -27,42 +27,63 @@ const storage = getStorage(app);
 // エミュレーター接続（開発環境のみ）
 if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
   try {
-    // Auth エミュレーター（環境変数で制御）
     if (process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === 'true') {
       connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
       console.log('🔧 Connected to Auth Emulator');
-    } else {
-      console.log('✅ Using Production Auth (Google Sign-In)');
     }
 
-    // Firestore & Storage エミュレーター（環境変数で制御）
     if (process.env.NEXT_PUBLIC_USE_FIRESTORE_EMULATOR === 'true') {
       connectFirestoreEmulator(db, 'localhost', 8080);
       connectStorageEmulator(storage, 'localhost', 9199);
       console.log('🔧 Connected to Firestore & Storage Emulators');
-    } else {
-      console.log('✅ Using Production Firestore & Storage');
     }
   } catch (error) {
-    // エミュレーターへの接続は一度しかできないため、エラーを無視
     console.log('Emulator connection already established');
   }
 }
 
-// Google Auth Provider
-const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({
-  prompt: 'select_account'
-});
+const BASE_GOOGLE_SCOPES = ['openid', 'email', 'profile'] as const;
+export const CLASSROOM_INCREMENTAL_SCOPES = [
+  'https://www.googleapis.com/auth/classroom.courses.readonly',
+  'https://www.googleapis.com/auth/classroom.coursework.students.readonly',
+  'https://www.googleapis.com/auth/classroom.student-submissions.students.readonly',
+  'https://www.googleapis.com/auth/classroom.rosters.readonly',
+  'https://www.googleapis.com/auth/classroom.profile.emails',
+  'https://www.googleapis.com/auth/classroom.profile.photos',
+  'https://www.googleapis.com/auth/drive.readonly',
+] as const;
 
-// データインポート機能で必要なAPIスコープを追加
-googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
-googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.students.readonly');
-googleProvider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.students.readonly');
-googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly'); // 学生名を取得するために必要
-googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
-googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.photos');
-googleProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
+type GoogleProviderOptions = {
+  prompt?: string;
+  includeGrantedScopes?: boolean;
+  loginHint?: string;
+};
 
+export const createGoogleProvider = (
+  additionalScopes: string[] = [],
+  options: GoogleProviderOptions = {}
+) => {
+  const provider = new GoogleAuthProvider();
+  const {
+    prompt = 'select_account',
+    includeGrantedScopes = false,
+    loginHint,
+  } = options;
+
+  const params: Record<string, string> = { prompt };
+  if (includeGrantedScopes) {
+    params.include_granted_scopes = 'true';
+  }
+  if (loginHint) {
+    params.login_hint = loginHint;
+  }
+
+  provider.setCustomParameters(params);
+  BASE_GOOGLE_SCOPES.forEach((scope) => provider.addScope(scope));
+  additionalScopes.forEach((scope) => provider.addScope(scope));
+  return provider;
+};
+
+const googleProvider = createGoogleProvider();
 
 export { auth, db, storage, googleProvider };

@@ -1,12 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import withAuth from '@/components/withAuth';
 import { useAuth } from '@/context/AuthContext';
 import { ClassroomCourse, CourseAssignment } from '@/types';
+import { CLASSROOM_INCREMENTAL_SCOPES } from '@/lib/firebase';
+
+const CONSENT_MESSAGE = 'Google Classroom APIへのアクセス許可が必要です。下のボタンから許可してください。';
+const TOKEN_MESSAGE = 'Google Classroom APIのトークンを取得できませんでした。ログアウト後に再度ログインしてください。';
 
 function AdminImportPage() {
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, requestAdditionalScopes } = useAuth();
+
   const [courses, setCourses] = useState<ClassroomCourse[]>([]);
   const [assignments, setAssignments] = useState<CourseAssignment[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<string>('');
@@ -16,95 +23,250 @@ function AdminImportPage() {
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
 
-  // ブラウザを閉じる際の警告
+  const [hasRequiredScopes, setHasRequiredScopes] = useState<boolean>(false);
+  const [needsAdditionalConsent, setNeedsAdditionalConsent] = useState<boolean>(false);
+  const [isRequestingScopes, setIsRequestingScopes] = useState<boolean>(false);
+  const [scopeRequestError, setScopeRequestError] = useState<string | null>(null);
+
+  const incrementalScopes = useMemo(() => [...CLASSROOM_INCREMENTAL_SCOPES], []);
+  const messageTimersRef = useRef<number[]>([]);
+
+  const getCurrentAccessToken = useCallback(
+    () => user?.googleAccessToken || sessionStorage.getItem('googleAccessToken'),
+    [user?.googleAccessToken]
+  );
+
+  const clearMessageTimers = useCallback(() => {
+    messageTimersRef.current.forEach((id) => clearTimeout(id));
+    messageTimersRef.current = [];
+  }, []);
+
   useEffect(() => {
-    if (isImporting) {
-      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-        e.preventDefault();
-        e.returnValue = '';
-      };
-      window.addEventListener('beforeunload', handleBeforeUnload);
-      return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    return () => clearMessageTimers();
+  }, [clearMessageTimers]);
+
+  const markConsentRequired = useCallback((message: string = CONSENT_MESSAGE) => {
+    setHasRequiredScopes(false);
+    setNeedsAdditionalConsent(true);
+    setScopeRequestError(null);
+    setCourses([]);
+    setAssignments([]);
+    setSelectedCourse('');
+    setSelectedAssignment('');
+    setStatusMessage(message);
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setHasRequiredScopes(false);
+      setNeedsAdditionalConsent(false);
+      setScopeRequestError(null);
+      setCourses([]);
+      setAssignments([]);
+      setSelectedCourse('');
+      setSelectedAssignment('');
+      setStatusMessage('');
+      return;
     }
-  }, [isImporting]);
 
-  useEffect(() => {
-    const fetchCourses = async () => {
-      if (!user) return;
+    const token = getCurrentAccessToken();
+    if (token) {
+      setHasRequiredScopes(true);
+      setNeedsAdditionalConsent(false);
+      setScopeRequestError(null);
+      setStatusMessage('');
+    } else {
+      markConsentRequired();
+    }
+  }, [user, getCurrentAccessToken, markConsentRequired]);
 
-      if (!user.googleAccessToken) {
-        setStatusMessage('APIへのアクセス許可がありません。一度ログアウトし、再度ログインしてアクセスを許可してください。');
-        return;
-      }
+  const fetchCourses = useCallback(async () => {
+    if (!user || !hasRequiredScopes) {
+      return;
+    }
 
-      setIsLoadingCourses(true);
-      setStatusMessage('担当クラスを読み込んでいます...');
+    const accessToken = getCurrentAccessToken();
+    if (!accessToken) {
+      markConsentRequired(TOKEN_MESSAGE);
+      return;
+    }
 
-      try {
-        const response = await fetch('https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE', {
-          headers: {
-            'Authorization': `Bearer ${user.googleAccessToken}`,
-          },
-        });
+    setIsLoadingCourses(true);
+    setStatusMessage('公開済みクラスを読み込んでいます...');
 
-        if (!response.ok) {
-          throw new Error(`API呼び出しに失敗しました: ${response.statusText}`);
+    try {
+      const response = await fetch('https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        let apiError = response.statusText;
+        try {
+          const body = await response.json();
+          apiError = body?.error?.message ?? apiError;
+        } catch {
+          // ignore JSON parse errors
         }
 
-        const data = await response.json();
-        setCourses(data.courses || []);
-        setStatusMessage('');
-      } catch (error) {
-        console.error(error);
-        const errorMessage = error instanceof Error ? error.message : '不明なエラー';
-        setStatusMessage(`クラスの読み込みに失敗しました。${errorMessage}`)
+        if (response.status === 401 || response.status === 403) {
+          markConsentRequired(CONSENT_MESSAGE);
+          return;
+        }
+
+        throw new Error(apiError);
       }
 
+      const data = await response.json();
+      setCourses(data.courses || []);
+      setStatusMessage('');
+    } catch (error) {
+      console.error(error);
+      const errorMessage = error instanceof Error ? error.message : '不明なエラー';
+      setStatusMessage(`クラスの読み込みに失敗しました: ${errorMessage}`);
+    } finally {
       setIsLoadingCourses(false);
-    };
-
-    fetchCourses();
-  }, [user]);
+    }
+  }, [user, hasRequiredScopes, getCurrentAccessToken, markConsentRequired]);
 
   useEffect(() => {
-    const fetchAssignments = async () => {
-      if (!selectedCourse || !user?.googleAccessToken) {
-        setAssignments([]);
-        setSelectedAssignment('');
+    void fetchCourses();
+  }, [fetchCourses]);
+
+  const fetchAssignments = useCallback(async () => {
+    if (!selectedCourse || !hasRequiredScopes) {
+      setAssignments([]);
+      setSelectedAssignment('');
+      return;
+    }
+
+    const accessToken = getCurrentAccessToken();
+    if (!accessToken) {
+      setAssignments([]);
+      setSelectedAssignment('');
+      markConsentRequired(TOKEN_MESSAGE);
+      return;
+    }
+
+    setIsLoadingAssignments(true);
+    setStatusMessage('課題を読み込んでいます...');
+
+    try {
+      const response = await fetch(`https://classroom.googleapis.com/v1/courses/${selectedCourse}/courseWork`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        let apiError = response.statusText;
+        try {
+          const body = await response.json();
+          apiError = body?.error?.message ?? apiError;
+        } catch {
+          // ignore
+        }
+
+        if (response.status === 401 || response.status === 403) {
+          setAssignments([]);
+          setSelectedAssignment('');
+          markConsentRequired(CONSENT_MESSAGE);
+          return;
+        }
+
+        throw new Error(apiError);
+      }
+
+      const data = await response.json();
+      setAssignments(data.courseWork || []);
+      setStatusMessage('');
+    } catch (error) {
+      console.error(error);
+      const errorMessage = error instanceof Error ? error.message : '不明なエラー';
+      setStatusMessage(`課題の読み込みに失敗しました: ${errorMessage}`);
+    } finally {
+      setIsLoadingAssignments(false);
+    }
+  }, [selectedCourse, hasRequiredScopes, getCurrentAccessToken, markConsentRequired]);
+
+  useEffect(() => {
+    void fetchAssignments();
+  }, [fetchAssignments]);
+
+  const ensureClassroomScopes = useCallback(async (): Promise<boolean> => {
+    try {
+      const token = await requestAdditionalScopes(incrementalScopes);
+      return Boolean(token ?? getCurrentAccessToken());
+    } catch (error) {
+      throw error;
+    }
+  }, [incrementalScopes, requestAdditionalScopes, getCurrentAccessToken]);
+
+  const handleRequestScopes = useCallback(async () => {
+    setIsRequestingScopes(true);
+    setScopeRequestError(null);
+    setStatusMessage('Google Classroom APIのアクセス許可処理を開始します...');
+
+    try {
+      const success = await ensureClassroomScopes();
+
+      if (!success) {
+        const message = 'Google Classroom APIへのアクセス許可が付与されませんでした。もう一度お試しください。';
+        setScopeRequestError(message);
+        setStatusMessage(message);
         return;
       }
 
-      setIsLoadingAssignments(true);
-      setStatusMessage('課題を読み込んでいます...');
+      const token = getCurrentAccessToken();
+      if (token) {
+        setHasRequiredScopes(true);
+        setNeedsAdditionalConsent(false);
+        setScopeRequestError(null);
+        setStatusMessage('権限が付与されました。授業情報を更新しています...');
+        setCourses([]);
+        setAssignments([]);
+        setSelectedCourse('');
+        setSelectedAssignment('');
+      } else {
+        const message = 'Google Classroom APIへのアクセス許可が付与されませんでした。もう一度お試しください。';
+        setScopeRequestError(message);
+        setStatusMessage(message);
+      }
+    } catch (error) {
+      const firebaseError = error as { code?: string; message?: string };
+      let message = 'Google Classroom APIへのアクセス許可処理中にエラーが発生しました。';
 
-      try {
-        const response = await fetch(`https://classroom.googleapis.com/v1/courses/${selectedCourse}/courseWork` , {
-          headers: {
-            'Authorization': `Bearer ${user.googleAccessToken}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`API呼び出しに失敗しました: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        setAssignments(data.courseWork || []);
-        setStatusMessage('');
-      } catch (error) {
-        console.error(error);
-        const errorMessage = error instanceof Error ? error.message : '不明なエラー';
-        setStatusMessage(`課題の読み込みに失敗しました。${errorMessage}`)
+      if (firebaseError?.code === 'auth/popup-blocked') {
+        message = 'ポップアップがブロックされました。ブラウザでポップアップを許可して再試行してください。';
+      } else if (firebaseError?.code === 'auth/popup-closed-by-user' || firebaseError?.code === 'auth/cancelled-popup-request') {
+        message = '認証ウィンドウが閉じられました。もう一度ボタンを押して権限を付与してください。';
       }
 
-      setIsLoadingAssignments(false);
-    };
-
-    fetchAssignments();
-  }, [selectedCourse, user]);
+      setScopeRequestError(message);
+      setStatusMessage(message);
+    } finally {
+      setIsRequestingScopes(false);
+    }
+  }, [ensureClassroomScopes, fetchCourses, getCurrentAccessToken]);
 
   const handleImport = async () => {
-    console.log('読み込まれたFunctionsのURL:', process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL); // ← この行を追加
+    if (!hasRequiredScopes) {
+      alert('Google Classroom APIの権限が付与されていません。画面上のボタンから権限を付与してください。');
+      return;
+    }
+
+    if (isRequestingScopes) {
+      alert('Google Classroom APIの権限付与処理が進行中です。完了までお待ちください。');
+      return;
+    }
+
+    const accessToken = getCurrentAccessToken();
+    if (!accessToken) {
+      alert('Google Classroom APIのトークンを確認できませんでした。再度権限の付与を行ってください。');
+      return;
+    }
+
     if (!selectedCourse || !selectedAssignment || !user?.email) {
       alert('授業と課題を選択してください。');
       return;
@@ -113,20 +275,19 @@ function AdminImportPage() {
     setIsImporting(true);
     setStatusMessage('Google Classroomからデータを取得しています...');
 
-    // 段階的にメッセージを変更（案1）
-    const messageTimers = [
-      setTimeout(() => setStatusMessage('提出ファイルを確認しています...'), 20000),
-      setTimeout(() => setStatusMessage('処理キューを準備しています...'), 60000),
-      setTimeout(() => setStatusMessage('もう少しお待ちください...'), 120000),
+    clearMessageTimers();
+    messageTimersRef.current = [
+      window.setTimeout(() => setStatusMessage('提出ファイルを確認しています...'), 20_000),
+      window.setTimeout(() => setStatusMessage('処理キューを準備しています...'), 60_000),
+      window.setTimeout(() => setStatusMessage('もう少しお待ちください...'), 120_000),
     ];
 
     try {
       const { collection, addDoc, doc, setDoc } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase');
 
-      // ギャラリーを作成
-      const selectedCourseName = courses.find(c => c.id === selectedCourse)?.name || 'Unknown Course';
-      const selectedAssignmentName = assignments.find(a => a.id === selectedAssignment)?.title || 'Unknown Assignment';
+      const selectedCourseName = courses.find((c) => c.id === selectedCourse)?.name || 'Unknown Course';
+      const selectedAssignmentName = assignments.find((a) => a.id === selectedAssignment)?.title || 'Unknown Assignment';
 
       const galleryRef = doc(collection(db, 'galleries'));
       const galleryId = galleryRef.id;
@@ -141,16 +302,16 @@ function AdminImportPage() {
         artworks: [],
       });
 
-      // Firebase Functionsを呼び出してインポートを開始
       const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL || 'http://localhost:5001';
 
-      console.log('Access Token being sent:', user?.googleAccessToken);
+      console.log('読み込まれたFunctionsのURL:', functionsBaseUrl);
+      console.log('Access Token being sent:', accessToken);
 
       const response = await fetch(`${functionsBaseUrl}/importClassroomSubmissions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.googleAccessToken}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           galleryId,
@@ -161,77 +322,70 @@ function AdminImportPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'インポート処理の開始に失敗しました。');
+        clearMessageTimers();
+        const data = await response.json();
+        throw new Error(data?.error || 'インポートのリクエストに失敗しました');
       }
 
       const data = await response.json();
       const importJobId = data.importJobId;
 
-      setStatusMessage('インポート処理を開始しました。ギャラリーページで進捗を確認できます...');
-
-      // インポートジョブ情報をlocalStorageに保存
       localStorage.setItem('activeImportJob', JSON.stringify({
         importJobId,
-        galleryId,
         startedAt: new Date().toISOString(),
+        galleryId,
       }));
 
-      // インポートしたギャラリーのIDをlocalStorageに保存
-      localStorage.setItem('lastViewedGalleryId', galleryId);
-
-      // 2秒後にギャラリーページへリダイレクト（galleryIdパラメータ付き）
-      setTimeout(() => {
-        // リダイレクト前にbeforeunload警告を無効化
-        setIsImporting(false);
-        // 少し待ってからリダイレクト（setStateが反映されるまで）
-        setTimeout(() => {
-          window.location.href = `/gallery?galleryId=${galleryId}`;
-        }, 100);
-      }, 2000);
-
-      // 進捗を監視（リダイレクト前の短い間のみ）
-      const checkProgress = setInterval(async () => {
-        try {
-          const progressResponse = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`);
-          if (progressResponse.ok) {
-            const progressData = await progressResponse.json();
-            const { status, progress, processedFiles, totalFiles } = progressData;
-
-            setStatusMessage(
-              `インポート進行中... (${processedFiles}/${totalFiles} ファイル処理済み - ${progress}%)`
-            );
-
-            if (status === 'completed') {
-              clearInterval(checkProgress);
-              setStatusMessage('インポートが正常に完了しました！ギャラリーページで確認してください。');
-              setIsImporting(false);
-            } else if (status === 'error') {
-              clearInterval(checkProgress);
-              setStatusMessage(`インポート中にエラーが発生しました: ${progressData.errorMessage || '不明なエラー'}`);
-              setIsImporting(false);
-            }
-          }
-        } catch (err) {
-          console.error('Progress check error:', err);
+      const pollProgress = async () => {
+        const progressResponse = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`);
+        if (!progressResponse.ok) {
+          throw new Error('進捗の取得に失敗しました');
         }
-      }, 3000); // 3秒ごとに進捗を確認
 
-      // タイムアウト設定（10分）
-      setTimeout(() => {
-        clearInterval(checkProgress);
-        if (isImporting) {
-          setStatusMessage('インポート処理がタイムアウトしました。ギャラリーページで結果を確認してください。');
-          setIsImporting(false);
+        const progressData = await progressResponse.json();
+        if (progressData.status === 'processing') {
+          setStatusMessage(`インポート処理中... (${progressData.processedFiles}/${progressData.totalFiles} 件)`);
+          return false;
         }
-      }, 600000);
 
+        if (progressData.status === 'completed') {
+          setStatusMessage('インポート処理が完了しました。ギャラリーページへ移動します...');
+          clearMessageTimers();
+          localStorage.removeItem('activeImportJob');
+          setTimeout(() => router.push(`/gallery?galleryId=${galleryId}`), 1500);
+          return true;
+        }
+
+        if (progressData.status === 'error') {
+          setStatusMessage(`インポート中にエラーが発生しました: ${progressData.errorMessage || '不明なエラー'}`);
+          return true;
+        }
+
+        setStatusMessage('インポートの状態を取得できませんでした。ギャラリーページで進捗を確認してください。');
+        return true;
+      };
+
+      let finished = false;
+      const maxAttempts = 60;
+      for (let i = 0; i < maxAttempts; i += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        finished = await pollProgress();
+        if (finished) {
+          break;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+      }
+
+      if (!finished) {
+        setStatusMessage('インポート処理がタイムアウトしました。ギャラリーページで結果を確認してください。');
+      }
     } catch (error) {
       console.error('Import error:', error);
       setStatusMessage(`エラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
+    } finally {
       setIsImporting(false);
-      // エラー時はタイマーをクリア
-      messageTimers.forEach(timer => clearTimeout(timer));
+      clearMessageTimers();
     }
   };
 
@@ -257,6 +411,34 @@ function AdminImportPage() {
             </p>
 
             <div className="space-y-6">
+              {needsAdditionalConsent && (
+                <div className="mb-6 rounded-md border border-yellow-300 bg-yellow-50 p-4">
+                  <p className="text-sm text-yellow-800">
+                    Google Classroom APIへのアクセス許可が必要です。下のボタンから追加のアクセス許可を付与してください。
+                  </p>
+                  {scopeRequestError && (
+                    <p className="mt-2 text-sm text-red-600">{scopeRequestError}</p>
+                  )}
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={handleRequestScopes}
+                      disabled={isRequestingScopes}
+                      className="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                    >
+                      {isRequestingScopes ? '権限を付与しています...' : 'Googleでアクセスを許可'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => router.back()}
+                      className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      前のページに戻る
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Step 1: Course Selection */}
               <div>
                 <label htmlFor="course-select" className="block text-sm font-medium text-gray-700 mb-2">
@@ -266,7 +448,7 @@ function AdminImportPage() {
                   id="course-select"
                   value={selectedCourse}
                   onChange={(e) => setSelectedCourse(e.target.value)}
-                  disabled={isLoadingCourses || isImporting}
+                  disabled={isLoadingCourses || isImporting || isRequestingScopes || needsAdditionalConsent}
                   className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100"
                 >
                   <option value="">{isLoadingCourses ? '読み込み中...' : '-- 授業を選択してください --'}</option>
@@ -288,7 +470,7 @@ function AdminImportPage() {
                     id="assignment-select"
                     value={selectedAssignment}
                     onChange={(e) => setSelectedAssignment(e.target.value)}
-                    disabled={isLoadingAssignments || !selectedCourse || isImporting}
+                    disabled={isLoadingAssignments || !selectedCourse || isImporting || isRequestingScopes || needsAdditionalConsent}
                     className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100"
                   >
                     <option value="">{isLoadingAssignments ? '読み込み中...' : '-- 課題を選択してください --'}</option>
@@ -305,7 +487,7 @@ function AdminImportPage() {
               <div className="pt-4">
                 <button
                   onClick={handleImport}
-                  disabled={!selectedAssignment || isImporting || isLoadingCourses || isLoadingAssignments}
+                  disabled={!selectedAssignment || isImporting || isLoadingCourses || isLoadingAssignments || isRequestingScopes || needsAdditionalConsent}
                   className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   {isImporting ? 'インポート処理中...' : 'インポートを開始'}
@@ -324,7 +506,7 @@ function AdminImportPage() {
                       </div>
                       <div className="ml-3">
                         <p className="text-sm text-yellow-700">
-                          <strong className="font-bold">重要:</strong> インポート処理が完了するまで、このページを閉じないでください。処理には数分かかる場合があります。
+                          <strong className="font-bold">重要:</strong> インポート処理が完全に終わるまで、このページを閉じないでください。処理には数分かかる場合があります。
                         </p>
                       </div>
                     </div>
@@ -335,8 +517,8 @@ function AdminImportPage() {
                     <div className="p-4 bg-indigo-50 rounded-md">
                       <div className="flex items-center justify-center">
                         <svg className="animate-spin h-5 w-5 text-indigo-600 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
                         <p className="text-sm font-medium text-indigo-700">{statusMessage}</p>
                       </div>
@@ -345,7 +527,7 @@ function AdminImportPage() {
                 </div>
               )}
 
-              {/* Status Message（インポート中でない場合） */}
+              {/* ステータスメッセージ（インポート中でない場合） */}
               {!isImporting && statusMessage && (
                 <div className="mt-6 p-4 bg-gray-100 rounded-md text-center">
                   <p className="text-sm text-gray-700">{statusMessage}</p>

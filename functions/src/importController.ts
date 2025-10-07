@@ -1,8 +1,47 @@
 import * as admin from 'firebase-admin';
-import { google, Auth } from 'googleapis';
+import { google, Auth, classroom_v1 } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
 import { FieldValue } from 'firebase-admin/firestore';
 import { processMultipleFiles } from './fileProcessor';
+
+const STUDENT_SUBMISSION_STATES = [
+  'RETURNED',
+  'TURNED_IN',
+  'RECLAIMED_BY_STUDENT',
+  'CREATED',
+  'NEW',
+] as const;
+
+async function listStudentSubmissions(
+  classroom: classroom_v1.Classroom,
+  courseId: string,
+  courseWorkId: string,
+  states: readonly string[] = STUDENT_SUBMISSION_STATES,
+): Promise<classroom_v1.Schema$StudentSubmission[]> {
+  const results: classroom_v1.Schema$StudentSubmission[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const normalizedStates = states.filter((state): state is string => typeof state === 'string' && state.length > 0);
+
+    const response = await classroom.courses.courseWork.studentSubmissions.list({
+      courseId,
+      courseWorkId,
+      states: normalizedStates.length ? normalizedStates : undefined,
+      pageToken,
+      pageSize: 100,
+    });
+
+    const { data } = response;
+    if (data.studentSubmissions?.length) {
+      results.push(...data.studentSubmissions);
+    }
+
+    pageToken = data.nextPageToken ?? undefined;
+  } while (pageToken);
+
+  return results;
+}
 
 export async function initializeImport(
   galleryId: string,
@@ -41,14 +80,8 @@ export async function initializeImport(
 
     const classroom = google.classroom({ version: 'v1', auth });
 
-    // 課題の提出物を取得
-    const submissionsResponse = await classroom.courses.courseWork.studentSubmissions.list({
-      courseId: classroomId,
-      courseWorkId: assignmentId,
-      states: ['TURNED_IN', 'RETURNED'],
-    });
-
-    const submissions = submissionsResponse.data.studentSubmissions || [];
+    // 課題の提出物を取得（全ステータスを対象にページング取得）
+    const submissions = await listStudentSubmissions(classroom, classroomId, assignmentId);
 
     // デバッグ: submissions 全体をログ出力
     console.log(`📊 Total submissions count: ${submissions.length}`);
@@ -58,7 +91,6 @@ export async function initializeImport(
       console.log('================================');
     } else {
       console.log('⚠️ No submissions found');
-      console.log('Response:', JSON.stringify(submissionsResponse.data, null, 2));
     }
 
     // 学生ごとにファイルをグループ化するためのMap
