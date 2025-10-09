@@ -336,50 +336,16 @@ function AdminImportPage() {
         galleryId,
       }));
 
-      const pollProgress = async () => {
-        const progressResponse = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`);
-        if (!progressResponse.ok) {
-          throw new Error('進捗の取得に失敗しました');
-        }
+      // バックエンドに処理が渡ったので、ギャラリーページにリダイレクト
+      clearMessageTimers();
+      setStatusMessage('インポート処理を開始しました。ギャラリーページへ移動します...');
 
-        const progressData = await progressResponse.json();
-        if (progressData.status === 'processing') {
-          setStatusMessage(`インポート処理中... (${progressData.processedFiles}/${progressData.totalFiles} 件)`);
-          return false;
-        }
+      // beforeunloadイベントを無効化してからリダイレクト
+      window.onbeforeunload = null;
 
-        if (progressData.status === 'completed') {
-          setStatusMessage('インポート処理が完了しました。ギャラリーページへ移動します...');
-          clearMessageTimers();
-          localStorage.removeItem('activeImportJob');
-          setTimeout(() => router.push(`/gallery?galleryId=${galleryId}`), 1500);
-          return true;
-        }
-
-        if (progressData.status === 'error') {
-          setStatusMessage(`インポート中にエラーが発生しました: ${progressData.errorMessage || '不明なエラー'}`);
-          return true;
-        }
-
-        setStatusMessage('インポートの状態を取得できませんでした。ギャラリーページで進捗を確認してください。');
-        return true;
-      };
-
-      let finished = false;
-      const maxAttempts = 60;
-      for (let i = 0; i < maxAttempts; i += 1) {
-        // eslint-disable-next-line no-await-in-loop
-        finished = await pollProgress();
-        if (finished) {
-          break;
-        }
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => setTimeout(resolve, 5_000));
-      }
-
-      if (!finished) {
-        setStatusMessage('インポート処理がタイムアウトしました。ギャラリーページで結果を確認してください。');
-      }
+      setTimeout(() => {
+        router.push(`/gallery?galleryId=${galleryId}`);
+      }, 1500);
     } catch (error) {
       console.error('Import error:', error);
       setStatusMessage(`エラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
