@@ -582,6 +582,7 @@ function GalleryPage() {
 
   const [sortOption, setSortOption] = useState<SortOption>('submittedAt-asc');
   const [selectedLabels, setSelectedLabels] = useState<LabelType[]>([]);
+  const [totalLabelFilter, setTotalLabelFilter] = useState<number | null>(null);
   const [importProgress, setImportProgress] = useState<{
     importJobId: string;
     galleryId: string;
@@ -765,6 +766,20 @@ function GalleryPage() {
   const getFilteredArtworks = () => {
     const sorted = getSortedArtworks();
 
+    if (totalLabelFilter !== null) {
+      return sorted.filter(artwork => {
+        const labels = artwork.labels ?? [];
+        const total = labels
+          .map(label => {
+            const match = /-(\d+)$/.exec(label);
+            return match ? Number(match[1]) : 0;
+          })
+          .reduce((sum, value) => sum + value, 0);
+
+        return total === totalLabelFilter;
+      });
+    }
+
     if (selectedLabels.length === 0) {
       return sorted;
     }
@@ -777,11 +792,28 @@ function GalleryPage() {
 
   // ラベルフィルターのトグル
   const toggleLabelFilter = (label: LabelType) => {
+    if (totalLabelFilter !== null) {
+      return;
+    }
+
     setSelectedLabels(prev =>
       prev.includes(label)
         ? prev.filter(l => l !== label)
         : [...prev, label]
     );
+  };
+
+  const handleTotalLabelFilterChange = (value: string) => {
+    if (value === '') {
+      setTotalLabelFilter(null);
+      return;
+    }
+
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      setTotalLabelFilter(parsed);
+      setSelectedLabels([]);
+    }
   };
 
   const handleLike = async (artworkId: string) => {
@@ -981,6 +1013,8 @@ function GalleryPage() {
     </div>
   );
 
+  const isTotalLabelFilterActive = totalLabelFilter !== null;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -1008,29 +1042,53 @@ function GalleryPage() {
               </Suspense>
               {/* ラベルフィルター（管理者のみ） */}
               {user?.role === 'admin' && (
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-700">フィルター:</span>
-                  <div className="flex items-center space-x-1">
-                    {LABELS.map((label) => {
-                      const isSelected = selectedLabels.includes(label.type);
+                <>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-700">フィルター:</span>
+                    <div className="flex items-center space-x-1">
+                      {LABELS.map((label) => {
+                        const isSelected = selectedLabels.includes(label.type);
+                        const buttonClasses = [
+                          'flex items-center justify-center w-7 h-7 text-xs font-bold rounded border transition-colors',
+                          isSelected
+                            ? `${label.bgColor} border-gray-300`
+                            : `bg-white border-gray-300 ${isTotalLabelFilterActive ? '' : 'hover:bg-gray-50'}`,
+                          isTotalLabelFilterActive ? 'opacity-50 cursor-not-allowed' : '',
+                        ]
+                          .filter((className) => className.length > 0)
+                          .join(' ');
+
+                        return (
+                          <button
+                            key={label.type}
+                            onClick={() => toggleLabelFilter(label.type)}
+                            disabled={isTotalLabelFilterActive}
+                            className={buttonClasses}
+                          >
+                            <span className={isSelected ? label.color : label.inactiveColor}>
+                              {label.symbol}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <select
+                    value={totalLabelFilter === null ? '' : String(totalLabelFilter)}
+                    onChange={(e) => handleTotalLabelFilterChange(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">合計で絞り込み</option>
+                    {Array.from({ length: 10 }, (_, index) => {
+                      const totalValue = index + 1;
                       return (
-                        <button
-                          key={label.type}
-                          onClick={() => toggleLabelFilter(label.type)}
-                          className={`flex items-center justify-center w-7 h-7 text-xs font-bold rounded border transition-colors ${
-                            isSelected
-                              ? `${label.bgColor} border-gray-300`
-                              : 'bg-white border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          <span className={isSelected ? label.color : label.inactiveColor}>
-                            {label.symbol}
-                          </span>
-                        </button>
+                        <option key={totalValue} value={totalValue}>
+                          {totalValue}
+                        </option>
                       );
                     })}
-                  </div>
-                </div>
+                  </select>
+                </>
               )}
               {/* 並び替えセレクトボックス */}
               <select

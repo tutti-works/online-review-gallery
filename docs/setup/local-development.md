@@ -1,14 +1,16 @@
-# セットアップガイド
+# ローカル開発環境セットアップガイド
+
+このガイドでは、オンライン講評会支援ギャラリーアプリをローカル環境で開発するためのセットアップ手順を説明します。
 
 ## 前提条件
 
-- Node.js 20以上
-- Firebase CLI (`npm install -g firebase-tools`)
-- Googleアカウント（Google Classroom APIアクセス用）
+- **Node.js 20以上**
+- **Firebase CLI** (`npm install -g firebase-tools`)
+- **Googleアカウント**（Google Classroom APIアクセス用）
 
 ## 1. 環境変数の設定
 
-`.env.local`ファイルをプロジェクトルートに作成し、以下の環境変数を設定してください：
+プロジェクトルートに`.env.local`ファイルを作成し、以下の環境変数を設定してください：
 
 ```bash
 # Firebase Configuration
@@ -74,72 +76,6 @@ npm run dev
 2. Googleアカウントでサインイン
 3. 自動的に管理者権限が付与されます
 
-## 6. Cloud Tasksキューの作成（本番環境のみ）
-
-本番環境では、Cloud Tasksキューを作成する必要があります：
-
-```bash
-gcloud tasks queues create file-processing-queue \
-  --location=asia-northeast1 \
-  --max-attempts=3 \
-  --max-retry-duration=600s
-```
-
-## 7. Cloud Runへのデプロイ（processFileTask）
-
-PDF処理機能（`processFileTask`）はGraphicsMagickが必要なため、Cloud Runにデプロイします。
-
-**重要:** デプロイは手動で実行してください。
-
-### ステップ1: TypeScriptをビルド
-
-```bash
-cd functions
-npm run build
-```
-
-### ステップ2: Dockerイメージをビルド（Cloud Build使用）
-
-**functionsディレクトリから実行：**
-
-```bash
-cd functions
-gcloud builds submit --tag gcr.io/online-review-gallery/processfiletask --project=online-review-gallery
-```
-
-### ステップ3: Cloud Runにデプロイ
-
-**1行コマンドで実行（改行なし）：**
-
-```bash
-gcloud run deploy processfiletask --image gcr.io/online-review-gallery/processfiletask --project=online-review-gallery --region=asia-northeast1 --platform=managed --no-allow-unauthenticated --memory=2Gi --timeout=1800 --min-instances=0 --max-instances=20 --cpu=1 --service-account=816131605069-compute@developer.gserviceaccount.com --set-env-vars=FUNCTION_TARGET=processFileTask,GCLOUD_PROJECT=online-review-gallery
-```
-
-詳細は [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) を参照してください。
-
-## 8. Firebase Functionsのデプロイ（その他の関数）
-
-```bash
-# Functionsのビルド
-cd functions
-npm run build
-
-# デプロイ
-firebase deploy --only functions
-```
-
-## 9. Firestore Security Rulesのデプロイ
-
-```bash
-firebase deploy --only firestore:rules
-```
-
-## 10. Storage Rulesのデプロイ
-
-```bash
-firebase deploy --only storage
-```
-
 ## トラブルシューティング
 
 ### Firebase Emulatorが起動しない
@@ -191,3 +127,8 @@ firebase experiments:enable webframeworks
 ├── firebase.json         # Firebase設定
 └── package.json
 ```
+
+## 次のステップ
+
+- [Cloud Runデプロイガイド](cloud-run-deployment.md) - PDF処理機能のデプロイ（本番環境のみ）
+- [本番デプロイガイド](production-deployment.md) - Firebase Hosting、Functionsのデプロイ
