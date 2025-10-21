@@ -47,7 +47,7 @@ gcloud run deploy processfiletask --image gcr.io/online-review-gallery/processfi
 
 **注意:** PowerShellやBashの改行記号（`` ` ``や`\`）は使用せず、すべて1行で実行してください。
 
-### ステップ3: Cloud Run URLを取得
+### ステップ4: Cloud Run URLを取得
 
 デプロイ完了後、サービスURLを取得します：
 
@@ -59,7 +59,7 @@ gcloud run services describe processfiletask \
 
 出力例：`https://processfiletask-xxxxxxxxxxxx-an.a.run.app`
 
-### ステップ4: 他のFunctions関数の環境変数を設定
+### ステップ5: 他のFunctions関数の環境変数を設定
 
 `importClassroomSubmissions`関数に、Cloud Run URLを環境変数として設定します。
 
@@ -86,7 +86,7 @@ Firebase Consoleで設定する場合：
 }
 ```
 
-### ステップ5: 他の関数をデプロイ
+### ステップ6: 他の関数をデプロイ
 
 ```bash
 firebase deploy --only functions

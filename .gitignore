@@ -81,4 +81,7 @@ tsconfig.tsbuildinfo
 functions/lib
 
 # Claude-specific settings
-.claude/
+.claude/firebase-admin-key.json
+
+# Firebase Admin SDK Service Account Key
+firebase-admin-key.json
