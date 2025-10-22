@@ -2,6 +2,19 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  webpack: (config, { isServer }) => {
+    config.resolve = config.resolve || {};
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      'konva$': 'konva/lib/index.js',
+    };
+    config.resolve.fallback = {
+      ...(config.resolve.fallback || {}),
+      canvas: false,
+    };
+
+    return config;
+  },
   images: {
     domains: [
       'lh3.googleusercontent.com',
