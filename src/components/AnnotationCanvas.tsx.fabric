@@ -1,0 +1,459 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+type FabricNamespace = typeof import('fabric')['fabric'];
+type FabricCanvas = InstanceType<FabricNamespace['Canvas']>;
+
+export type AnnotationSavePayload = {
+  data: string;
+  width: number;
+  height: number;
+};
+
+type AnnotationCanvasProps = {
+  imageUrl: string;
+  initialAnnotation?: AnnotationSavePayload | null;
+  editable: boolean;
+  onSave?: (annotation: AnnotationSavePayload | null) => Promise<void> | void;
+  onDirtyChange?: (dirty: boolean) => void;
+  saving?: boolean;
+  className?: string;
+};
+
+const changeEvents: string[] = [
+  'path:created',
+  'object:added',
+  'object:modified',
+  'object:removed',
+];
+
+const DEFAULT_WIDTH = 840;
+
+let fabricPromise: Promise<FabricNamespace> | null = null;
+const loadFabric = async (): Promise<FabricNamespace> => {
+  if (!fabricPromise) {
+    fabricPromise = import('fabric').then((module) => module.fabric);
+  }
+  return fabricPromise;
+};
+
+const AnnotationCanvas = ({
+  imageUrl,
+  initialAnnotation,
+  editable,
+  onSave,
+  onDirtyChange,
+  saving = false,
+  className,
+}: AnnotationCanvasProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fabricCanvasRef = useRef<FabricCanvas | null>(null);
+  const fabricRef = useRef<FabricNamespace | null>(null);
+  const [isDrawing, setIsDrawing] = useState(true);
+  const [brushColor, setBrushColor] = useState('#ff0000');
+  const [brushWidth, setBrushWidth] = useState(4);
+  const [isDirty, setIsDirty] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const markDirty = useCallback(
+    (dirty: boolean) => {
+      setIsDirty(dirty);
+      onDirtyChange?.(dirty);
+    },
+    [onDirtyChange],
+  );
+
+  const applyEditableState = useCallback(
+    (canvas: FabricCanvas, isEditable: boolean) => {
+      canvas.isDrawingMode = isEditable && isDrawing;
+      canvas.selection = isEditable;
+      canvas.defaultCursor = isEditable ? 'crosshair' : 'default';
+      canvas.hoverCursor = isEditable ? 'move' : 'default';
+      canvas.forEachObject((obj) => {
+        obj.selectable = isEditable;
+        obj.evented = isEditable;
+      });
+      canvas.renderAll();
+    },
+    [isDrawing],
+  );
+
+  const getCanvasWidth = useCallback(() => {
+    if (containerRef.current) {
+      const { clientWidth } = containerRef.current;
+      if (clientWidth > 0) {
+        return clientWidth;
+      }
+    }
+    return DEFAULT_WIDTH;
+  }, []);
+
+  const loadBackgroundImage = useCallback(
+    async (canvas: FabricCanvas) => {
+      const fabric = fabricRef.current;
+      if (!fabric || !canvas) return;
+
+      try {
+        fabric.Image.fromURL(
+          imageUrl,
+          (img: any) => {
+            if (!canvas) return;
+
+            const containerWidth = getCanvasWidth();
+            const imgWidth = img.width || containerWidth;
+            const imgHeight = img.height || containerWidth;
+            const scale = containerWidth / imgWidth;
+
+            // Fabric.jsのsetWidthとsetHeightを使用（これが正しい方法）
+            try {
+              canvas.setWidth(containerWidth);
+              canvas.setHeight(imgHeight * scale);
+            } catch (error) {
+              console.error('[AnnotationCanvas] Failed to set canvas dimensions:', error);
+              return;
+            }
+
+            // 画像をスケールして背景に設定
+            img.scale(scale);
+            img.set({
+              erasable: false,
+              selectable: false,
+              evented: false,
+            });
+
+            canvas.backgroundImage = img;
+            canvas.renderAll();
+          },
+          {
+            crossOrigin: 'anonymous',
+          },
+        );
+      } catch (error) {
+        console.error('[AnnotationCanvas] Failed to load background image:', error);
+      }
+    },
+    [getCanvasWidth, imageUrl],
+  );
+
+  const scaleObjects = useCallback((canvas: FabricCanvas, scale: number) => {
+    if (scale === 1) return;
+    canvas.getObjects().forEach((obj) => {
+      obj.set({
+        scaleX: (obj.scaleX || 1) * scale,
+        scaleY: (obj.scaleY || 1) * scale,
+        left: (obj.left || 0) * scale,
+        top: (obj.top || 0) * scale,
+      });
+      obj.setCoords();
+    });
+    canvas.renderAll();
+  }, []);
+
+  const loadAnnotation = useCallback(
+    async (canvas: FabricCanvas) => {
+      if (!canvas) return;
+
+      if (!initialAnnotation || !initialAnnotation.data) {
+        // オブジェクトを削除（v6対応）
+        const objects = canvas.getObjects();
+        if (objects.length > 0) {
+          canvas.remove(...objects);
+          canvas.renderAll();
+        }
+        markDirty(false);
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(initialAnnotation.data);
+
+        // 既存のオブジェクトを削除してからロード
+        const objects = canvas.getObjects();
+        if (objects.length > 0) {
+          canvas.remove(...objects);
+        }
+
+        canvas.loadFromJSON(parsed, () => {
+          if (!canvas) return;
+
+          const desiredWidth = getCanvasWidth();
+          const savedWidth = initialAnnotation.width || desiredWidth;
+          const scale = savedWidth ? desiredWidth / savedWidth : 1;
+
+          // Fabric.jsのsetWidthとsetHeightを使用
+          try {
+            canvas.setWidth(desiredWidth);
+            const scaledHeight = initialAnnotation.height ? initialAnnotation.height * scale : canvas.getHeight();
+            canvas.setHeight(scaledHeight);
+          } catch (error) {
+            console.error('[AnnotationCanvas] Failed to set canvas dimensions:', error);
+          }
+
+          // オブジェクトをスケーリング
+          scaleObjects(canvas, scale);
+          canvas.renderAll();
+        });
+        markDirty(false);
+      } catch (error) {
+        console.error('[AnnotationCanvas] Failed to load annotation JSON:', error);
+        markDirty(false);
+      }
+    },
+    [getCanvasWidth, initialAnnotation, markDirty, scaleObjects],
+  );
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    let isMounted = true;
+    let resizeObserver: ResizeObserver | null = null;
+    const removeListeners: Array<() => void> = [];
+    const containerElement = containerRef.current;
+
+    const initialise = async () => {
+      setIsLoading(true);
+      const fabric = await loadFabric();
+      if (!isMounted || !canvasRef.current) return;
+
+      fabricRef.current = fabric;
+
+      const canvas = new fabric.Canvas(canvasRef.current, {
+        selection: true,
+        preserveObjectStacking: true,
+      });
+      fabricCanvasRef.current = canvas;
+
+      if (!isMounted) return;
+
+      // PencilBrushを明示的に作成
+      canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+      canvas.freeDrawingBrush.color = brushColor;
+      canvas.freeDrawingBrush.width = brushWidth;
+
+      const handleChange = () => markDirty(true);
+      changeEvents.forEach((eventName) => {
+        canvas.on(eventName as any, handleChange as any);
+        removeListeners.push(() => {
+          canvas.off(eventName as any, handleChange as any);
+        });
+      });
+
+      // 初回の背景画像とアノテーションをロード
+      await loadBackgroundImage(canvas);
+      await loadAnnotation(canvas);
+      applyEditableState(canvas, editable);
+      setIsLoading(false);
+
+      // ResizeObserverは初期化完了後に設定
+      const handleResize = () => {
+        if (!canvas || !fabricCanvasRef.current) return;
+        void loadBackgroundImage(canvas);
+        void loadAnnotation(canvas);
+      };
+
+      resizeObserver = new ResizeObserver(handleResize);
+      if (containerElement) {
+        resizeObserver.observe(containerElement);
+      }
+    };
+
+    void initialise();
+
+    return () => {
+      isMounted = false;
+      removeListeners.forEach((remove) => remove());
+      if (resizeObserver && containerElement) {
+        resizeObserver.unobserve(containerElement);
+        resizeObserver.disconnect();
+      }
+      fabricCanvasRef.current?.dispose();
+      fabricCanvasRef.current = null;
+      fabricRef.current = null;
+    };
+  }, [
+    applyEditableState,
+    editable,
+    loadAnnotation,
+    loadBackgroundImage,
+    markDirty,
+  ]);
+
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    const fabric = fabricRef.current;
+    if (!canvas || !fabric) return;
+
+    // ブラシを再作成して色を設定
+    const brush = new fabric.PencilBrush(canvas);
+    brush.color = brushColor;
+    brush.width = brushWidth;
+    canvas.freeDrawingBrush = brush as any;
+  }, [brushColor, brushWidth]);
+
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    applyEditableState(canvas, editable);
+  }, [applyEditableState, editable]);
+
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.isDrawingMode = editable && isDrawing;
+  }, [editable, isDrawing]);
+
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || !initialAnnotation) return;
+    void loadAnnotation(canvas);
+  }, [initialAnnotation, loadAnnotation]);
+
+  const handleModeToggle = () => {
+    setIsDrawing((prev) => !prev);
+  };
+
+  const handleDeleteSelected = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    const activeObjects = canvas.getActiveObjects();
+    if (activeObjects.length === 0) return;
+    // v6対応: スプレッド演算子で全オブジェクトを渡す
+    canvas.remove(...activeObjects);
+    canvas.discardActiveObject();
+    canvas.renderAll();
+    markDirty(true);
+  };
+
+  const handleClearAll = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    // v6対応: スプレッド演算子で全オブジェクトを渡す
+    canvas.remove(...canvas.getObjects());
+    canvas.renderAll();
+    markDirty(true);
+  };
+
+  const handleSave = async () => {
+    if (!onSave) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    const hasObjects = canvas.getObjects().length > 0;
+    const payload: AnnotationSavePayload | null = hasObjects
+      ? {
+          data: JSON.stringify(canvas.toJSON()),
+          width: canvas.getWidth(),
+          height: canvas.getHeight(),
+        }
+      : null;
+
+    await onSave(payload);
+    markDirty(false);
+  };
+
+  const controlsDisabled = useMemo(
+    () => !editable || isLoading || saving,
+    [editable, isLoading, saving],
+  );
+
+  return (
+    <div className={className}>
+      {editable && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-gray-700">
+          <button
+            type="button"
+            onClick={handleModeToggle}
+            disabled={controlsDisabled}
+            className={`rounded border px-3 py-1 transition ${
+              isDrawing ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-gray-700 border-gray-300'
+            } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
+          >
+            {isDrawing ? '選択モードに切替' : '描画モードに切替'}
+          </button>
+          <label className="flex items-center gap-2">
+            線の色:
+            <input
+              type="color"
+              value={brushColor}
+              disabled={controlsDisabled}
+              onChange={(event) => setBrushColor(event.target.value)}
+              className="h-8 w-12 border border-gray-300"
+            />
+          </label>
+          <label className="flex items-center gap-2">
+            太さ:
+            <input
+              type="range"
+              min={1}
+              max={30}
+              value={brushWidth}
+              disabled={controlsDisabled}
+              onChange={(event) => setBrushWidth(Number(event.target.value))}
+            />
+            <span>{brushWidth}px</span>
+          </label>
+          <button
+            type="button"
+            onClick={handleDeleteSelected}
+            disabled={controlsDisabled}
+            className={`rounded border border-gray-300 px-3 py-1 text-gray-700 transition ${
+              controlsDisabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-gray-100'
+            }`}
+          >
+            選択削除
+          </button>
+          <button
+            type="button"
+            onClick={handleClearAll}
+            disabled={controlsDisabled}
+            className={`rounded border border-gray-300 px-3 py-1 text-gray-700 transition ${
+              controlsDisabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-gray-100'
+            }`}
+          >
+            全てクリア
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={controlsDisabled || !isDirty}
+            className={`rounded border px-3 py-1 transition ${
+              controlsDisabled || !isDirty
+                ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
+                : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            注釈を保存
+          </button>
+        </div>
+      )}
+      {!editable && (
+        <div className="mb-2 text-sm text-gray-500">
+          注釈は閲覧専用です。編集するには管理者としてログインしてください。
+        </div>
+      )}
+      <div
+        ref={containerRef}
+        className="relative w-full overflow-hidden rounded border border-gray-300 bg-white"
+      >
+        {isLoading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70">
+            <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-600" />
+          </div>
+        )}
+        <canvas ref={canvasRef} className="block w-full" />
+      </div>
+      {editable && !isDirty && (
+        <p className="mt-2 text-xs text-gray-500">注釈を編集したら「注釈を保存」をクリックしてください。</p>
+      )}
+      {editable && isDirty && (
+        <p className="mt-2 text-xs text-orange-500">
+          {saving ? '保存中です。しばらくお待ちください。' : '未保存の変更があります。'}
+        </p>
+      )}
+    </div>
+  );
+};
+
+export default AnnotationCanvas;
