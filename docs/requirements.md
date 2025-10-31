@@ -140,31 +140,38 @@
   - 削除時には2回の確認ダイアログが表示される。
   - 削除されたギャラリーがlocalStorageに保存されている場合は自動的にクリアされる。
 
-### 3.6. 作品注釈機能 (F-06) ※基本実装完了
+### 3.6. 作品注釈機能 (F-06) ※基本実装完了（2025-11-01）
 
 - **F-06-01: フリーハンド描画**
-  - ✅ 管理者は、作品画像の上にフリーハンドで線を描画できる（Konva.js Line + Bezier曲線）。
-  - ✅ 指やペンによるタッチ操作に対応し、滑らかな線の描画が可能。
+  - ✅ 管理者は、作品画像の上にフリーハンドで線を描画できる（Konva.js Line + Bezier曲線、tension: 0.5）。
+  - ✅ 指やペンによるタッチ操作に対応し、滑らかな線の描画が可能（touchStart, touchMove, touchEnd対応）。
   - ✅ 描画時にブラシの色（カラーピッカー）と太さ（1〜30px）を選択できる。
+  - ✅ 2層レイヤー構造（background-layer、drawing-layer）でレンダリング最適化。
 - **F-06-02: 注釈の編集**
   - ✅ 描画モードと選択モードを切り替えることができる。
-  - ✅ 選択モードでは、描画した線をクリックして選択し、移動が可能。
+  - ✅ 選択モードでは、描画した線をクリックして選択し、ドラッグで移動が可能。
   - ✅ 選択した線を個別に削除、または全ての注釈を一括クリアできる。
+  - ✅ 選択中の線はシャドウエフェクト（shadowColor: #2b6cb0、shadowBlur: 10）で視覚的にハイライト。
+  - ✅ hitStrokeWidth調整により、細い線でもタップしやすい。
   - 🔄 消しゴムツールの追加（予定）
   - 🔄 元に戻す/やり直し機能の追加（予定）
 - **F-06-03: 注釈データの保存**
-  - ✅ 注釈データはベクトルデータ（JSON形式）としてFirestoreに保存される。
-  - ✅ 各ページ（画像）ごとに独立した注釈データを持つ。
-  - ✅ 注釈の作成者、作成日時、更新日時を記録する。
-  - ✅ 未保存の変更がある場合は警告を表示する。
+  - ✅ 注釈データはベクトルデータ（Konva.js JSON形式）としてFirestoreに保存される。
+  - ✅ 各ページ（画像）ごとに独立した注釈データを持つ（pageNumberで識別）。
+  - ✅ 注釈の更新日時と更新者を記録する（updatedAt、updatedBy）。
+  - ✅ 未保存の変更がある場合は警告を表示する（isDirtyフラグ管理）。
+  - ✅ stage.toJSON()でエクスポート、Node.create()でインポート。
 - **F-06-04: 注釈の表示**
   - ✅ モーダル内で「注釈」ボタンをクリックすると、注釈モードに切り替わる。
-  - ✅ 管理者は注釈の編集が可能、閲覧者は注釈の表示のみ可能。
+  - ✅ 管理者は注釈の編集が可能、閲覧者は注釈の表示のみ可能（editable propsで制御）。
   - ✅ 保存済みの注釈データを読み込んで、キャンバス上に復元する。
+  - ✅ 画面サイズ変更時の自動スケーリング対応（ResizeObserver使用）。
+  - ✅ 注釈モード終了時に未保存変更がある場合の確認ダイアログ。
   - 🔄 注釈がある場合はデフォルトで注釈を表示し、表示/非表示切り替えボタンを設置（予定）
 - **F-06-05: ページ間での注釈管理**
   - ✅ 複数ページの作品では、各ページごとに独立した注釈を管理する。
   - ✅ ページを切り替えると、該当ページの注釈が自動的に読み込まれる。
+  - ✅ ページ切り替え時は未保存変更を保持（isDirtyフラグ維持）。
   - 🔄 ページ切り替え時に未保存の注釈を自動保存する機能（予定）
 - **F-06-06: ズーム・パン連携（予定）**
   - 🔄 注釈モードでも通常表示と同様に画像をズーム（拡大/縮小）できる
@@ -264,12 +271,22 @@
 - ✅ GitHub Actionsによる自動デプロイ
 - ✅ **ハイブリッド方式によるギャラリー管理**（2段階ドロップダウン、URL・localStorage同期、ギャラリー別削除）
 
-### 6.2. 範囲内（実装中）
+### 6.2. 範囲内（実装済み）
 
-- ✅ **作品注釈機能（F-06）基本機能:** フリーハンド描画、選択・移動・削除、Firestore保存（Konva.jsベース、2025-10-23実装完了）
-- 🔄 **作品注釈機能（F-06）拡張機能:** ズーム・パン連携、ツールバー拡張、注釈表示切り替え、自動保存（実装予定）
+- ✅ **作品注釈機能（F-06）基本機能:** フリーハンド描画、選択・移動・削除、Firestore保存（Konva.jsベース、2025-11-01実装完了）
+  - react-konva v18.2.9を使用した宣言的実装（582行）
+  - 2層レイヤー構造（background-layer、drawing-layer）
+  - ResizeObserverによる自動リサイズ対応
+  - タッチデバイス対応（touchStart, touchMove, touchEnd）
+  - 未保存変更の警告機能（isDirtyフラグ管理）
+  - 権限制御（管理者のみ編集可能、閲覧者は表示のみ）
 
-### 6.3. 範囲外（実装しない）
+### 6.3. 範囲内（拡張機能として実装予定）
+
+- 🔄 **作品注釈機能（F-06）拡張機能:** ズーム・パン連携、ツールバー拡張、注釈表示切り替え、自動保存
+  - 詳細は「10. 実装計画: 作品注釈機能（F-06）」を参照
+
+### 6.4. 範囲外（実装しない）
 
 - ❌ **動画ファイルのストリーミング再生:** 動画ファイルはインポート対象外とする
 - ❌ **学生間のピアレビュー機能:** 学生による「いいね」やコメント機能は実装しない
@@ -359,36 +376,46 @@ userRoles (コレクション)
 │   └── createdAt: Timestamp
 ```
 
-### 7.2. 注釈データ構造（実装予定）
+### 7.2. 注釈データ構造（実装済み）
 
 ```typescript
 interface ArtworkAnnotation {
-  imageId: string;        // どの画像（ArtworkImage.id）に対する注釈か
   pageNumber: number;     // 作品内のページ番号（1から開始）
-  data: string;           // Fabric.jsのJSONデータ（文字列化）
+  data: string;           // Konva.jsのJSONデータ（文字列化）
   width: number;          // 注釈作成時のキャンバス幅
   height: number;         // 注釈作成時のキャンバス高さ
-  createdBy: string;      // 注釈作成者のメールアドレス
-  createdAt: Timestamp;   // 作成日時
-  updatedAt: Timestamp;   // 更新日時
+  updatedAt: Date | string; // 更新日時
+  updatedBy?: string;     // 更新者のメールアドレス（オプショナル、将来的に必須化予定）
 }
 ```
 
 **設計方針:**
 - 各ページごとに独立した注釈データを管理（`pageNumber`で識別）
-- Fabric.jsのJSON形式でベクトルデータを保存（後から編集可能）
+- Konva.jsのJSON形式でベクトルデータを保存（後から編集可能）
 - キャンバスサイズ（`width`, `height`）を保存し、異なる画面サイズでの表示時にスケーリング可能
 - 注釈データは`artworks`ドキュメント内の配列フィールド（`annotations`）として保存
 - 1ページあたりの注釈データサイズ: 約5〜10KB（目安）
 - Firestoreドキュメントサイズ上限（1MB）に対して十分な余裕あり
 
 **使用ライブラリ:**
-- **Konva.js**: キャンバス操作ライブラリ（60KB gzip）
-  - フリーハンド描画（Line + Bezier曲線）
+- **Konva.js v9.3.16**: キャンバス操作ライブラリ（60KB gzip）
+  - フリーハンド描画（Line + Bezier曲線、tension: 0.5）
   - オブジェクトの選択・移動・削除
-  - JSON形式でのシリアライズ/デシリアライズ
-  - タッチデバイス対応
-  - 背景画像のレイヤー管理が安定
+  - JSON形式でのシリアライズ/デシリアライズ（stage.toJSON() / Node.create()）
+  - タッチデバイス対応（touchStart, touchMove, touchEnd）
+  - 2層レイヤー構造（background-layer、drawing-layer）で最適化
+- **react-konva v18.2.9**: React統合ライブラリ
+  - Stage, Layer, Image, Lineコンポーネント
+  - 宣言的なKonva.js操作
+  - React Hooksとの統合
+
+**実装の特徴（2025-11-01）:**
+- **スケーリング処理**: baseSize（元画像サイズ）とdisplaySize（表示サイズ）を分離管理し、displayScaleで自動調整
+- **ResizeObserver**: コンテナサイズ変更を検知して自動リサイズ
+- **状態管理**: isDirtyフラグで未保存変更を追跡、onDirtyChangeコールバックで親コンポーネントへ通知
+- **権限制御**: editable propsで管理者のみ編集可能、閲覧者は表示のみ
+- **保存処理**: 楽観的UI更新でスムーズな操作感を実現
+- **エラーハンドリング**: 画像読み込み失敗時のフォールバック、JSONパースエラー時の安全な処理
 
 **技術選定の経緯（2025-10-23）:**
 - 当初はFabric.js v5.3.0を採用したが、以下の致命的な問題が発生:
@@ -465,6 +492,7 @@ interface ArtworkAnnotation {
 - **2025-10-21:** 合計ラベルフィルター機能実装
 - **2025-10-22:** 作品注釈機能の要件定義追加（Fabric.jsベース、実装予定）
 - **2025-10-23:** Fabric.js実装でDOM操作エラー発生、Konva.jsへの移行を決定、基本的な注釈機能の実装完了（フリーハンド描画、選択・移動・削除、Firestore保存）
+- **2025-11-01:** 注釈機能の実装状況をドキュメントに反映、拡張機能のロードマップを整理
 
 ---
 
@@ -499,18 +527,18 @@ interface ArtworkAnnotation {
 - React統合が優れており、`react-konva`を使用すればReactらしい実装が可能
 - 移行コストは2〜3時間程度（Fabric.js実装の経験を活かせる）
 
-### 10.2. 実装状況（2025-10-23時点）
+### 10.2. 実装状況（2025-11-01時点）
 
 #### Phase 1: Fabric.jsのクリーンアップと依存関係の更新 ✅ 完了
 - ✅ Fabric.jsを削除
 - ✅ Konva.js (v9.3.16) とreact-konva (v18.2.9) をインストール
 
 #### Phase 2: AnnotationCanvasコンポーネントのKonva.js実装 ✅ 完了
-実装ファイル: [src/components/AnnotationCanvas.tsx](src/components/AnnotationCanvas.tsx) (582行)
+実装ファイル: [src/components/AnnotationCanvas.tsx](../src/components/AnnotationCanvas.tsx) (582行)
 
 **実装済み機能:**
 - ✅ react-konvaコンポーネント（Stage, Layer, Image, Line）を使用
-- ✅ 背景画像をImageコンポーネントとしてbackgroundLayerに配置
+- ✅ 背景画像をImageコンポーネントとしてbackground-layerに配置
 - ✅ フリーハンド描画をLineコンポーネントで実装（tension: 0.5でBezier曲線）
 - ✅ 描画モード/選択モードの切り替えボタン
 - ✅ ブラシ設定（カラーピッカーで色選択、1-30pxで太さ調整）
@@ -518,28 +546,32 @@ interface ArtworkAnnotation {
 - ✅ 選択した線の移動（ドラッグ）
 - ✅ 選択削除ボタン（選択中の線を削除）
 - ✅ 全てクリアボタン（全ての注釈を削除）
-- ✅ 線の選択時にシャドウエフェクトで視覚的にハイライト
+- ✅ 線の選択時にシャドウエフェクト（shadowColor: #2b6cb0、shadowBlur: 10）で視覚的にハイライト
+- ✅ hitStrokeWidth調整により細い線でもタップしやすい（Math.max(strokeWidth * 2, 20)）
 - ✅ タッチデバイス対応（touchStart, touchMove, touchEnd）
 
-**レイアウト:**
+**レイアウトと最適化:**
 - 2層レイヤー構造: background-layer（画像）とdrawing-layer（注釈）
-- コンテナの幅に合わせて自動スケーリング
+- コンテナの幅に合わせて自動スケーリング（displayScale管理）
 - ResizeObserverでリサイズに対応
+- baseSize（元画像サイズ）とdisplaySize（表示サイズ）を分離管理
+- 保存時は`controlsDisabled`でボタンを無効化し、操作競合を防止
 
 #### Phase 3: データ形式の検証 ✅ 完了
 - ✅ JSON形式でのエクスポート/インポート動作確認済み
 - ✅ 画像サイズ変更時のスケーリング処理実装済み
   - baseSize（元画像サイズ）とdisplaySize（表示サイズ）を管理
   - displayScaleで注釈の座標とストローク幅を自動調整
+  - 正規化処理により、異なる画面サイズでも正確に表示
 - ✅ ページ切り替え時の注釈データ保持確認済み
   - 各ページのpageNumberで注釈を識別
   - ページ切り替え時に該当ページの注釈を自動読み込み
 
 #### Phase 4: Firestore統合とテスト ✅ 完了
 実装ファイル:
-- [src/components/ArtworkModal.tsx](src/components/ArtworkModal.tsx)
-- [src/components/artwork-modal/ArtworkViewer.tsx](src/components/artwork-modal/ArtworkViewer.tsx)
-- [src/app/gallery/page.tsx](src/app/gallery/page.tsx)
+- [src/components/ArtworkModal.tsx](../src/components/ArtworkModal.tsx)
+- [src/components/artwork-modal/ArtworkViewer.tsx](../src/components/artwork-modal/ArtworkViewer.tsx)
+- [src/app/gallery/page.tsx](../src/app/gallery/page.tsx)
 
 **実装済み機能:**
 - ✅ Firestoreへの注釈データ保存処理（onSaveAnnotation）
@@ -554,6 +586,8 @@ interface ArtworkAnnotation {
 GalleryPage → ArtworkModal → ArtworkViewer → AnnotationCanvas
          ↓
     handleSaveAnnotation (Firestore updateDoc)
+         ↓
+    楽観的UI更新（localのartworks状態更新）
 ```
 
 #### Phase 5: UX改善と最適化 ✅ 基本完了
@@ -563,6 +597,8 @@ GalleryPage → ArtworkModal → ArtworkViewer → AnnotationCanvas
 - ✅ 遅延読み込み（dynamic import with ssr: false）
 - ✅ 保存中は操作を無効化（controlsDisabled状態）
 - ✅ 閲覧専用モード時のメッセージ表示
+- ✅ カーソル表示の切り替え（描画モード: crosshair、選択モード: move、無効時: default）
+- ✅ ボタンの状態管理（disabled時の視覚的フィードバック）
 
 ### 10.3. 拡張機能実装ロードマップ
 
