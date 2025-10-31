@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -77,6 +78,23 @@ const ArtworkViewer = ({
   const [AnnotationCanvasComponent, setAnnotationCanvasComponent] =
     useState<ForwardRefExoticComponent<AnnotationCanvasProps & RefAttributes<AnnotationCanvasHandle>> | null>(null);
   const [isAnnotationCanvasLoading, setAnnotationCanvasLoading] = useState(true);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [baseScale, setBaseScale] = useState(1);
+  const [imageNaturalSize, setImageNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const {
+    zoom,
+    panPosition,
+    isDragging,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+    handleDragStart,
+    handleZoomIn,
+    handleZoomOut,
+    resetZoom,
+  } = usePanZoom();
+  const effectiveZoom = zoom * baseScale;
+  const canPan = effectiveZoom > 1.01;
 
   useEffect(() => {
     let isMounted = true;
@@ -105,6 +123,77 @@ const ArtworkViewer = ({
   }, []);
 
   const imageRef = useRef<HTMLImageElement | null>(null);
+
+  const updateBaseScale = useCallback(() => {
+    if (!containerRef.current || !imageNaturalSize) {
+      setBaseScale(1);
+      return;
+    }
+
+    const { width: containerWidth, height: containerHeight } = containerRef.current.getBoundingClientRect();
+    if (containerWidth <= 0 || containerHeight <= 0) {
+      setBaseScale(1);
+      return;
+    }
+
+    const padding = 64; // 8 * 2 sides = 64px total padding
+    const availableWidth = containerWidth - padding;
+    const availableHeight = containerHeight - padding;
+
+    const scaleX = availableWidth / imageNaturalSize.width;
+    const scaleY = availableHeight / imageNaturalSize.height;
+    const nextScale = Math.min(scaleX, scaleY);
+    setBaseScale(nextScale > 0 && Number.isFinite(nextScale) ? nextScale : 1);
+  }, [imageNaturalSize]);
+
+  useEffect(() => {
+    const img = imageRef.current;
+    if (!img) {
+      return;
+    }
+
+    const handleLoad = () => {
+      if (!img.naturalWidth || !img.naturalHeight) {
+        return;
+      }
+      setImageNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+
+    if (img.complete) {
+      handleLoad();
+    } else {
+      img.addEventListener('load', handleLoad);
+    }
+
+    return () => {
+      img.removeEventListener('load', handleLoad);
+    };
+  }, [currentImage.url]);
+
+  useEffect(() => {
+    updateBaseScale();
+  }, [updateBaseScale, showAnnotation]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof window === 'undefined' || typeof window.ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new window.ResizeObserver(() => {
+      updateBaseScale();
+    });
+
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [updateBaseScale]);
+
+  useEffect(() => {
+    resetZoom();
+  }, [currentImage?.id, currentImage.url, resetZoom]);
 
   const overlayAnnotation = useMemo<OverlayAnnotationData | null>(() => {
     if (!currentAnnotation) {
@@ -159,19 +248,6 @@ const ArtworkViewer = ({
       : '豕ｨ驥医ｒ陦ｨ遉ｺ'
     : '豕ｨ驥医・縺ゅｊ縺ｾ縺帙ｓ';
 
-  const {
-    zoom,
-    panPosition,
-    isDragging,
-    handleMouseDown,
-    handleMouseMove,
-    handleMouseUp,
-    handleDragStart,
-    handleZoomIn,
-    handleZoomOut,
-    resetZoom,
-  } = usePanZoom();
-
   return (
     <div className="relative flex flex-1 flex-col bg-gray-100">
       <button
@@ -220,12 +296,23 @@ const ArtworkViewer = ({
           </div>
         ) : (
           <div
+            ref={containerRef}
             className="h-full w-full"
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
+            onMouseDown={(event) => {
+              if (!canPan) {
+                return;
+              }
+              handleMouseDown(event);
+            }}
+            onMouseMove={(event) => {
+              if (!canPan) {
+                return;
+              }
+              handleMouseMove(event);
+            }}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+            style={{ cursor: canPan ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
           >
             <div
               className="flex h-full w-full items-center justify-center p-8 transition-transform duration-200 ease-out"
@@ -233,15 +320,22 @@ const ArtworkViewer = ({
                 transform: `scale(${zoom}) translate(${panPosition.x / zoom}px, ${panPosition.y / zoom}px)`,
                 pointerEvents: 'none',
                 userSelect: 'none',
+                transformOrigin: 'center center',
               }}
             >
-              <div className="relative inline-block">
+              <div
+                className="relative inline-block"
+                style={{
+                  transform: `scale(${baseScale})`,
+                  transformOrigin: 'center center',
+                }}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   ref={imageRef}
                   src={currentImage.url}
                   alt={`${currentFileName} - Page ${currentPage + 1}`}
-                  className="max-h-full max-w-full select-none object-contain"
+                  className="select-none"
                   draggable={false}
                   onDragStart={handleDragStart}
                 />
