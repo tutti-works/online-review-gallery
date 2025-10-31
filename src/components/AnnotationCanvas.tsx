@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -6,7 +6,7 @@ import type { Stage as KonvaStage } from 'konva/lib/Stage';
 import type { Line as KonvaLineNode } from 'konva/lib/shapes/Line';
 import { Layer, Line, Stage } from 'react-konva';
 import { Image as KonvaImage } from 'react-konva';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
 export type AnnotationSavePayload = {
   data: string;
@@ -14,7 +14,16 @@ export type AnnotationSavePayload = {
   height: number;
 };
 
-type AnnotationCanvasProps = {
+export type AnnotationSaveReason = 'manual' | 'idle' | 'page-change' | 'mode-exit';
+
+export type AnnotationCanvasHandle = {
+  save: (options?: { reason?: AnnotationSaveReason; force?: boolean }) => Promise<void>;
+  hasDirtyChanges: () => boolean;
+};
+
+type SaveOptions = { reason?: AnnotationSaveReason; force?: boolean };
+
+export type AnnotationCanvasProps = {
   imageUrl: string;
   initialAnnotation?: AnnotationSavePayload | null;
   editable: boolean;
@@ -35,7 +44,22 @@ type LineShape = {
 
 const DEFAULT_WIDTH = 840;
 const DEFAULT_HEIGHT = 630;
-const DRAWING_LAYER_NAME = 'drawing-layer';
+export const DRAWING_LAYER_NAME = 'drawing-layer';
+
+const COLOR_PRESETS = [
+  { label: 'Black', value: '#000000' },
+  { label: 'Red', value: '#EF4444' },
+  { label: 'Blue', value: '#3B82F6' },
+  { label: 'Green', value: '#22C55E' },
+  { label: 'Yellow', value: '#FACC15' },
+  { label: 'White', value: '#FFFFFF' },
+] as const;
+
+const BRUSH_WIDTH_OPTIONS = [
+  { label: 'Thin', value: 2 },
+  { label: 'Medium', value: 6 },
+  { label: 'Thick', value: 12 },
+] as const;
 
 const generateLineId = () => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -53,18 +77,24 @@ const loadImage = (src: string) =>
     img.src = src;
   });
 
-const AnnotationCanvas = ({
-  imageUrl,
-  initialAnnotation,
-  editable,
-  onSave,
-  onDirtyChange,
-  saving = false,
-  className,
-}: AnnotationCanvasProps) => {
+const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProps>(function AnnotationCanvas(
+  {
+    imageUrl,
+    initialAnnotation,
+    editable,
+    onSave,
+    onDirtyChange,
+    saving = false,
+    className,
+  }: AnnotationCanvasProps,
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<KonvaStage | null>(null);
   const isPointerDrawingRef = useRef(false);
+  const autoSaveTimeoutRef = useRef<number | null>(null);
+  const indicatorTimeoutRef = useRef<number | null>(null);
+  const saveAnnotationRef = useRef<(options?: SaveOptions) => Promise<void>>();
 
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [baseSize, setBaseSize] = useState<{ width: number; height: number } | null>(null);
@@ -72,18 +102,54 @@ const AnnotationCanvas = ({
   const [displayScale, setDisplayScale] = useState<{ x: number; y: number }>({ x: 1, y: 1 });
   const [lines, setLines] = useState<LineShape[]>([]);
   const [mode, setMode] = useState<'draw' | 'select'>('draw');
-  const [brushColor, setBrushColor] = useState('#ff0000');
-  const [brushWidth, setBrushWidth] = useState(4);
+  const [brushColor, setBrushColor] = useState<string>(COLOR_PRESETS[0].value);
+  const [brushWidth, setBrushWidth] = useState<number>(BRUSH_WIDTH_OPTIONS[1].value);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+
+  const clearAutoSaveTimer = useCallback(() => {
+    if (autoSaveTimeoutRef.current !== null) {
+      window.clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearIndicatorTimer = useCallback(() => {
+    if (indicatorTimeoutRef.current !== null) {
+      window.clearTimeout(indicatorTimeoutRef.current);
+      indicatorTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleIdleAutoSave = useCallback(() => {
+    if (!editable || saving || isLoading || !onSave) {
+      return;
+    }
+
+    clearAutoSaveTimer();
+    autoSaveTimeoutRef.current = window.setTimeout(() => {
+      autoSaveTimeoutRef.current = null;
+      const fn = saveAnnotationRef.current;
+      if (fn) {
+        void fn({ reason: 'idle' });
+      }
+    }, 10000);
+  }, [clearAutoSaveTimer, editable, isLoading, onSave, saving]);
 
   const markDirty = useCallback(
     (dirty: boolean) => {
-      setIsDirty(dirty);
+      setIsDirty((prev) => (prev === dirty ? prev : dirty));
       onDirtyChange?.(dirty);
+
+      if (dirty) {
+        scheduleIdleAutoSave();
+      } else {
+        clearAutoSaveTimer();
+      }
     },
-    [onDirtyChange],
+    [clearAutoSaveTimer, onDirtyChange, scheduleIdleAutoSave],
   );
 
   const interactionsEnabled = editable && !saving && !isLoading;
@@ -239,14 +305,18 @@ const AnnotationCanvas = ({
         setLines(normalizedLines);
         setSelectedId(null);
         markDirty(false);
+        clearIndicatorTimer();
+        setAutoSaveStatus('idle');
       } catch (error) {
         console.error('[AnnotationCanvas] Failed to parse annotation JSON:', error);
         setLines([]);
         setSelectedId(null);
         markDirty(false);
+        clearIndicatorTimer();
+        setAutoSaveStatus('idle');
       }
     },
-    [baseSize, markDirty],
+    [baseSize, clearIndicatorTimer, markDirty],
   );
 
   useEffect(() => {
@@ -385,33 +455,96 @@ const AnnotationCanvas = ({
     markDirty(true);
   };
 
-  const handleModeToggle = () => {
+  const handleSetMode = useCallback((nextMode: 'draw' | 'select') => {
     setMode((prev) => {
-      const next = prev === 'draw' ? 'select' : 'draw';
-      if (next === 'draw') {
+      if (prev === nextMode) {
+        return prev;
+      }
+      if (nextMode === 'draw') {
         setSelectedId(null);
       }
-      return next;
+      return nextMode;
     });
-  };
+  }, []);
 
-  const handleSave = async () => {
-    if (!onSave) return;
-    const stage = stageRef.current;
-    if (!stage) return;
+  const saveAnnotation = useCallback(
+    async (options?: SaveOptions) => {
+      if (!editable || !onSave) return;
+      if (saving) return;
 
-    const hasLines = lines.length > 0;
-    const payload: AnnotationSavePayload | null = hasLines
-      ? {
-          data: stage.toJSON(),
-          width: stage.width(),
-          height: stage.height(),
+      const stage = stageRef.current;
+      if (!stage) return;
+
+      clearAutoSaveTimer();
+
+      if (!isDirty && !options?.force) {
+        return;
+      }
+
+      const reason = options?.reason ?? 'manual';
+      const isAutoReason = reason !== 'manual';
+
+      if (isAutoReason) {
+        clearIndicatorTimer();
+        setAutoSaveStatus('saving');
+      }
+
+      const hasLines = lines.length > 0;
+      const payload: AnnotationSavePayload | null = hasLines
+        ? {
+            data: stage.toJSON(),
+            width: stage.width(),
+            height: stage.height(),
+          }
+        : null;
+
+      try {
+        await onSave(payload);
+        markDirty(false);
+
+        if (isAutoReason) {
+          setAutoSaveStatus('saved');
+          indicatorTimeoutRef.current = window.setTimeout(() => {
+            setAutoSaveStatus('idle');
+            indicatorTimeoutRef.current = null;
+          }, 2000);
         }
-      : null;
+      } catch (error) {
+        if (isAutoReason) {
+          setAutoSaveStatus('idle');
+        }
+        throw error;
+      }
+    },
+    [
+      clearAutoSaveTimer,
+      clearIndicatorTimer,
+      editable,
+      isDirty,
+      lines.length,
+      markDirty,
+      onSave,
+      saving,
+    ],
+  );
 
-    await onSave(payload);
-    markDirty(false);
-  };
+  const handleManualSave = useCallback(() => {
+    void saveAnnotation({ reason: 'manual' });
+  }, [saveAnnotation]);
+
+  useEffect(() => {
+    saveAnnotationRef.current = saveAnnotation;
+    return () => {
+      saveAnnotationRef.current = undefined;
+    };
+  }, [saveAnnotation]);
+
+  useEffect(() => {
+    return () => {
+      clearAutoSaveTimer();
+      clearIndicatorTimer();
+    };
+  }, [clearAutoSaveTimer, clearIndicatorTimer]);
 
   const controlsDisabled = useMemo(
     () => !editable || isLoading || saving,
@@ -422,80 +555,203 @@ const AnnotationCanvas = ({
   const scaleY = displayScale.y || 1;
   const averageScale = (scaleX + scaleY) / 2 || 1;
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      save: (options?: SaveOptions) => saveAnnotation(options),
+      hasDirtyChanges: () => isDirty,
+    }),
+    [isDirty, saveAnnotation],
+  );
+
   return (
     <div className={className}>
       {editable && (
-        <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-gray-700">
-          <button
-            type="button"
-            onClick={handleModeToggle}
-            disabled={controlsDisabled}
-            className={`rounded border px-3 py-1 transition ${
-              mode === 'draw'
-                ? 'border-blue-700 bg-blue-600 text-white'
-                : 'border-gray-300 bg-white text-gray-700'
-            } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
-          >
-            {mode === 'draw' ? '選択モードに切り替え' : '描画モードに切り替え'}
-          </button>
-          <label className="flex items-center gap-2">
-            線の色:
-            <input
-              type="color"
-              value={brushColor}
-              disabled={controlsDisabled}
-              onChange={(event) => setBrushColor(event.target.value)}
-              className="h-8 w-12 border border-gray-300"
-            />
-          </label>
-          <label className="flex items-center gap-2">
-            太さ
-            <input
-              type="range"
-              min={1}
-              max={30}
-              value={brushWidth}
-              disabled={controlsDisabled}
-              onChange={(event) => setBrushWidth(Number(event.target.value))}
-            />
-            <span>{brushWidth}px</span>
-          </label>
-          <button
-            type="button"
-            onClick={handleDeleteSelected}
-            disabled={controlsDisabled || !selectedId}
-            className={`rounded border border-gray-300 px-3 py-1 text-gray-700 transition ${
-              controlsDisabled || !selectedId ? 'cursor-not-allowed opacity-60' : 'hover:bg-gray-100'
-            }`}
-          >
-            選択削除
-          </button>
-          <button
-            type="button"
-            onClick={handleClearAll}
-            disabled={controlsDisabled || lines.length === 0}
-            className={`rounded border border-gray-300 px-3 py-1 text-gray-700 transition ${
-              controlsDisabled || lines.length === 0 ? 'cursor-not-allowed opacity-60' : 'hover:bg-gray-100'
-            }`}
-          >
-            全てクリア
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={controlsDisabled || !isDirty}
-            className={`rounded border px-3 py-1 transition ${
-              controlsDisabled || !isDirty
-                ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
-                : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
-            }`}
-          >
-            注釈を保存
-          </button>
+        <div className="mb-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+          <div className="flex flex-wrap items-start gap-4">
+            <div className="flex min-w-[180px] flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">TOOLS</span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSetMode('draw')}
+                  disabled={controlsDisabled}
+                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
+                    mode === 'draw'
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-blue-50'
+                  } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  Draw
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetMode('select')}
+                  disabled={controlsDisabled}
+                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
+                    mode === 'select'
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-blue-50'
+                  } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  Select Line
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="flex items-center gap-1 rounded-md border border-dashed border-gray-300 bg-white px-3 py-1 text-gray-400"
+                  title="Available in phase 2"
+                >
+                  Erase (soon)
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="flex items-center gap-1 rounded-md border border-dashed border-gray-300 bg-white px-3 py-1 text-gray-400"
+                  title="Available in phase 2"
+                >
+                  Pan (soon)
+                </button>
+              </div>
+            </div>
+            <div className="flex min-w-[220px] flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">BRUSH</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1">
+                  {COLOR_PRESETS.map((preset) => {
+                    const isSelected = brushColor.toLowerCase() === preset.value.toLowerCase();
+                    return (
+                      <button
+                        key={preset.value}
+                        type="button"
+                        onClick={() => setBrushColor(preset.value)}
+                        disabled={controlsDisabled}
+                        className={`h-7 w-7 rounded-full border transition ${
+                          isSelected
+                            ? 'border-blue-500 ring-2 ring-blue-200'
+                            : 'border-gray-300 hover:border-gray-400'
+                        } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                        style={{ backgroundColor: preset.value }}
+                        title={`Color: ${preset.label}`}
+                        aria-pressed={isSelected}
+                      >
+                        <span className="sr-only">Color {preset.label}</span>
+                      </button>
+                    );
+                  })}
+                  {!COLOR_PRESETS.some((preset) => preset.value.toLowerCase() === brushColor.toLowerCase()) && (
+                    <button
+                      type="button"
+                      onClick={() => setBrushColor(brushColor)}
+                      disabled={controlsDisabled}
+                      className={`h-7 w-7 rounded-full border border-dashed transition ${
+                        controlsDisabled ? 'cursor-not-allowed opacity-60' : 'hover:border-gray-400'
+                      }`}
+                      style={{ backgroundColor: brushColor || '#000000' }}
+                      title={`Custom color (${brushColor})`}
+                    >
+                      <span className="sr-only">Custom color</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  {BRUSH_WIDTH_OPTIONS.map((option) => {
+                    const isSelected = brushWidth === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setBrushWidth(option.value)}
+                        disabled={controlsDisabled}
+                        className={`rounded-md border px-2 py-1 text-xs transition ${
+                          isSelected
+                            ? 'border-blue-600 bg-white text-blue-600'
+                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                        } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                  {!BRUSH_WIDTH_OPTIONS.some((option) => option.value === brushWidth) && (
+                    <span className="rounded-md border border-dashed border-gray-300 px-2 py-1 text-xs text-gray-500">
+                      {brushWidth}px
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-1 flex-col gap-2 md:items-end">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">ACTIONS</span>
+              <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                <button
+                  type="button"
+                  disabled
+                  className="flex items-center gap-1 rounded-md border border-dashed border-gray-300 bg-white px-3 py-1 text-gray-400"
+                  title="Available in phase 2"
+                >
+                  Undo (soon)
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="flex items-center gap-1 rounded-md border border-dashed border-gray-300 bg-white px-3 py-1 text-gray-400"
+                  title="Available in phase 2"
+                >
+                  Redo (soon)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelected}
+                  disabled={controlsDisabled || !selectedId}
+                  className={`rounded-md border px-3 py-1 transition ${
+                    controlsDisabled || !selectedId
+                      ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Delete Selection
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  disabled={controlsDisabled || lines.length === 0}
+                  className={`rounded-md border px-3 py-1 transition ${
+                    controlsDisabled || lines.length === 0
+                      ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Clear All
+                </button>
+                <button
+                  type="button"
+                  onClick={handleManualSave}
+                  disabled={controlsDisabled || !isDirty}
+                  className={`rounded-md border px-3 py-1 transition ${
+                    controlsDisabled || !isDirty
+                      ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
+                      : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  Save Annotation
+                </button>
+                {autoSaveStatus !== 'idle' && (
+                  <span
+                    className={`text-xs ${
+                      autoSaveStatus === 'saving' ? 'text-blue-600' : 'text-green-600'
+                    }`}
+                  >
+                    {autoSaveStatus === 'saving' ? 'Auto-saving...' : 'Autosaved'}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
       {!editable && (
-        <div className="mb-2 text-sm text-gray-500">注釈は閲覧専用です。編集するには管理者としてログインしてください。</div>
+        <div className="mb-2 text-sm text-gray-500">Annotations are read-only. Please sign in as an administrator to edit.</div>
       )}
       <div
         ref={containerRef}
@@ -567,15 +823,15 @@ const AnnotationCanvas = ({
         )}
       </div>
       {editable && !isDirty && (
-        <p className="mt-2 text-xs text-gray-500">注釈を編集したら「注釈を保存」をクリックしてください。</p>
+        <p className="mt-2 text-xs text-gray-500">After editing the annotations, click &quot;Save Annotation&quot;.</p>
       )}
       {editable && isDirty && (
         <p className="mt-2 text-xs text-orange-500">
-          {saving ? '保存中です。しばらくお待ちください。' : '未保存の変更があります。'}
+          {saving ? 'Saving... Please wait.' : 'There are unsaved changes.'}
         </p>
       )}
     </div>
   );
-};
+});
 
 export default AnnotationCanvas;
