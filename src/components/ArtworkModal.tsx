@@ -1,7 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import type { AnnotationSavePayload } from '@/components/AnnotationCanvas';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  AnnotationCanvasHandle,
+  AnnotationSavePayload,
+  AnnotationSaveReason,
+} from '@/components/AnnotationCanvas';
 import type { Artwork, LabelType } from '@/types';
 import ArtworkViewer from './artwork-modal/ArtworkViewer';
 import ArtworkSidebar from './artwork-modal/ArtworkSidebar';
@@ -34,6 +38,36 @@ const ArtworkModal = ({
   const [showAnnotation, setShowAnnotation] = useState(false);
   const [isSavingAnnotation, setIsSavingAnnotation] = useState(false);
   const [annotationDirty, setAnnotationDirty] = useState(false);
+  const [annotationOverlayVisible, setAnnotationOverlayVisible] = useState(true);
+  const annotationCanvasRef = useRef<AnnotationCanvasHandle | null>(null);
+
+  const requestAutoSave = useCallback(
+    async (reason: AnnotationSaveReason) => {
+      if (!showAnnotation || !annotationDirty) {
+        return true;
+      }
+
+      const handle = annotationCanvasRef.current;
+      if (!handle) {
+        console.warn('[ArtworkModal] Annotation canvas ref is unavailable for auto-save.');
+        return false;
+      }
+
+      try {
+        await handle.save({ reason });
+        const latestHandle = annotationCanvasRef.current;
+        if (latestHandle?.hasDirtyChanges()) {
+          console.warn('[ArtworkModal] Auto-save completed but dirty flag remains. Proceeding anyway.');
+        }
+        setAnnotationDirty(false);
+        return true;
+      } catch (error) {
+        console.error('[ArtworkModal] Auto-save failed:', error);
+        return false;
+      }
+    },
+    [annotationDirty, setAnnotationDirty, showAnnotation],
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -43,6 +77,7 @@ const ArtworkModal = ({
     setIsSidebarOpen(false);
     setShowAnnotation(false);
     setAnnotationDirty(false);
+    setAnnotationOverlayVisible(true);
   }, [artwork.id, isOpen]);
 
   const currentImage = artwork.images[currentPage] ?? artwork.images[0];
@@ -70,6 +105,29 @@ const ArtworkModal = ({
       }
     : null;
 
+  const handlePageChange = useCallback(
+    async (index: number) => {
+      if (index === currentPage) {
+        return;
+      }
+
+      if (showAnnotation && annotationDirty) {
+        const success = await requestAutoSave('page-change');
+        if (!success) {
+          return;
+        }
+      }
+
+      setCurrentPage(index);
+      setAnnotationDirty(false);
+    },
+    [annotationDirty, currentPage, requestAutoSave, showAnnotation],
+  );
+
+  const handleToggleOverlayVisibility = useCallback(() => {
+    setAnnotationOverlayVisible((prev) => !prev);
+  }, []);
+
   const handleSaveAnnotation = async (payload: AnnotationSavePayload | null) => {
     if (!onSaveAnnotation) return;
 
@@ -79,21 +137,25 @@ const ArtworkModal = ({
       setAnnotationDirty(false);
     } catch (error) {
       console.error('Failed to save annotation:', error);
-      alert('注釈の保存に失敗しました');
+      alert('注釈�E保存に失敗しました');
     } finally {
       setIsSavingAnnotation(false);
     }
   };
 
-  const toggleAnnotationMode = () => {
-    if (showAnnotation && annotationDirty) {
-      if (!confirm('未保存の変更があります。注釈モードを終了しますか？')) {
+  const toggleAnnotationMode = useCallback(async () => {
+    if (showAnnotation) {
+      const success = await requestAutoSave('mode-exit');
+      if (!success) {
         return;
       }
+      setShowAnnotation(false);
+      setAnnotationDirty(false);
+      return;
     }
-    setShowAnnotation((prev) => !prev);
-    setAnnotationDirty(false);
-  };
+
+    setShowAnnotation(true);
+  }, [requestAutoSave, showAnnotation]);
 
   const handleLike = () => {
     onLike?.(artwork.id);
@@ -131,8 +193,11 @@ const ArtworkModal = ({
             userRole={userRole}
             currentAnnotation={currentAnnotation}
             isSavingAnnotation={isSavingAnnotation}
+            annotationCanvasRef={annotationCanvasRef}
+            annotationOverlayVisible={annotationOverlayVisible}
+            onToggleOverlay={handleToggleOverlayVisibility}
             onClose={onClose}
-            onPageChange={setCurrentPage}
+            onPageChange={handlePageChange}
             onSaveAnnotation={handleSaveAnnotation}
             onAnnotationDirtyChange={setAnnotationDirty}
           />
@@ -160,3 +225,4 @@ const ArtworkModal = ({
 };
 
 export default ArtworkModal;
+

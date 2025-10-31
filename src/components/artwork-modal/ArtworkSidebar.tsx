@@ -20,7 +20,7 @@ type ArtworkSidebarProps = {
   } | null;
   showAnnotation: boolean;
   annotationDirty: boolean;
-  onToggleAnnotationMode: () => void;
+  onToggleAnnotationMode: () => Promise<void> | void;
   onLike?: () => void;
   onDelete?: () => Promise<void>;
   onToggleLabel?: (label: LabelType) => void;
@@ -203,7 +203,7 @@ const ArtworkSidebar = ({
             <div className="space-y-3">
               <h4 className="text-sm font-semibold text-gray-900">注釈</h4>
               <button
-                onClick={onToggleAnnotationMode}
+                onClick={() => void onToggleAnnotationMode()}
                 className={`flex w-full items-center justify-center space-x-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
                   showAnnotation
                     ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
