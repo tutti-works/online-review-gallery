@@ -48,8 +48,11 @@ export type AnnotationCanvasProps = {
   onPanMouseUp: () => void;
 };
 
+type LineTool = 'draw' | 'erase';
+
 type LineShape = {
   id: string;
+  tool: LineTool;
   points: number[];
   stroke: string;
   strokeWidth: number;
@@ -57,7 +60,7 @@ type LineShape = {
   y: number;
 };
 
-type ToolMode = 'draw' | 'select' | 'pan';
+type ToolMode = 'draw' | 'select' | 'pan' | 'erase';
 
 const MAX_HISTORY_ENTRIES = 15;
 
@@ -85,6 +88,77 @@ const BRUSH_WIDTH_OPTIONS = [
   { label: 'Medium', value: 6 },
   { label: 'Thick', value: 12 },
 ] as const;
+
+const MIN_CURSOR_DIAMETER = 4;
+const MAX_CURSOR_DIAMETER = 128;
+
+type CircleCursorStroke = {
+  color: string;
+  width: number;
+};
+
+type CircleCursorOptions = {
+  diameter: number;
+  fillColor?: string;
+  innerStroke?: CircleCursorStroke;
+  outerStroke?: CircleCursorStroke;
+};
+
+const createCircleCursor = (options: CircleCursorOptions): string | null => {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  const { diameter, fillColor, innerStroke, outerStroke } = options;
+  const effectiveDiameter = Math.min(Math.max(diameter, MIN_CURSOR_DIAMETER), MAX_CURSOR_DIAMETER);
+  const maxStrokeWidth = Math.max(outerStroke?.width ?? 0, innerStroke?.width ?? 0);
+  const padding = Math.ceil((maxStrokeWidth || 0) / 2) + 2;
+  const size = Math.ceil(effectiveDiameter + padding * 2);
+  const deviceRatio =
+    typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio)
+      ? Math.min(Math.max(window.devicePixelRatio ?? 1, 1), 4)
+      : 1;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = size * deviceRatio;
+  canvas.height = size * deviceRatio;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    return null;
+  }
+
+  context.scale(deviceRatio, deviceRatio);
+  context.clearRect(0, 0, size, size);
+
+  const center = size / 2;
+  const radius = effectiveDiameter / 2;
+
+  if (fillColor) {
+    context.beginPath();
+    context.arc(center, center, radius, 0, Math.PI * 2);
+    context.fillStyle = fillColor;
+    context.fill();
+  }
+
+  if (outerStroke && outerStroke.width > 0) {
+    context.beginPath();
+    context.arc(center, center, radius, 0, Math.PI * 2);
+    context.strokeStyle = outerStroke.color;
+    context.lineWidth = outerStroke.width;
+    context.stroke();
+  }
+
+  if (innerStroke && innerStroke.width > 0) {
+    context.beginPath();
+    context.arc(center, center, radius, 0, Math.PI * 2);
+    context.strokeStyle = innerStroke.color;
+    context.lineWidth = innerStroke.width;
+    context.stroke();
+  }
+
+  const hotspot = Math.round(center);
+  return `url(${canvas.toDataURL('image/png')}) ${hotspot} ${hotspot}, crosshair`;
+};
 
 const generateLineId = () => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -135,6 +209,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   const [mode, setMode] = useState<ToolMode>('draw');
   const [brushColor, setBrushColor] = useState<string>(COLOR_PRESETS[0].value);
   const [brushWidth, setBrushWidth] = useState<number>(BRUSH_WIDTH_OPTIONS[1].value);
+  const [eraserWidth, setEraserWidth] = useState<number>(BRUSH_WIDTH_OPTIONS[1].value);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -178,8 +253,33 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
 
   const interactionsEnabled = editable && !saving && !isLoading;
   const isDrawMode = mode === 'draw';
+  const isEraseMode = mode === 'erase';
   const isSelectMode = mode === 'select';
   const isPanMode = mode === 'pan';
+  const isDrawingToolActive = isDrawMode || isEraseMode;
+  const drawCursor = useMemo(() => {
+    if (typeof document === 'undefined') {
+      return null;
+    }
+    const zoomScale = Math.max(zoom, 0.1);
+    const diameter = Math.max(brushWidth * zoomScale, MIN_CURSOR_DIAMETER);
+    return createCircleCursor({
+      diameter,
+      fillColor: brushColor,
+    });
+  }, [brushColor, brushWidth, zoom]);
+  const eraseCursor = useMemo(() => {
+    if (typeof document === 'undefined') {
+      return null;
+    }
+    const zoomScale = Math.max(zoom, 0.1);
+    const diameter = Math.max(eraserWidth * zoomScale, MIN_CURSOR_DIAMETER);
+    const strokeWidth = Math.min(Math.max(diameter * 0.12, 1), 3);
+    return createCircleCursor({
+      diameter,
+      outerStroke: { color: 'rgba(17, 24, 39, 0.85)', width: strokeWidth },
+    });
+  }, [eraserWidth, zoom]);
   const containerCursor = useMemo(() => {
     if (!interactionsEnabled) {
       return 'default';
@@ -187,17 +287,43 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     if (isPanMode) {
       return isPanDragging ? 'grabbing' : 'grab';
     }
-    if (isDrawMode) {
-      return 'crosshair';
+    if (isEraseMode) {
+      return eraseCursor ?? 'crosshair';
     }
-    return 'move';
-  }, [interactionsEnabled, isDrawMode, isPanDragging, isPanMode]);
+    if (isDrawMode) {
+      return drawCursor ?? 'crosshair';
+    }
+    if (isSelectMode) {
+      return 'move';
+    }
+    return 'default';
+  }, [
+    drawCursor,
+    eraseCursor,
+    interactionsEnabled,
+    isDrawMode,
+    isEraseMode,
+    isPanDragging,
+    isPanMode,
+    isSelectMode,
+  ]);
   const stageCenter = useMemo(
     () =>
       displaySize
         ? { x: displaySize.width / 2, y: displaySize.height / 2 }
         : { x: 0, y: 0 },
     [displaySize],
+  );
+  const activeStrokeWidth = isEraseMode ? eraserWidth : brushWidth;
+  const handleBrushWidthChange = useCallback(
+    (value: number) => {
+      if (isEraseMode) {
+        setEraserWidth(value);
+      } else {
+        setBrushWidth(value);
+      }
+    },
+    [isEraseMode],
   );
 
   useEffect(() => {
@@ -331,8 +457,10 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
               const id = node.id() || generateLineId();
               const stroke = node.stroke();
               const strokeColor = typeof stroke === 'string' ? stroke : '#ff0000';
+              const compositeOperation = node.getAttr('globalCompositeOperation') as GlobalCompositeOperation | undefined;
               return {
                 id,
+                tool: compositeOperation === 'destination-out' ? 'erase' : 'draw',
                 points: node.points(),
                 stroke: strokeColor,
                 strokeWidth: node.strokeWidth(),
@@ -384,19 +512,8 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     if (!stageContainer) return;
 
     stageContainer.style.touchAction = 'none';
-
-    if (!interactionsEnabled) {
-      stageContainer.style.cursor = 'default';
-      return;
-    }
-
-    if (isPanMode) {
-      stageContainer.style.cursor = isPanDragging ? 'grabbing' : 'grab';
-      return;
-    }
-
-    stageContainer.style.cursor = isDrawMode ? 'crosshair' : 'move';
-  }, [interactionsEnabled, isDrawMode, isPanDragging, isPanMode]);
+    stageContainer.style.cursor = containerCursor;
+  }, [containerCursor]);
 
   const deselectIfEmpty = useCallback((event: KonvaEventObject<MouseEvent | TouchEvent | PointerEvent>) => {
     if (!stageRef.current) return;
@@ -424,7 +541,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       if (isPanMode) return;
       event.evt.preventDefault?.();
 
-      if (!isDrawMode) {
+      if (!isDrawingToolActive) {
         deselectIfEmpty(event);
         return;
       }
@@ -437,11 +554,14 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       const scaleX = displayScale.x || 1;
       const scaleY = displayScale.y || 1;
       const averageScale = (scaleX + scaleY) / 2 || 1;
+      const strokeWidth = (isEraseMode ? eraserWidth : brushWidth) / averageScale;
+      const strokeColor = isEraseMode ? 'rgba(0,0,0,1)' : brushColor;
       const newLine: LineShape = {
         id: generateLineId(),
+        tool: isEraseMode ? 'erase' : 'draw',
         points: [pointer.x, pointer.y],
-        stroke: brushColor,
-        strokeWidth: brushWidth / averageScale,
+        stroke: strokeColor,
+        strokeWidth,
         x: 0,
         y: 0,
       };
@@ -450,13 +570,26 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       setSelectedId(null);
       markDirty(true);
     },
-    [brushColor, brushWidth, deselectIfEmpty, displayScale, getRelativePointerPosition, interactionsEnabled, isDrawMode, isPanMode, markDirty, recordHistory],
+    [
+      brushColor,
+      brushWidth,
+      deselectIfEmpty,
+      displayScale,
+      eraserWidth,
+      getRelativePointerPosition,
+      interactionsEnabled,
+      isDrawingToolActive,
+      isEraseMode,
+      isPanMode,
+      markDirty,
+      recordHistory,
+    ],
   );
 
   const handlePointerMove = useCallback((event?: KonvaEventObject<MouseEvent | TouchEvent>) => {
     event?.evt.preventDefault?.();
     if (!isPointerDrawingRef.current) return;
-    if (!interactionsEnabled || !isDrawMode) return;
+    if (!interactionsEnabled || !isDrawingToolActive) return;
 
     const pointer = getRelativePointerPosition();
     if (!pointer) return;
@@ -471,7 +604,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       };
       return updated;
     });
-  }, [getRelativePointerPosition, interactionsEnabled, isDrawMode]);
+  }, [getRelativePointerPosition, interactionsEnabled, isDrawingToolActive]);
 
   const finishDrawing = useCallback((event?: KonvaEventObject<MouseEvent | TouchEvent>) => {
     event?.evt.preventDefault?.();
@@ -752,11 +885,16 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                 </button>
                 <button
                   type="button"
-                  disabled
-                  className="flex items-center gap-1 rounded-md border border-dashed border-gray-300 bg-white px-3 py-1 text-gray-400"
-                  title="Available in phase 2"
+                  onClick={() => handleSetMode('erase')}
+                  disabled={controlsDisabled}
+                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
+                    isEraseMode
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-blue-50'
+                  } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                  title="Erase"
                 >
-                  Erase (soon)
+                  Erase
                 </button>
                 <button
                   type="button"
@@ -814,26 +952,27 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                 </div>
                 <div className="flex items-center gap-1">
                   {BRUSH_WIDTH_OPTIONS.map((option) => {
-                    const isSelected = brushWidth === option.value;
+                    const isSelected = activeStrokeWidth === option.value;
                     return (
                       <button
                         key={option.value}
                         type="button"
-                        onClick={() => setBrushWidth(option.value)}
+                        onClick={() => handleBrushWidthChange(option.value)}
                         disabled={controlsDisabled}
                         className={`rounded-md border px-2 py-1 text-xs transition ${
                           isSelected
                             ? 'border-blue-600 bg-white text-blue-600'
                             : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
                         } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                        title={`${isEraseMode ? 'Eraser' : 'Brush'} width: ${option.label}`}
                       >
                         {option.label}
                       </button>
                     );
                   })}
-                  {!BRUSH_WIDTH_OPTIONS.some((option) => option.value === brushWidth) && (
+                  {!BRUSH_WIDTH_OPTIONS.some((option) => option.value === activeStrokeWidth) && (
                     <span className="rounded-md border border-dashed border-gray-300 px-2 py-1 text-xs text-gray-500">
-                      {brushWidth}px
+                      {activeStrokeWidth}px
                     </span>
                   )}
                 </div>
@@ -979,24 +1118,29 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                   tension={0.5}
                   x={line.x * scaleX}
                   y={line.y * scaleY}
-                  draggable={interactionsEnabled && isSelectMode}
+                  globalCompositeOperation={line.tool === 'erase' ? 'destination-out' : 'source-over'}
+                  listening={line.tool === 'draw'}
+                  draggable={interactionsEnabled && isSelectMode && line.tool === 'draw'}
                   hitStrokeWidth={Math.max(line.strokeWidth * averageScale * 2, 20)}
-                  opacity={saving ? 0.7 : 1}
+                  opacity={line.tool === 'erase' ? 1 : saving ? 0.7 : 1}
                   onMouseDown={(event) => {
-                    if (!isSelectMode) return;
+                    if (!isSelectMode || line.tool !== 'draw') return;
                     event.cancelBubble = true;
                     handleLineSelect(line.id);
                   }}
                   onTouchStart={(event) => {
-                    if (!isSelectMode) return;
+                    if (!isSelectMode || line.tool !== 'draw') return;
                     event.cancelBubble = true;
                     handleLineSelect(line.id);
                   }}
-                  onDragStart={() => handleLineDragStart(line.id)}
-                  onDragMove={(event) => handleLineDragMove(line.id, event as KonvaEventObject<DragEvent>)}
-                  onDragEnd={() => markDirty(true)}
-                  shadowColor={selectedId === line.id ? '#2b6cb0' : undefined}
-                  shadowBlur={selectedId === line.id ? 10 : 0}
+                  onDragStart={() => line.tool === 'draw' && handleLineDragStart(line.id)}
+                  onDragMove={(event) =>
+                    line.tool === 'draw' &&
+                    handleLineDragMove(line.id, event as KonvaEventObject<DragEvent>)
+                  }
+                  onDragEnd={() => line.tool === 'draw' && markDirty(true)}
+                  shadowColor={selectedId === line.id && line.tool === 'draw' ? '#2b6cb0' : undefined}
+                  shadowBlur={selectedId === line.id && line.tool === 'draw' ? 10 : 0}
                 />
               ))}
             </Layer>
