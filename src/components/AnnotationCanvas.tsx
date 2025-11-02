@@ -6,7 +6,16 @@ import type { Stage as KonvaStage } from 'konva/lib/Stage';
 import type { Line as KonvaLineNode } from 'konva/lib/shapes/Line';
 import { Layer, Line, Stage } from 'react-konva';
 import { Image as KonvaImage } from 'react-konva';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 
 export type AnnotationSavePayload = {
   data: string;
@@ -31,6 +40,12 @@ export type AnnotationCanvasProps = {
   onDirtyChange?: (dirty: boolean) => void;
   saving?: boolean;
   className?: string;
+  zoom: number;
+  panPosition: { x: number; y: number };
+  isPanDragging: boolean;
+  onPanMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onPanMouseMove: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  onPanMouseUp: () => void;
 };
 
 type LineShape = {
@@ -41,6 +56,16 @@ type LineShape = {
   x: number;
   y: number;
 };
+
+type ToolMode = 'draw' | 'select' | 'pan';
+
+const MAX_HISTORY_ENTRIES = 15;
+
+const cloneLines = (source: LineShape[]): LineShape[] =>
+  source.map((line) => ({
+    ...line,
+    points: [...line.points],
+  }));
 
 const DEFAULT_WIDTH = 840;
 const DEFAULT_HEIGHT = 630;
@@ -86,13 +111,19 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     onDirtyChange,
     saving = false,
     className,
+    zoom,
+    panPosition,
+    isPanDragging,
+    onPanMouseDown,
+    onPanMouseMove,
+    onPanMouseUp,
   }: AnnotationCanvasProps,
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<KonvaStage | null>(null);
   const isPointerDrawingRef = useRef(false);
-  const autoSaveTimeoutRef = useRef<number | null>(null);
+  const historyRef = useRef<{ past: LineShape[][]; future: LineShape[][] }>({ past: [], future: [] });
   const indicatorTimeoutRef = useRef<number | null>(null);
   const saveAnnotationRef = useRef<(options?: SaveOptions) => Promise<void>>();
 
@@ -101,20 +132,17 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
   const [displayScale, setDisplayScale] = useState<{ x: number; y: number }>({ x: 1, y: 1 });
   const [lines, setLines] = useState<LineShape[]>([]);
-  const [mode, setMode] = useState<'draw' | 'select'>('draw');
+  const [mode, setMode] = useState<ToolMode>('draw');
   const [brushColor, setBrushColor] = useState<string>(COLOR_PRESETS[0].value);
   const [brushWidth, setBrushWidth] = useState<number>(BRUSH_WIDTH_OPTIONS[1].value);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
-
-  const clearAutoSaveTimer = useCallback(() => {
-    if (autoSaveTimeoutRef.current !== null) {
-      window.clearTimeout(autoSaveTimeoutRef.current);
-      autoSaveTimeoutRef.current = null;
-    }
-  }, []);
+  const [historyState, setHistoryState] = useState<{ canUndo: boolean; canRedo: boolean }>({
+    canUndo: false,
+    canRedo: false,
+  });
 
   const clearIndicatorTimer = useCallback(() => {
     if (indicatorTimeoutRef.current !== null) {
@@ -123,37 +151,60 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     }
   }, []);
 
-  const scheduleIdleAutoSave = useCallback(() => {
-    if (!editable || saving || isLoading || !onSave) {
-      return;
-    }
-
-    clearAutoSaveTimer();
-    autoSaveTimeoutRef.current = window.setTimeout(() => {
-      autoSaveTimeoutRef.current = null;
-      const fn = saveAnnotationRef.current;
-      if (fn) {
-        void fn({ reason: 'idle' });
-      }
-    }, 10000);
-  }, [clearAutoSaveTimer, editable, isLoading, onSave, saving]);
-
   const markDirty = useCallback(
     (dirty: boolean) => {
       setIsDirty((prev) => (prev === dirty ? prev : dirty));
       onDirtyChange?.(dirty);
-
-      if (dirty) {
-        scheduleIdleAutoSave();
-      } else {
-        clearAutoSaveTimer();
-      }
     },
-    [clearAutoSaveTimer, onDirtyChange, scheduleIdleAutoSave],
+    [onDirtyChange],
   );
+
+  const resetHistory = useCallback(() => {
+    historyRef.current.past = [];
+    historyRef.current.future = [];
+    setHistoryState({ canUndo: false, canRedo: false });
+  }, []);
+
+  const recordHistory = useCallback(() => {
+    const snapshot = cloneLines(lines);
+    const { past } = historyRef.current;
+    past.push(snapshot);
+    if (past.length > MAX_HISTORY_ENTRIES) {
+      past.shift();
+    }
+    historyRef.current.future = [];
+    setHistoryState({ canUndo: past.length > 0, canRedo: false });
+  }, [lines]);
 
   const interactionsEnabled = editable && !saving && !isLoading;
   const isDrawMode = mode === 'draw';
+  const isSelectMode = mode === 'select';
+  const isPanMode = mode === 'pan';
+  const containerCursor = useMemo(() => {
+    if (!interactionsEnabled) {
+      return 'default';
+    }
+    if (isPanMode) {
+      return isPanDragging ? 'grabbing' : 'grab';
+    }
+    if (isDrawMode) {
+      return 'crosshair';
+    }
+    return 'move';
+  }, [interactionsEnabled, isDrawMode, isPanDragging, isPanMode]);
+  const stageCenter = useMemo(
+    () =>
+      displaySize
+        ? { x: displaySize.width / 2, y: displaySize.height / 2 }
+        : { x: 0, y: 0 },
+    [displaySize],
+  );
+
+  useEffect(() => {
+    if (!interactionsEnabled && isPanMode) {
+      onPanMouseUp();
+    }
+  }, [interactionsEnabled, isPanMode, onPanMouseUp]);
 
   const displayHeight = useMemo(
     () => displaySize?.height ?? baseSize?.height ?? DEFAULT_HEIGHT,
@@ -257,6 +308,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
         setLines([]);
         setSelectedId(null);
         markDirty(false);
+        resetHistory();
         return;
       }
 
@@ -307,6 +359,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
         markDirty(false);
         clearIndicatorTimer();
         setAutoSaveStatus('idle');
+        resetHistory();
       } catch (error) {
         console.error('[AnnotationCanvas] Failed to parse annotation JSON:', error);
         setLines([]);
@@ -314,9 +367,10 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
         markDirty(false);
         clearIndicatorTimer();
         setAutoSaveStatus('idle');
+        resetHistory();
       }
     },
-    [baseSize, clearIndicatorTimer, markDirty],
+    [baseSize, clearIndicatorTimer, markDirty, resetHistory],
   );
 
   useEffect(() => {
@@ -336,8 +390,13 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       return;
     }
 
+    if (isPanMode) {
+      stageContainer.style.cursor = isPanDragging ? 'grabbing' : 'grab';
+      return;
+    }
+
     stageContainer.style.cursor = isDrawMode ? 'crosshair' : 'move';
-  }, [interactionsEnabled, isDrawMode]);
+  }, [interactionsEnabled, isDrawMode, isPanDragging, isPanMode]);
 
   const deselectIfEmpty = useCallback((event: KonvaEventObject<MouseEvent | TouchEvent | PointerEvent>) => {
     if (!stageRef.current) return;
@@ -361,8 +420,9 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
 
   const handlePointerDown = useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
-      event.evt.preventDefault?.();
       if (!interactionsEnabled) return;
+      if (isPanMode) return;
+      event.evt.preventDefault?.();
 
       if (!isDrawMode) {
         deselectIfEmpty(event);
@@ -372,6 +432,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       const pointer = getRelativePointerPosition();
       if (!pointer) return;
 
+      recordHistory();
       isPointerDrawingRef.current = true;
       const scaleX = displayScale.x || 1;
       const scaleY = displayScale.y || 1;
@@ -389,7 +450,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       setSelectedId(null);
       markDirty(true);
     },
-    [brushColor, brushWidth, deselectIfEmpty, displayScale, getRelativePointerPosition, interactionsEnabled, isDrawMode, markDirty],
+    [brushColor, brushWidth, deselectIfEmpty, displayScale, getRelativePointerPosition, interactionsEnabled, isDrawMode, isPanMode, markDirty, recordHistory],
   );
 
   const handlePointerMove = useCallback((event?: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -417,12 +478,46 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     isPointerDrawingRef.current = false;
   }, []);
 
+  const handlePanMouseDown = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (!interactionsEnabled || !isPanMode) return;
+      event.preventDefault();
+      onPanMouseDown(event);
+    },
+    [interactionsEnabled, isPanMode, onPanMouseDown],
+  );
+
+  const handlePanMouseMove = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (!interactionsEnabled || !isPanMode) return;
+      event.preventDefault();
+      onPanMouseMove(event);
+    },
+    [interactionsEnabled, isPanMode, onPanMouseMove],
+  );
+
+  const handlePanMouseUp = useCallback(() => {
+    if (!isPanMode) return;
+    onPanMouseUp();
+  }, [isPanMode, onPanMouseUp]);
+
   const handleLineSelect = useCallback(
     (id: string) => {
-      if (!interactionsEnabled || isDrawMode) return;
+      if (!interactionsEnabled || !isSelectMode) return;
       setSelectedId(id);
     },
-    [interactionsEnabled, isDrawMode],
+    [interactionsEnabled, isSelectMode],
+  );
+
+  const handleLineDragStart = useCallback(
+    (id: string) => {
+      if (!interactionsEnabled || !isSelectMode) return;
+      recordHistory();
+      if (selectedId !== id) {
+        setSelectedId(id);
+      }
+    },
+    [interactionsEnabled, isSelectMode, recordHistory, selectedId],
   );
 
   const handleLineDragMove = useCallback(
@@ -443,6 +538,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
 
   const handleDeleteSelected = () => {
     if (!selectedId) return;
+    recordHistory();
     setLines((prev) => prev.filter((line) => line.id !== selectedId));
     setSelectedId(null);
     markDirty(true);
@@ -450,22 +546,83 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
 
   const handleClearAll = () => {
     if (lines.length === 0) return;
+    recordHistory();
     setLines([]);
     setSelectedId(null);
     markDirty(true);
   };
 
-  const handleSetMode = useCallback((nextMode: 'draw' | 'select') => {
-    setMode((prev) => {
-      if (prev === nextMode) {
-        return prev;
-      }
-      if (nextMode === 'draw') {
-        setSelectedId(null);
-      }
-      return nextMode;
+  const handleUndo = useCallback(() => {
+    if (!interactionsEnabled) return;
+
+    const { past, future } = historyRef.current;
+    if (past.length === 0) {
+      return;
+    }
+
+    const previousSnapshot = past.pop();
+    if (!previousSnapshot) {
+      return;
+    }
+
+    future.push(cloneLines(lines));
+    if (future.length > MAX_HISTORY_ENTRIES) {
+      future.shift();
+    }
+
+    setLines(cloneLines(previousSnapshot));
+    setSelectedId(null);
+    markDirty(true);
+    setHistoryState({
+      canUndo: past.length > 0,
+      canRedo: future.length > 0,
     });
-  }, []);
+  }, [interactionsEnabled, lines, markDirty]);
+
+  const handleRedo = useCallback(() => {
+    if (!interactionsEnabled) return;
+
+    const { past, future } = historyRef.current;
+    if (future.length === 0) {
+      return;
+    }
+
+    const nextSnapshot = future.pop();
+    if (!nextSnapshot) {
+      return;
+    }
+
+    past.push(cloneLines(lines));
+    if (past.length > MAX_HISTORY_ENTRIES) {
+      past.shift();
+    }
+
+    setLines(cloneLines(nextSnapshot));
+    setSelectedId(null);
+    markDirty(true);
+    setHistoryState({
+      canUndo: past.length > 0,
+      canRedo: future.length > 0,
+    });
+  }, [interactionsEnabled, lines, markDirty]);
+
+  const handleSetMode = useCallback(
+    (nextMode: ToolMode) => {
+      setMode((prev) => {
+        if (prev === nextMode) {
+          return prev;
+        }
+        if (prev === 'pan' && nextMode !== 'pan') {
+          onPanMouseUp();
+        }
+        if (nextMode !== 'select') {
+          setSelectedId(null);
+        }
+        return nextMode;
+      });
+    },
+    [onPanMouseUp],
+  );
 
   const saveAnnotation = useCallback(
     async (options?: SaveOptions) => {
@@ -474,8 +631,6 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
 
       const stage = stageRef.current;
       if (!stage) return;
-
-      clearAutoSaveTimer();
 
       if (!isDirty && !options?.force) {
         return;
@@ -517,7 +672,6 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       }
     },
     [
-      clearAutoSaveTimer,
       clearIndicatorTimer,
       editable,
       isDirty,
@@ -541,15 +695,15 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
 
   useEffect(() => {
     return () => {
-      clearAutoSaveTimer();
       clearIndicatorTimer();
     };
-  }, [clearAutoSaveTimer, clearIndicatorTimer]);
+  }, [clearIndicatorTimer]);
 
   const controlsDisabled = useMemo(
     () => !editable || isLoading || saving,
     [editable, isLoading, saving],
   );
+  const { canUndo, canRedo } = historyState;
 
   const scaleX = displayScale.x || 1;
   const scaleY = displayScale.y || 1;
@@ -577,7 +731,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                   onClick={() => handleSetMode('draw')}
                   disabled={controlsDisabled}
                   className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
-                    mode === 'draw'
+                    isDrawMode
                       ? 'border-blue-600 bg-blue-600 text-white'
                       : 'border-gray-300 bg-white text-gray-700 hover:bg-blue-50'
                   } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
@@ -589,7 +743,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                   onClick={() => handleSetMode('select')}
                   disabled={controlsDisabled}
                   className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
-                    mode === 'select'
+                    isSelectMode
                       ? 'border-blue-600 bg-blue-600 text-white'
                       : 'border-gray-300 bg-white text-gray-700 hover:bg-blue-50'
                   } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
@@ -606,11 +760,15 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                 </button>
                 <button
                   type="button"
-                  disabled
-                  className="flex items-center gap-1 rounded-md border border-dashed border-gray-300 bg-white px-3 py-1 text-gray-400"
-                  title="Available in phase 2"
+                  onClick={() => handleSetMode('pan')}
+                  disabled={controlsDisabled}
+                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
+                    isPanMode
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-blue-50'
+                  } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
-                  Pan (soon)
+                  Pan
                 </button>
               </div>
             </div>
@@ -686,19 +844,29 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
               <div className="flex flex-wrap items-center gap-2 md:justify-end">
                 <button
                   type="button"
-                  disabled
-                  className="flex items-center gap-1 rounded-md border border-dashed border-gray-300 bg-white px-3 py-1 text-gray-400"
-                  title="Available in phase 2"
+                  onClick={handleUndo}
+                  disabled={controlsDisabled || !canUndo}
+                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
+                    controlsDisabled || !canUndo
+                      ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                  }`}
+                  title="Undo (Ctrl+Z)"
                 >
-                  Undo (soon)
+                  Undo
                 </button>
                 <button
                   type="button"
-                  disabled
-                  className="flex items-center gap-1 rounded-md border border-dashed border-gray-300 bg-white px-3 py-1 text-gray-400"
-                  title="Available in phase 2"
+                  onClick={handleRedo}
+                  disabled={controlsDisabled || !canRedo}
+                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
+                    controlsDisabled || !canRedo
+                      ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                  }`}
+                  title="Redo (Ctrl+Shift+Z)"
                 >
-                  Redo (soon)
+                  Redo
                 </button>
                 <button
                   type="button"
@@ -756,7 +924,11 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       <div
         ref={containerRef}
         className="relative w-full overflow-hidden rounded border border-gray-300 bg-white"
-        style={{ height: displayHeight }}
+        style={{ height: displayHeight, cursor: containerCursor }}
+        onMouseDown={isPanMode ? handlePanMouseDown : undefined}
+        onMouseMove={isPanMode ? handlePanMouseMove : undefined}
+        onMouseUp={isPanMode ? handlePanMouseUp : undefined}
+        onMouseLeave={isPanMode ? handlePanMouseUp : undefined}
       >
         {isLoading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70">
@@ -768,6 +940,12 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
             ref={stageRef}
             width={displaySize.width}
             height={displaySize.height}
+            scaleX={zoom}
+            scaleY={zoom}
+            x={stageCenter.x + panPosition.x}
+            y={stageCenter.y + panPosition.y}
+            offsetX={stageCenter.x}
+            offsetY={stageCenter.y}
             listening={interactionsEnabled}
             onMouseDown={handlePointerDown}
             onTouchStart={handlePointerDown}
@@ -801,17 +979,20 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                   tension={0.5}
                   x={line.x * scaleX}
                   y={line.y * scaleY}
-                  draggable={interactionsEnabled && !isDrawMode}
+                  draggable={interactionsEnabled && isSelectMode}
                   hitStrokeWidth={Math.max(line.strokeWidth * averageScale * 2, 20)}
                   opacity={saving ? 0.7 : 1}
                   onMouseDown={(event) => {
+                    if (!isSelectMode) return;
                     event.cancelBubble = true;
                     handleLineSelect(line.id);
                   }}
                   onTouchStart={(event) => {
+                    if (!isSelectMode) return;
                     event.cancelBubble = true;
                     handleLineSelect(line.id);
                   }}
+                  onDragStart={() => handleLineDragStart(line.id)}
                   onDragMove={(event) => handleLineDragMove(line.id, event as KonvaEventObject<DragEvent>)}
                   onDragEnd={() => markDirty(true)}
                   shadowColor={selectedId === line.id ? '#2b6cb0' : undefined}

@@ -120,10 +120,58 @@ const ArtworkViewer = ({
   }, []);
 
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+
+  const updateImageDimensions = useCallback(() => {
+    const img = imageRef.current;
+    if (!img) {
+      return;
+    }
+
+    const rect = img.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return;
+    }
+
+    setImageDimensions((prev) => {
+      if (prev && Math.abs(prev.width - rect.width) < 0.5 && Math.abs(prev.height - rect.height) < 0.5) {
+        return prev;
+      }
+      return { width: rect.width, height: rect.height };
+    });
+  }, []);
+
+  useEffect(() => {
+    setImageDimensions(null);
+    resetZoom();
+  }, [currentImage?.id, currentImage.url, resetZoom]);
 
   useEffect(() => {
     resetZoom();
-  }, [currentImage?.id, currentImage.url, resetZoom]);
+  }, [showAnnotation, resetZoom]);
+
+  useEffect(() => {
+    const img = imageRef.current;
+    if (!img) {
+      return;
+    }
+
+    updateImageDimensions();
+
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateImageDimensions();
+    });
+
+    observer.observe(img);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [currentImage?.id, updateImageDimensions]);
 
   const overlayAnnotation = useMemo<OverlayAnnotationData | null>(() => {
     if (!currentAnnotation) {
@@ -209,6 +257,12 @@ const ArtworkViewer = ({
                 onSave={onSaveAnnotation}
                 onDirtyChange={onAnnotationDirtyChange}
                 saving={isSavingAnnotation}
+                zoom={zoom}
+                panPosition={panPosition}
+                isPanDragging={isDragging}
+                onPanMouseDown={handleMouseDown}
+                onPanMouseMove={handleMouseMove}
+                onPanMouseUp={handleMouseUp}
               />
             ) : (
               <div className="flex h-full items-center justify-center">
@@ -249,9 +303,10 @@ const ArtworkViewer = ({
                 className="max-w-full max-h-full object-contain select-none pointer-events-none"
                 draggable={false}
                 onDragStart={handleDragStart}
+                onLoad={updateImageDimensions}
               />
             </div>
-            {shouldShowOverlay && overlayAnnotation && imageRef.current && (
+            {shouldShowOverlay && overlayAnnotation && imageDimensions && (
               <div
                 ref={containerRef}
                 className="pointer-events-none absolute"
@@ -259,10 +314,10 @@ const ArtworkViewer = ({
                   transform: `scale(${zoom}) translate(${panPosition.x / zoom}px, ${panPosition.y / zoom}px)`,
                   left: '50%',
                   top: '50%',
-                  marginLeft: -imageRef.current.width / 2,
-                  marginTop: -imageRef.current.height / 2,
-                  width: imageRef.current.width,
-                  height: imageRef.current.height,
+                  marginLeft: -imageDimensions.width / 2,
+                  marginTop: -imageDimensions.height / 2,
+                  width: imageDimensions.width,
+                  height: imageDimensions.height,
                 }}
               >
                 <svg
