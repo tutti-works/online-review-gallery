@@ -26,6 +26,7 @@ import {
   Undo2,
   Redo2,
   Trash2,
+  Trash,
   Save,
   ChevronDown,
   ChevronUp,
@@ -213,6 +214,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   const isPointerDrawingRef = useRef(false);
   const historyRef = useRef<{ past: LineShape[][]; future: LineShape[][] }>({ past: [], future: [] });
   const indicatorTimeoutRef = useRef<number | null>(null);
+  const clearAllTimeoutRef = useRef<number | null>(null);
   const saveAnnotationRef = useRef<(options?: SaveOptions) => Promise<void>>();
 
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
@@ -235,6 +237,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   });
   const [colorPaletteExpanded, setColorPaletteExpanded] = useState(false);
   const [brushSizeExpanded, setBrushSizeExpanded] = useState(false);
+  const [clearAllPending, setClearAllPending] = useState(false);
 
   const clearIndicatorTimer = useCallback(() => {
     if (indicatorTimeoutRef.current !== null) {
@@ -585,6 +588,10 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       const pointer = getRelativePointerPosition();
       if (!pointer) return;
 
+      // 描画開始時にポップアップを閉じる
+      setColorPaletteExpanded(false);
+      setBrushSizeExpanded(false);
+
       recordHistory();
       isPointerDrawingRef.current = true;
       const scaleX = displayScale.x || 1;
@@ -713,13 +720,29 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     markDirty(true);
   };
 
-  const handleClearAll = () => {
+  const handleClearAllClick = useCallback(() => {
     if (lines.length === 0) return;
-    recordHistory();
-    setLines([]);
-    setSelectedId(null);
-    markDirty(true);
-  };
+
+    if (clearAllPending) {
+      // 2回目のクリック: 実行
+      recordHistory();
+      setLines([]);
+      setSelectedId(null);
+      markDirty(true);
+      setClearAllPending(false);
+      if (clearAllTimeoutRef.current !== null) {
+        window.clearTimeout(clearAllTimeoutRef.current);
+        clearAllTimeoutRef.current = null;
+      }
+    } else {
+      // 1回目のクリック: 確認待ち
+      setClearAllPending(true);
+      clearAllTimeoutRef.current = window.setTimeout(() => {
+        setClearAllPending(false);
+        clearAllTimeoutRef.current = null;
+      }, 3000);
+    }
+  }, [lines.length, clearAllPending, recordHistory, markDirty]);
 
   const handleUndo = useCallback(() => {
     if (!interactionsEnabled) return;
@@ -787,6 +810,9 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
         if (nextMode !== 'select') {
           setSelectedId(null);
         }
+        // ツール切り替え時にポップアップを閉じる
+        setColorPaletteExpanded(false);
+        setBrushSizeExpanded(false);
         return nextMode;
       });
     },
@@ -947,6 +973,9 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   useEffect(() => {
     return () => {
       clearIndicatorTimer();
+      if (clearAllTimeoutRef.current !== null) {
+        window.clearTimeout(clearAllTimeoutRef.current);
+      }
     };
   }, [clearIndicatorTimer]);
 
@@ -1078,7 +1107,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
               : 'translateY(-50%)'
           }}
         >
-          <div className="flex flex-col rounded-lg bg-gray-800 bg-opacity-90 backdrop-blur-sm shadow-2xl">
+          <div className="flex flex-col rounded-lg bg-gray-700 bg-opacity-90 backdrop-blur-sm shadow-2xl">
             {/* Tool Buttons */}
             <div className="flex flex-col border-b border-gray-700">
               <button
@@ -1175,7 +1204,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                 </span>
               </button>
               {colorPaletteExpanded && (
-                <div className="absolute left-full top-0 ml-2 p-2.5 rounded-lg bg-gray-800 bg-opacity-90 backdrop-blur-sm shadow-2xl z-20 min-w-max">
+                <div className="absolute left-full top-0 ml-2 p-2.5 rounded-lg bg-gray-700 bg-opacity-90 backdrop-blur-sm shadow-2xl z-20 min-w-max">
                   <div className="grid grid-cols-2 gap-2.5">
                     {COLOR_PRESETS.map((preset) => {
                       const isSelected = brushColor.toLowerCase() === preset.value.toLowerCase();
@@ -1225,7 +1254,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                 </span>
               </button>
               {brushSizeExpanded && (
-                <div className="absolute left-full top-0 ml-2 p-2 rounded-lg bg-gray-800 bg-opacity-90 backdrop-blur-sm shadow-2xl z-20">
+                <div className="absolute left-full top-0 ml-2 p-2 rounded-lg bg-gray-700 bg-opacity-90 backdrop-blur-sm shadow-2xl z-20">
                   <div className="flex flex-col gap-1">
                     {BRUSH_WIDTH_OPTIONS.map((option) => {
                       const isSelected = activeStrokeWidth === option.value;
@@ -1262,7 +1291,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                 disabled={controlsDisabled || !canUndo}
                 className={`flex items-center justify-center w-12 h-12 transition group relative ${
                   controlsDisabled || !canUndo
-                    ? 'cursor-not-allowed text-gray-600'
+                    ? 'cursor-not-allowed text-gray-500'
                     : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                 }`}
                 title="Undo"
@@ -1278,7 +1307,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                 disabled={controlsDisabled || !canRedo}
                 className={`flex items-center justify-center w-12 h-12 transition group relative ${
                   controlsDisabled || !canRedo
-                    ? 'cursor-not-allowed text-gray-600'
+                    ? 'cursor-not-allowed text-gray-500'
                     : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                 }`}
                 title="Redo"
@@ -1294,7 +1323,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                 disabled={controlsDisabled || !selectedId}
                 className={`flex items-center justify-center w-12 h-12 transition group relative ${
                   controlsDisabled || !selectedId
-                    ? 'cursor-not-allowed text-gray-600'
+                    ? 'cursor-not-allowed text-gray-500'
                     : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                 }`}
                 title="Delete Selected"
@@ -1306,11 +1335,29 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
               </button>
               <button
                 type="button"
+                onClick={handleClearAllClick}
+                disabled={controlsDisabled || lines.length === 0}
+                className={`flex items-center justify-center w-12 h-12 transition group relative ${
+                  clearAllPending
+                    ? 'bg-red-600 text-white animate-pulse'
+                    : controlsDisabled || lines.length === 0
+                      ? 'cursor-not-allowed text-gray-500'
+                      : 'text-gray-300 hover:bg-red-600/20 hover:text-red-400'
+                }`}
+                title={clearAllPending ? "Click again to confirm" : "Clear All Annotations"}
+              >
+                <Trash size={20} fill={clearAllPending ? "currentColor" : "none"} />
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                  {clearAllPending ? "Click to confirm" : "Clear All"}
+                </span>
+              </button>
+              <button
+                type="button"
                 onClick={handleManualSave}
                 disabled={controlsDisabled || !isDirty}
                 className={`flex items-center justify-center w-12 h-12 transition group relative ${
                   controlsDisabled || !isDirty
-                    ? 'cursor-not-allowed text-gray-600'
+                    ? 'cursor-not-allowed text-gray-500'
                     : isDirty
                       ? 'text-blue-400 hover:bg-blue-600 hover:text-white'
                       : 'text-gray-300 hover:bg-gray-700 hover:text-white'
