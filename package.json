@@ -13,6 +13,7 @@
     "firebase": "^12.3.0",
     "googleapis": "^134.0.0",
     "konva": "^9.3.16",
+    "lucide-react": "^0.552.0",
     "next": "^14.0.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",

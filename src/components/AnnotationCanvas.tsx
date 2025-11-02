@@ -16,6 +16,20 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
+import {
+  Pencil,
+  MousePointer2,
+  Eraser,
+  Hand,
+  Palette,
+  Circle,
+  Undo2,
+  Redo2,
+  Trash2,
+  Save,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 
 export type AnnotationSavePayload = {
   data: string;
@@ -219,6 +233,8 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     canUndo: false,
     canRedo: false,
   });
+  const [colorPaletteExpanded, setColorPaletteExpanded] = useState(false);
+  const [brushSizeExpanded, setBrushSizeExpanded] = useState(false);
 
   const clearIndicatorTimer = useCallback(() => {
     if (indicatorTimeoutRef.current !== null) {
@@ -1054,180 +1070,289 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
         )}
       </div>
       {editable && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 max-w-[95%]">
-          <div className="rounded-lg bg-gray-700 bg-opacity-90 backdrop-blur-sm px-3 py-2 shadow-lg">
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => handleSetMode('draw')}
-                  disabled={controlsDisabled}
-                  className={`rounded px-2 py-1 text-xs font-medium transition ${
-                    isDrawMode
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                  } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
-                >
+        <div
+          className="absolute left-4 top-1/2 z-20"
+          style={{
+            transform: (autoSaveStatus !== 'idle' || (isDirty && !saving))
+              ? 'translateY(calc(-50% + 24px))'
+              : 'translateY(-50%)'
+          }}
+        >
+          <div className="flex flex-col rounded-lg bg-gray-800 bg-opacity-90 backdrop-blur-sm shadow-2xl">
+            {/* Tool Buttons */}
+            <div className="flex flex-col border-b border-gray-700">
+              <button
+                type="button"
+                onClick={() => handleSetMode('draw')}
+                disabled={controlsDisabled}
+                className={`flex items-center justify-center w-12 h-12 transition group relative ${
+                  isDrawMode
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''} first:rounded-t-lg`}
+                title="Draw"
+              >
+                <Pencil size={20} />
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                   Draw
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetMode('select')}
-                  disabled={controlsDisabled}
-                  className={`rounded px-2 py-1 text-xs font-medium transition ${
-                    isSelectMode
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                  } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
-                >
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetMode('select')}
+                disabled={controlsDisabled}
+                className={`flex items-center justify-center w-12 h-12 transition group relative ${
+                  isSelectMode
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                title="Select"
+              >
+                <MousePointer2 size={20} />
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                   Select
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetMode('erase')}
-                  disabled={controlsDisabled}
-                  className={`rounded px-2 py-1 text-xs font-medium transition ${
-                    isEraseMode
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                  } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
-                >
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetMode('erase')}
+                disabled={controlsDisabled}
+                className={`flex items-center justify-center w-12 h-12 transition group relative ${
+                  isEraseMode
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                title="Erase"
+              >
+                <Eraser size={20} />
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                   Erase
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetMode('pan')}
-                  disabled={controlsDisabled}
-                  className={`rounded px-2 py-1 text-xs font-medium transition ${
-                    isPanMode
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                  } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
-                >
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetMode('pan')}
+                disabled={controlsDisabled}
+                className={`flex items-center justify-center w-12 h-12 transition group relative ${
+                  isPanMode
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                title="Pan"
+              >
+                <Hand size={20} />
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                   Pan
-                </button>
-              </div>
-              <div className="h-4 w-px bg-gray-500" />
-              <div className="flex items-center gap-1">
-                {COLOR_PRESETS.map((preset) => {
-                  const isSelected = brushColor.toLowerCase() === preset.value.toLowerCase();
-                  return (
-                    <button
-                      key={preset.value}
-                      type="button"
-                      onClick={() => setBrushColor(preset.value)}
-                      disabled={controlsDisabled}
-                      className={`h-5 w-5 rounded-full border-2 transition ${
-                        isSelected
-                          ? 'border-blue-400 ring-2 ring-blue-300'
-                          : 'border-gray-400 hover:border-gray-300'
-                      } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
-                      style={{ backgroundColor: preset.value }}
-                      title={preset.label}
-                    />
-                  );
-                })}
-              </div>
-              <div className="flex items-center gap-1">
-                {BRUSH_WIDTH_OPTIONS.map((option) => {
-                  const isSelected = activeStrokeWidth === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => handleBrushWidthChange(option.value)}
-                      disabled={controlsDisabled}
-                      className={`rounded px-2 py-1 text-xs transition ${
-                        isSelected
-                          ? 'bg-gray-800 text-white'
-                          : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                      } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="h-4 w-px bg-gray-500" />
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={handleUndo}
-                  disabled={controlsDisabled || !canUndo}
-                  className={`rounded px-2 py-1 text-xs font-medium transition ${
-                    controlsDisabled || !canUndo
-                      ? 'cursor-not-allowed bg-gray-700 text-gray-500'
-                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                  }`}
-                  title="Undo"
-                >
-                  Undo
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRedo}
-                  disabled={controlsDisabled || !canRedo}
-                  className={`rounded px-2 py-1 text-xs font-medium transition ${
-                    controlsDisabled || !canRedo
-                      ? 'cursor-not-allowed bg-gray-700 text-gray-500'
-                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                  }`}
-                  title="Redo"
-                >
-                  Redo
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteSelected}
-                  disabled={controlsDisabled || !selectedId}
-                  className={`rounded px-2 py-1 text-xs font-medium transition ${
-                    controlsDisabled || !selectedId
-                      ? 'cursor-not-allowed bg-gray-700 text-gray-500'
-                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                  }`}
-                >
-                  Delete
-                </button>
-                <button
-                  type="button"
-                  onClick={handleClearAll}
-                  disabled={controlsDisabled || lines.length === 0}
-                  className={`rounded px-2 py-1 text-xs font-medium transition ${
-                    controlsDisabled || lines.length === 0
-                      ? 'cursor-not-allowed bg-gray-700 text-gray-500'
-                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
-                  }`}
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  onClick={handleManualSave}
-                  disabled={controlsDisabled || !isDirty}
-                  className={`rounded px-2 py-1 text-xs font-medium transition ${
-                    controlsDisabled || !isDirty
-                      ? 'cursor-not-allowed bg-gray-700 text-gray-500'
-                      : 'bg-blue-600 text-white hover:bg-blue-500'
-                  }`}
-                >
-                  Save
-                </button>
-                {autoSaveStatus !== 'idle' && (
-                  <span
-                    className={`text-xs ${
-                      autoSaveStatus === 'saving' ? 'text-blue-300' : 'text-green-300'
-                    }`}
-                  >
-                    {autoSaveStatus === 'saving' ? 'Saving...' : 'Saved'}
-                  </span>
-                )}
-              </div>
+                </span>
+              </button>
             </div>
-            {isDirty && (
-              <div className="mt-1 text-center text-xs text-orange-300">
-                {saving ? 'Saving...' : 'Unsaved changes'}
-              </div>
-            )}
+
+            {/* Color Palette */}
+            <div className="border-b border-gray-700 relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setColorPaletteExpanded(!colorPaletteExpanded);
+                  setBrushSizeExpanded(false);
+                }}
+                disabled={controlsDisabled}
+                className={`flex items-center justify-center w-12 h-12 transition group relative ${
+                  colorPaletteExpanded ? 'bg-gray-700' : ''
+                } text-gray-300 hover:bg-gray-700 hover:text-white ${
+                  controlsDisabled ? 'cursor-not-allowed opacity-50' : ''
+                }`}
+                title="Color"
+              >
+                <div className="relative">
+                  <Palette size={20} />
+                  <div
+                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-gray-800"
+                    style={{ backgroundColor: brushColor }}
+                  />
+                </div>
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                  Color
+                </span>
+              </button>
+              {colorPaletteExpanded && (
+                <div className="absolute left-full top-0 ml-2 p-2.5 rounded-lg bg-gray-800 bg-opacity-90 backdrop-blur-sm shadow-2xl z-20 min-w-max">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {COLOR_PRESETS.map((preset) => {
+                      const isSelected = brushColor.toLowerCase() === preset.value.toLowerCase();
+                      return (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => {
+                            setBrushColor(preset.value);
+                            setColorPaletteExpanded(false);
+                          }}
+                          disabled={controlsDisabled}
+                          className={`w-9 h-9 rounded-full border-2 transition flex-shrink-0 ${
+                            isSelected
+                              ? 'border-blue-400 ring-2 ring-blue-300'
+                              : 'border-gray-600 hover:border-gray-400'
+                          } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                          style={{ backgroundColor: preset.value }}
+                          title={preset.label}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Brush Size */}
+            <div className="border-b border-gray-700 relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setBrushSizeExpanded(!brushSizeExpanded);
+                  setColorPaletteExpanded(false);
+                }}
+                disabled={controlsDisabled}
+                className={`flex items-center justify-center w-12 h-12 transition group relative ${
+                  brushSizeExpanded ? 'bg-gray-700' : ''
+                } text-gray-300 hover:bg-gray-700 hover:text-white ${
+                  controlsDisabled ? 'cursor-not-allowed opacity-50' : ''
+                }`}
+                title="Brush Size"
+              >
+                <Circle size={Math.min(activeStrokeWidth * 2, 24)} />
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                  Size
+                </span>
+              </button>
+              {brushSizeExpanded && (
+                <div className="absolute left-full top-0 ml-2 p-2 rounded-lg bg-gray-800 bg-opacity-90 backdrop-blur-sm shadow-2xl z-20">
+                  <div className="flex flex-col gap-1">
+                    {BRUSH_WIDTH_OPTIONS.map((option) => {
+                      const isSelected = activeStrokeWidth === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => {
+                            handleBrushWidthChange(option.value);
+                            setBrushSizeExpanded(false);
+                          }}
+                          disabled={controlsDisabled}
+                          className={`flex items-center gap-2 px-3 py-2 rounded text-xs font-medium transition whitespace-nowrap ${
+                            isSelected
+                              ? 'bg-blue-500 text-white'
+                              : 'text-gray-200 hover:bg-gray-600'
+                          } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                        >
+                          <Circle size={option.value * 2} />
+                          <span>{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col">
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={controlsDisabled || !canUndo}
+                className={`flex items-center justify-center w-12 h-12 transition group relative ${
+                  controlsDisabled || !canUndo
+                    ? 'cursor-not-allowed text-gray-600'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                }`}
+                title="Undo"
+              >
+                <Undo2 size={20} />
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                  Undo
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={handleRedo}
+                disabled={controlsDisabled || !canRedo}
+                className={`flex items-center justify-center w-12 h-12 transition group relative ${
+                  controlsDisabled || !canRedo
+                    ? 'cursor-not-allowed text-gray-600'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                }`}
+                title="Redo"
+              >
+                <Redo2 size={20} />
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                  Redo
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteSelected}
+                disabled={controlsDisabled || !selectedId}
+                className={`flex items-center justify-center w-12 h-12 transition group relative ${
+                  controlsDisabled || !selectedId
+                    ? 'cursor-not-allowed text-gray-600'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                }`}
+                title="Delete Selected"
+              >
+                <Trash2 size={20} />
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                  Delete
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={handleManualSave}
+                disabled={controlsDisabled || !isDirty}
+                className={`flex items-center justify-center w-12 h-12 transition group relative ${
+                  controlsDisabled || !isDirty
+                    ? 'cursor-not-allowed text-gray-600'
+                    : isDirty
+                      ? 'text-blue-400 hover:bg-blue-600 hover:text-white'
+                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                }`}
+                title="Save"
+              >
+                <Save size={20} />
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                  Save
+                </span>
+              </button>
+
+              {/* Status Indicator */}
+              {(autoSaveStatus !== 'idle' || (isDirty && !saving)) && (
+                <div className="flex items-center justify-center w-12 h-12 border-t border-gray-700 group relative rounded-b-lg">
+                  {autoSaveStatus === 'saving' && (
+                    <>
+                      <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                      <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-blue-300 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                        Saving...
+                      </span>
+                    </>
+                  )}
+                  {autoSaveStatus === 'saved' && (
+                    <>
+                      <div className="text-green-400 text-lg">✓</div>
+                      <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-green-300 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                        Saved
+                      </span>
+                    </>
+                  )}
+                  {isDirty && !saving && autoSaveStatus === 'idle' && (
+                    <>
+                      <div className="text-orange-400 text-lg">⚠</div>
+                      <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-orange-300 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                        Unsaved changes
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
