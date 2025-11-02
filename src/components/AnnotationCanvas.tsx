@@ -1103,7 +1103,13 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
                 listening={false}
               />
             </Layer>
-            <Layer name={DRAWING_LAYER_NAME} id={DRAWING_LAYER_NAME}>
+            <Layer
+              name={DRAWING_LAYER_NAME}
+              id={DRAWING_LAYER_NAME}
+              clipFunc={(ctx) => {
+                ctx.rect(0, 0, displaySize.width, displaySize.height);
+              }}
+            >
               {lines.map((line) => (
                 <Line
                   key={line.id}
