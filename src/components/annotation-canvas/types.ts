@@ -31,6 +31,7 @@ export type Size = { width: number; height: number };
 export type Position = { x: number; y: number };
 export type AnnotationCanvasProps = {
   imageUrl: string;
+  imageCacheKey?: string;
   initialAnnotation?: AnnotationSavePayload | null;
   editable: boolean;
   onSave?: (annotation: AnnotationSavePayload | null) => Promise<void> | void;

@@ -9,6 +9,7 @@ import type {
 import type { Artwork, LabelType } from '@/types';
 import ArtworkViewer from './artwork-modal/ArtworkViewer';
 import ArtworkSidebar from './artwork-modal/ArtworkSidebar';
+import { convertLinesToStageJSON } from '@/utils/annotations';
 
 interface ArtworkModalProps {
   artwork: Artwork;
@@ -95,15 +96,26 @@ const ArtworkModal = ({
 
   const currentPageNumber = currentImage?.pageNumber ?? currentPage + 1;
 
-  const rawAnnotation = artwork.annotations?.find((annotation) => annotation.pageNumber === currentPageNumber) ?? null;
-
-  const currentAnnotation = rawAnnotation
-    ? {
-        data: rawAnnotation.data,
-        width: rawAnnotation.width,
-        height: rawAnnotation.height,
-      }
-    : null;
+  const currentAnnotation = useMemo<AnnotationSavePayload | null>(() => {
+    const pageKey = String(currentPageNumber);
+    const mapAnnotation = artwork.annotationsMap?.[pageKey];
+    if (mapAnnotation) {
+      return {
+        data: convertLinesToStageJSON(mapAnnotation.lines || [], mapAnnotation.width, mapAnnotation.height),
+        width: mapAnnotation.width,
+        height: mapAnnotation.height,
+      };
+    }
+    const legacyAnnotation =
+      artwork.annotations?.find((annotation) => annotation.pageNumber === currentPageNumber) ?? null;
+    return legacyAnnotation
+      ? {
+          data: legacyAnnotation.data,
+          width: legacyAnnotation.width,
+          height: legacyAnnotation.height,
+        }
+      : null;
+  }, [artwork.annotations, artwork.annotationsMap, currentPageNumber]);
 
   const handlePageChange = useCallback(
     async (index: number) => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
-import type { Artwork } from '@/types';
+import type { Artwork, ArtworkAnnotationLine, ArtworkAnnotationPage } from '@/types';
 
 type UseGalleryArtworksResult = {
   artworks: Artwork[];
@@ -42,8 +42,64 @@ export const useGalleryArtworks = (
 
       const querySnapshot = await getDocs(artworksQuery);
 
+      const toFiniteNumber = (value: unknown): number => {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          return value;
+        }
+        if (typeof value === 'string') {
+          const parsed = Number(value);
+          if (Number.isFinite(parsed)) {
+            return parsed;
+          }
+        }
+        return 0;
+      };
+      const toNumberArray = (values: unknown): number[] => {
+        if (!Array.isArray(values)) {
+          return [];
+        }
+        return values.reduce<number[]>((acc, value) => {
+          const parsed = typeof value === 'number' ? value : Number(value);
+          if (Number.isFinite(parsed)) {
+            acc.push(parsed);
+          }
+          return acc;
+        }, []);
+      };
+
       const fetchedArtworks: Artwork[] = querySnapshot.docs.map((doc) => {
         const data = doc.data();
+
+        const annotationsMap = data.annotationsMap
+          ? Object.entries(data.annotationsMap).reduce<Record<string, ArtworkAnnotationPage>>((acc, [key, value]) => {
+              if (!value || typeof value !== 'object') {
+                return acc;
+              }
+              const pageData = value as Record<string, any>;
+              const rawLines = Array.isArray(pageData.lines) ? pageData.lines : [];
+              const lines: ArtworkAnnotationLine[] = rawLines.map((line: any) => ({
+                id: typeof line?.id === 'string' ? line.id : `line-${Math.random().toString(16).slice(2)}`,
+                tool: line?.tool === 'erase' ? 'erase' : 'draw',
+                points: toNumberArray(line?.points),
+                stroke: typeof line?.stroke === 'string' ? line.stroke : '#000000',
+                strokeWidth: (() => {
+                  const value = toFiniteNumber(line?.strokeWidth);
+                  return value > 0 ? value : 1;
+                })(),
+                x: toFiniteNumber(line?.x),
+                y: toFiniteNumber(line?.y),
+              }));
+              acc[key] = {
+                lines,
+                width: toFiniteNumber(pageData.width),
+                height: toFiniteNumber(pageData.height),
+                updatedAt: pageData.updatedAt?.toDate ? pageData.updatedAt.toDate() : pageData.updatedAt,
+                updatedBy: pageData.updatedBy,
+              };
+              return acc;
+            }, {})
+          : undefined;
+
         return {
           id: doc.id,
           title: data.title || '',
@@ -67,6 +123,7 @@ export const useGalleryArtworks = (
             ...annotation,
             updatedAt: annotation.updatedAt?.toDate ? annotation.updatedAt.toDate() : annotation.updatedAt,
           })),
+          annotationsMap,
           createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
           importedBy: data.importedBy || '',
         };

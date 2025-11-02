@@ -15,10 +15,11 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 
+import { ANNOTATION_CONFIG } from '@/config/annotation';
+import { imageCacheManager } from '@/utils/imageCache';
 import { BRUSH_WIDTH_OPTIONS, COLOR_PRESETS, DEFAULT_HEIGHT, DEFAULT_WIDTH, DRAWING_LAYER_NAME } from './annotation-canvas/constants';
 import { createCircleCursor, MIN_CURSOR_DIAMETER } from './annotation-canvas/cursor';
 import { useLineHistory } from './annotation-canvas/history';
-import { loadImage } from './annotation-canvas/image';
 import { AnnotationStage } from './annotation-canvas/AnnotationStage';
 import { AnnotationToolbar } from './annotation-canvas/AnnotationToolbar';
 import { generateLineId } from './annotation-canvas/utils';
@@ -38,6 +39,7 @@ type SaveOptions = { reason?: AnnotationSaveReason; force?: boolean };
 const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProps>(function AnnotationCanvas(
   {
     imageUrl,
+    imageCacheKey,
     initialAnnotation,
     editable,
     onSave,
@@ -60,7 +62,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   const clearAllTimeoutRef = useRef<number | null>(null);
   const saveAnnotationRef = useRef<(options?: SaveOptions) => Promise<void>>();
 
-  const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
+  const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | ImageBitmap | null>(null);
   const [baseSize, setBaseSize] = useState<Size | null>(null);
   const [displaySize, setDisplaySize] = useState<Size | null>(null);
   const [stageSize, setStageSize] = useState<Size | null>(null);
@@ -77,6 +79,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   const [colorPaletteExpanded, setColorPaletteExpanded] = useState(false);
   const [brushSizeExpanded, setBrushSizeExpanded] = useState(false);
   const [clearAllPending, setClearAllPending] = useState(false);
+  const [isPerfectDrawActive, setIsPerfectDrawActive] = useState(false);
 
   const clearIndicatorTimer = useCallback(() => {
     if (indicatorTimeoutRef.current !== null) {
@@ -102,6 +105,70 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   const isSelectMode = mode === 'select';
   const isPanMode = mode === 'pan';
   const isDrawingToolActive = isDrawMode || isEraseMode;
+
+  const {
+    enabled: perfectDrawEnabledFlag,
+    strategy: perfectDrawStrategy,
+    pointThreshold: perfectDrawPointThreshold,
+    lineThreshold: perfectDrawLineThreshold,
+    debug: perfectDrawDebug,
+  } = ANNOTATION_CONFIG.perfectDraw;
+
+  const lineCount = lines.length;
+  const totalPoints = useMemo(
+    () => lines.reduce((sum, line) => sum + line.points.length, 0),
+    [lines],
+  );
+
+  const resolvedPerfectDrawEnabled = useMemo(() => {
+    if (!perfectDrawEnabledFlag) {
+      return false;
+    }
+
+    switch (perfectDrawStrategy) {
+      case 'always':
+        return true;
+      case 'never':
+        return false;
+      case 'drawing':
+        return isPerfectDrawActive;
+      case 'dynamic': {
+        if (isPerfectDrawActive) {
+          return true;
+        }
+        const withinPointLimit = totalPoints <= perfectDrawPointThreshold;
+        const withinLineLimit = lineCount <= perfectDrawLineThreshold;
+        return withinPointLimit && withinLineLimit;
+      }
+      default:
+        return false;
+    }
+  }, [
+    isPerfectDrawActive,
+    lineCount,
+    perfectDrawEnabledFlag,
+    perfectDrawPointThreshold,
+    perfectDrawStrategy,
+    perfectDrawLineThreshold,
+    totalPoints,
+  ]);
+
+  useEffect(() => {
+    if (!perfectDrawDebug) return;
+    console.log('[PerfectDraw]', {
+      enabled: resolvedPerfectDrawEnabled,
+      strategy: perfectDrawStrategy,
+      lineCount,
+      totalPoints,
+      isDrawing: isPerfectDrawActive,
+    });
+  }, [lineCount, perfectDrawDebug, perfectDrawStrategy, resolvedPerfectDrawEnabled, totalPoints, isPerfectDrawActive]);
+
+  useEffect(() => {
+    if (!isDrawingToolActive && isPerfectDrawActive) {
+      setIsPerfectDrawActive(false);
+    }
+  }, [isDrawingToolActive, isPerfectDrawActive]);
 
   const drawCursor = useMemo(() => {
     if (typeof document === 'undefined') {
@@ -195,12 +262,16 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
         return;
       }
 
+      const cacheKey = imageCacheKey ?? imageUrl;
+
       try {
-        const img = await loadImage(imageUrl);
+        const { image, bitmap } = await imageCacheManager.get(cacheKey, imageUrl);
         if (cancelled) return;
-        const width = img.naturalWidth || img.width || DEFAULT_WIDTH;
-        const height = img.naturalHeight || img.height || DEFAULT_HEIGHT;
-        setBackgroundImage(img);
+        const width =
+          image.naturalWidth || image.width || bitmap?.width || DEFAULT_WIDTH;
+        const height =
+          image.naturalHeight || image.height || bitmap?.height || DEFAULT_HEIGHT;
+        setBackgroundImage(bitmap ?? image);
         setBaseSize({ width, height });
       } catch (error) {
         console.error('[AnnotationCanvas] Failed to load background image:', error);
@@ -216,7 +287,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     return () => {
       cancelled = true;
     };
-  }, [imageUrl]);
+  }, [imageCacheKey, imageUrl]);
 
   const updateDisplayLayout = useCallback(() => {
     const stage = stageRef.current;
@@ -401,6 +472,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       setBrushSizeExpanded(false);
 
       recordSnapshot();
+      setIsPerfectDrawActive(true);
       isPointerDrawingRef.current = true;
       const scaleX = displayScale.x || 1;
       const scaleY = displayScale.y || 1;
@@ -463,6 +535,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   const finishDrawing = useCallback((event?: KonvaEventObject<MouseEvent | TouchEvent>) => {
     event?.evt.preventDefault?.();
     isPointerDrawingRef.current = false;
+    setIsPerfectDrawActive(false);
   }, []);
 
   const handlePanMouseDownWrapper = useCallback(
@@ -817,6 +890,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
           scale={displayScale}
           averageScale={averageScale}
           selectedId={selectedId}
+          perfectDrawEnabled={resolvedPerfectDrawEnabled}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerFinish={finishDrawing}

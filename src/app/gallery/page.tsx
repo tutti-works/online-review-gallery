@@ -15,6 +15,18 @@ import { useGalleryArtworks } from './hooks/useGalleryArtworks';
 import { useGalleryInitialization } from './hooks/useGalleryInitialization';
 import { useImportProgress } from './hooks/useImportProgress';
 import type { SortOption } from './types';
+import { extractLinesFromStageJSON } from '@/utils/annotations';
+
+const removePageFromMap = <T,>(
+  map: Record<string, T> | undefined,
+  key: string,
+): Record<string, T> | undefined => {
+  if (!map) {
+    return undefined;
+  }
+  const { [key]: _removed, ...rest } = map;
+  return Object.keys(rest).length > 0 ? rest : undefined;
+};
 
 function GalleryPage() {
   const { user, logout } = useAuth();
@@ -287,8 +299,10 @@ function GalleryPage() {
   ) => {
     if (user?.role !== 'admin' || !user?.email) return;
 
+    const pageKey = String(pageNumber);
+
     try {
-      const { doc, updateDoc, arrayUnion, arrayRemove } = await import('firebase/firestore');
+      const { doc, updateDoc, arrayRemove, deleteField } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase');
 
       const artworkRef = doc(db, 'artworks', artworkId);
@@ -297,77 +311,106 @@ function GalleryPage() {
       const existingAnnotation = currentAnnotations.find((ann) => ann.pageNumber === pageNumber);
 
       if (annotation) {
+        const lines = extractLinesFromStageJSON(annotation.data);
+        const updatedAt = new Date();
         const newAnnotation = {
           pageNumber,
           data: annotation.data,
           width: annotation.width,
           height: annotation.height,
-          updatedAt: new Date(),
+          updatedAt,
+          updatedBy: user.email,
+        };
+        const newPageEntry = {
+          lines,
+          width: annotation.width,
+          height: annotation.height,
+          updatedAt,
           updatedBy: user.email,
         };
 
+        const updatePayload: Record<string, unknown> = {
+          [`annotationsMap.${pageKey}`]: newPageEntry,
+        };
         if (existingAnnotation) {
-          await updateDoc(artworkRef, {
-            annotations: arrayRemove(existingAnnotation),
+          updatePayload.annotations = arrayRemove(existingAnnotation);
+        }
+
+        await updateDoc(artworkRef, updatePayload);
+
+        setArtworks((prev) =>
+          prev.map((item) => {
+            if (item.id !== artworkId) {
+              return item;
+            }
+            const filteredAnnotations = (item.annotations || []).filter((ann) => ann.pageNumber !== pageNumber);
+            const nextMap = {
+              ...(item.annotationsMap || {}),
+              [pageKey]: newPageEntry,
+            };
+            return {
+              ...item,
+              annotations: [...filteredAnnotations, newAnnotation],
+              annotationsMap: nextMap,
+            };
+          }),
+        );
+
+        if (selectedArtwork?.id === artworkId) {
+          setSelectedArtwork((prev) => {
+            if (!prev) {
+              return null;
+            }
+            const filteredAnnotations = (prev.annotations || []).filter((ann) => ann.pageNumber !== pageNumber);
+            const nextMap = {
+              ...(prev.annotationsMap || {}),
+              [pageKey]: newPageEntry,
+            };
+            return {
+              ...prev,
+              annotations: [...filteredAnnotations, newAnnotation],
+              annotationsMap: nextMap,
+            };
           });
         }
-
-        await updateDoc(artworkRef, {
-          annotations: arrayUnion(newAnnotation),
-        });
-
-        setArtworks((prev) =>
-          prev.map((item) =>
-            item.id === artworkId
-              ? {
-                  ...item,
-                  annotations: [
-                    ...(item.annotations || []).filter((ann) => ann.pageNumber !== pageNumber),
-                    newAnnotation,
-                  ],
-                }
-              : item,
-          ),
-        );
-
-        if (selectedArtwork?.id === artworkId) {
-          setSelectedArtwork((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  annotations: [
-                    ...(prev.annotations || []).filter((ann) => ann.pageNumber !== pageNumber),
-                    newAnnotation,
-                  ],
-                }
-              : null,
-          );
+      } else {
+        const updatePayload: Record<string, unknown> = {
+          [`annotationsMap.${pageKey}`]: deleteField(),
+        };
+        if (existingAnnotation) {
+          updatePayload.annotations = arrayRemove(existingAnnotation);
         }
-      } else if (existingAnnotation) {
-        await updateDoc(artworkRef, {
-          annotations: arrayRemove(existingAnnotation),
-        });
+
+        await updateDoc(artworkRef, updatePayload);
 
         setArtworks((prev) =>
-          prev.map((item) =>
-            item.id === artworkId
-              ? {
-                  ...item,
-                  annotations: (item.annotations || []).filter((ann) => ann.pageNumber !== pageNumber),
-                }
-              : item,
-          ),
+          prev.map((item) => {
+            if (item.id !== artworkId) {
+              return item;
+            }
+            const filteredAnnotations = (item.annotations || []).filter((ann) => ann.pageNumber !== pageNumber);
+            const nextMap = removePageFromMap(item.annotationsMap, pageKey);
+            return {
+              ...item,
+              annotations: filteredAnnotations,
+              annotationsMap: nextMap,
+            };
+          }),
         );
 
         if (selectedArtwork?.id === artworkId) {
-          setSelectedArtwork((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  annotations: (prev.annotations || []).filter((ann) => ann.pageNumber !== pageNumber),
-                }
-              : null,
-          );
+          setSelectedArtwork((prev) => {
+            if (!prev) {
+              return null;
+            }
+            const filteredAnnotations = (prev.annotations || []).filter((ann) => ann.pageNumber !== pageNumber);
+            const nextMap = removePageFromMap(prev.annotationsMap, pageKey);
+            return {
+              ...prev,
+              annotations: filteredAnnotations,
+              annotationsMap: nextMap,
+            };
+          });
         }
       }
     } catch (error) {

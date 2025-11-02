@@ -8,7 +8,7 @@ import type { LineShape, Position, Size } from './types';
 
 type AnnotationStageProps = {
   stageRef: React.MutableRefObject<KonvaStage | null>;
-  backgroundImage: HTMLImageElement | null;
+  backgroundImage: HTMLImageElement | ImageBitmap | null;
   displaySize: Size | null;
   stageSize: Size | null;
   stageCenter: Position;
@@ -22,6 +22,7 @@ type AnnotationStageProps = {
   scale: { x: number; y: number };
   averageScale: number;
   selectedId: string | null;
+  perfectDrawEnabled: boolean;
   onPointerDown: (event: KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onPointerMove: (event: KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onPointerFinish: (event?: KonvaEventObject<MouseEvent | TouchEvent>) => void;
@@ -48,6 +49,7 @@ export const AnnotationStage = ({
   scale,
   averageScale,
   selectedId,
+  perfectDrawEnabled,
   onPointerDown,
   onPointerMove,
   onPointerFinish,
@@ -107,6 +109,7 @@ export const AnnotationStage = ({
             lineCap="round"
             lineJoin="round"
             tension={0.5}
+            perfectDrawEnabled={perfectDrawEnabled}
             x={line.x * scaleX}
             y={line.y * scaleY}
             globalCompositeOperation={line.tool === 'erase' ? 'destination-out' : 'source-over'}
