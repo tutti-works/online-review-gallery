@@ -42,7 +42,7 @@
 
 ## 実装完了サマリー
 
-### 実装した3つの最適化
+### 実装した最適化（4項目）
 
 #### 1. 注釈データの差分更新 ✅
 - **実装方式**: ページ単位Map方式（`annotationsMap`）
@@ -59,15 +59,24 @@
 - **効果**: 2回目以降のページ表示が即座（<100ms）
 - **メモリ管理**: 上限200MB、自動削除
 
+#### 4. エラーハンドリング強化 ✅
+- **実装方式**: ネットワーク監視 + localStorage ドラフト + リトライロジック
+- **効果**: データ損失防止、オフライン対応、UX向上
+- **主な機能**: オフライン検知、ドラフト自動保存・復元、エラーメッセージ改善
+
 ### 実装ファイル（新規作成）
 - `src/utils/annotations.ts` - 注釈データ変換
 - `src/utils/imageCache.ts` - 画像キャッシュマネージャー
+- `src/utils/annotationDrafts.ts` - localStorage ドラフト管理
+- `src/utils/retry.ts` - リトライロジック
+- `src/hooks/useNetworkStatus.ts` - ネットワーク状態監視フック
 - `src/config/annotation.ts` - 注釈設定
 - `src/config/imageCache.ts` - 画像キャッシュ設定
 
 ### 主な変更ファイル
 - `src/components/AnnotationCanvas.tsx` - キャッシュ・perfectDraw統合
-- `src/app/gallery/page.tsx` - 新スキーマでの保存処理
+- `src/components/ArtworkModal.tsx` - オフライン/ドラフトバナー、エラーハンドリング
+- `src/app/gallery/page.tsx` - 新スキーマでの保存処理、エラーハンドリング
 - `src/types/index.ts` - 型定義追加
 
 ---
@@ -1068,15 +1077,24 @@ export const ImageCacheMonitor = () => {
 - データモデルのシンプル化
 - パフォーマンスのさらなる改善
 
-### 5. エラーハンドリング強化
+### 5. エラーハンドリング強化 ✅ 実装完了
 
 **優先度: 中**
 
-**推奨アクション:**
-- [ ] ネットワークエラー時の自動リトライ（最大3回）
-- [ ] 保存失敗時のlocalStorageへ一時保存
-- [ ] オフライン検知と警告
-- [ ] エラー発生時のユーザーフレンドリーなメッセージ
+**実装完了日:** 2025-11-03
+
+**実装済みアクション:**
+- [x] ネットワークエラー時の自動リトライ（`withRetries`関数、指数バックオフ）
+- [x] 保存失敗時のlocalStorageへ一時保存（最大8件、4MB制限）
+- [x] オフライン検知と警告（`useNetworkStatus`フック、バナー表示）
+- [x] エラー発生時のユーザーフレンドリーなメッセージ（オフライン/エラー別）
+
+**実装ファイル:**
+- `src/hooks/useNetworkStatus.ts` - ネットワーク状態監視
+- `src/utils/annotationDrafts.ts` - localStorage ドラフト管理
+- `src/utils/retry.ts` - リトライロジック
+- `src/components/ArtworkModal.tsx` - オフライン/ドラフトバナー、エラーハンドリング
+- `src/app/gallery/page.tsx` - `isRetryableFirestoreError` 判定
 
 **期待効果:**
 - ユーザー体験の向上
