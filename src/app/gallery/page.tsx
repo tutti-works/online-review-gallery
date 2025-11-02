@@ -16,6 +16,8 @@ import { useGalleryInitialization } from './hooks/useGalleryInitialization';
 import { useImportProgress } from './hooks/useImportProgress';
 import type { SortOption } from './types';
 import { extractLinesFromStageJSON } from '@/utils/annotations';
+import { clearAnnotationDraft, saveAnnotationDraft } from '@/utils/annotationDrafts';
+import { withRetries } from '@/utils/retry';
 
 const removePageFromMap = <T,>(
   map: Record<string, T> | undefined,
@@ -26,6 +28,18 @@ const removePageFromMap = <T,>(
   }
   const { [key]: _removed, ...rest } = map;
   return Object.keys(rest).length > 0 ? rest : undefined;
+};
+
+const isRetryableFirestoreError = (error: unknown): boolean => {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in (error as Record<string, unknown>)
+      ? (error as { code?: string }).code
+      : undefined;
+  if (typeof code !== 'string') {
+    return true;
+  }
+  const nonRetryable = new Set(['permission-denied', 'failed-precondition', 'invalid-argument', 'not-found']);
+  return !nonRetryable.has(code);
 };
 
 function GalleryPage() {

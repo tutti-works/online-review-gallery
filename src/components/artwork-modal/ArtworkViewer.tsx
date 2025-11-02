@@ -188,6 +188,7 @@ const ArtworkViewer = ({
     return parts.filter(Boolean).join(':');
   }, [artwork.id, currentImage?.id, currentImage?.pageNumber, currentImage?.url, currentPage]);
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   const overlayAnnotation = useMemo<OverlayAnnotationData | null>(() => {
     if (!currentAnnotation) {
       return null;
@@ -232,6 +233,7 @@ const ArtworkViewer = ({
       return null;
     }
   }, [currentAnnotation]);
+  /* eslint-enable react-hooks-exhaustive-deps */
 
   const hasOverlay = overlayAnnotation !== null && overlayAnnotation.lines.length > 0;
   const shouldShowOverlay = !showAnnotation && annotationOverlayVisible && hasOverlay;
