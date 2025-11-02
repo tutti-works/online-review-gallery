@@ -802,9 +802,11 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
 
       if (hasLines && baseSize) {
         // 保存前にStageとLayerの状態を一時的に変更
-        const drawingLayer = stage.findOne(`#${DRAWING_LAYER_NAME}`);
-        const backgroundLayer = stage.findOne('.background-layer');
-        const backgroundImageNode = backgroundLayer?.findOne('Image');
+        const drawingLayer = stage.findOne<Konva.Layer>(`#${DRAWING_LAYER_NAME}`);
+        const backgroundLayer = stage.findOne<Konva.Layer>('.background-layer');
+        const backgroundImageNode = backgroundLayer?.findOne<Konva.Image>('Image');
+        const lineNodes = drawingLayer?.find<KonvaLineNode>('Line') ?? [];
+        const lineStateMap = new Map(lines.map((line) => [line.id, line]));
 
         // 元の状態を保存
         const originalStageSize = { width: stage.width(), height: stage.height() };
@@ -813,10 +815,23 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
         const originalImageSize = backgroundImageNode
           ? { width: backgroundImageNode.width(), height: backgroundImageNode.height() }
           : null;
+        const originalStageScale = { x: stage.scaleX(), y: stage.scaleY() };
+        const originalStagePosition = { x: stage.x(), y: stage.y() };
+        const originalStageOffset = { x: stage.offsetX(), y: stage.offsetY() };
+        const originalLineStates = lineNodes.map((node) => ({
+          node,
+          points: [...node.points()],
+          x: node.x(),
+          y: node.y(),
+          strokeWidth: node.strokeWidth(),
+        }));
 
         // Stageサイズを元画像サイズに変更
         stage.width(baseSize.width);
         stage.height(baseSize.height);
+        stage.scale({ x: 1, y: 1 });
+        stage.position({ x: 0, y: 0 });
+        stage.offset({ x: 0, y: 0 });
 
         // 背景画像サイズを元画像サイズに変更
         if (backgroundImageNode) {
@@ -833,6 +848,17 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
           backgroundLayer.x(0);
           backgroundLayer.y(0);
         }
+
+        // 線ノードを元座標系（原寸）に変換
+        lineNodes.forEach((node) => {
+          const lineState = lineStateMap.get(node.id());
+          if (!lineState) return;
+
+          node.points([...lineState.points]);
+          node.x(lineState.x);
+          node.y(lineState.y);
+          node.strokeWidth(lineState.strokeWidth);
+        });
 
         payload = {
           data: stage.toJSON(),
@@ -857,6 +883,17 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
           backgroundLayer.x(originalBackgroundOffset.x);
           backgroundLayer.y(originalBackgroundOffset.y);
         }
+        stage.scale(originalStageScale);
+        stage.position(originalStagePosition);
+        stage.offset(originalStageOffset);
+
+        // 線ノードを元の表示用スケールに戻す
+        originalLineStates.forEach(({ node, points, x, y, strokeWidth }) => {
+          node.points(points);
+          node.x(x);
+          node.y(y);
+          node.strokeWidth(strokeWidth);
+        });
       }
 
       try {
@@ -877,16 +914,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
         throw error;
       }
     },
-    [
-      baseSize,
-      clearIndicatorTimer,
-      editable,
-      isDirty,
-      lines.length,
-      markDirty,
-      onSave,
-      saving,
-    ],
+    [baseSize, clearIndicatorTimer, editable, isDirty, lines, markDirty, onSave, saving],
   );
 
   const handleManualSave = useCallback(() => {
