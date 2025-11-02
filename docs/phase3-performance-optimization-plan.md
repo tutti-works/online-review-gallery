@@ -1077,26 +1077,28 @@ export const ImageCacheMonitor = () => {
 - データモデルのシンプル化
 - パフォーマンスのさらなる改善
 
-### 5. エラーハンドリング強化 ✅ 実装完了
+### 5. エラーハンドリング強化 ✅ 実装完了（シンプル版）
 
 **優先度: 中**
 
 **実装完了日:** 2025-11-03
 
 **実装済みアクション:**
-- [x] ネットワークエラー時の自動リトライ（`withRetries`関数、指数バックオフ）
-- [x] 保存失敗時のlocalStorageへ一時保存（最大8件、4MB制限）
 - [x] オフライン検知と警告（`useNetworkStatus`フック、バナー表示）
 - [x] エラー発生時のユーザーフレンドリーなメッセージ（オフライン/エラー別）
+- [x] 自動保存機能（ページ切り替え時・モード終了時）
 
 **実装ファイル:**
 - `src/hooks/useNetworkStatus.ts` - ネットワーク状態監視
-- `src/utils/annotationDrafts.ts` - localStorage ドラフト管理
-- `src/utils/retry.ts` - リトライロジック
-- `src/components/ArtworkModal.tsx` - オフライン/ドラフトバナー、エラーハンドリング
-- `src/app/gallery/page.tsx` - `isRetryableFirestoreError` 判定
+- `src/components/ArtworkModal.tsx` - オフライン警告バナー、エラーハンドリング
+- `src/app/gallery/page.tsx` - エラーハンドリング
 
-**期待効果:**
+**設計判断:**
+- localStorage ドラフト機能は削除（複雑性を増すため）
+- リトライ機能は削除（自動保存で十分）
+- シンプルで保守しやすいコードを優先
+
+**実装効果:**
 - ユーザー体験の向上
 - データ損失のリスク低減
 - エラー発生時の復旧性向上
