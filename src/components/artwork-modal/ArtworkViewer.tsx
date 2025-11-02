@@ -173,6 +173,21 @@ const ArtworkViewer = ({
     };
   }, [currentImage?.id, updateImageDimensions]);
 
+  const imageCacheKey = useMemo(() => {
+    if (!currentImage) {
+      return undefined;
+    }
+    const parts: string[] = [
+      artwork.id,
+      currentImage.id ?? '',
+      String(currentImage.pageNumber ?? currentPage + 1),
+    ];
+    if (currentImage.url) {
+      parts.push(currentImage.url);
+    }
+    return parts.filter(Boolean).join(':');
+  }, [artwork.id, currentImage?.id, currentImage?.pageNumber, currentImage?.url, currentPage]);
+
   const overlayAnnotation = useMemo<OverlayAnnotationData | null>(() => {
     if (!currentAnnotation) {
       return null;
@@ -244,6 +259,7 @@ const ArtworkViewer = ({
               <AnnotationCanvasComponent
                 ref={annotationCanvasRef}
                 imageUrl={currentImage.url}
+                imageCacheKey={imageCacheKey}
                 initialAnnotation={
                   currentAnnotation
                     ? {
@@ -441,9 +457,11 @@ const ArtworkViewer = ({
           <div className="flex space-x-2 overflow-x-auto">
             {artwork.images.map((image, index) => {
               const pageNumber = image.pageNumber ?? index + 1;
+              const pageKey = String(pageNumber);
               const imageHasAnnotation =
-                Array.isArray(artwork.annotations) &&
-                artwork.annotations.some((annotation) => annotation.pageNumber === pageNumber);
+                Boolean(artwork.annotationsMap?.[pageKey]?.lines?.length) ||
+                (Array.isArray(artwork.annotations) &&
+                  artwork.annotations.some((annotation) => annotation.pageNumber === pageNumber));
 
               return (
                 <button
