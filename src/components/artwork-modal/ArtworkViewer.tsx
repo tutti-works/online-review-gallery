@@ -288,7 +288,7 @@ const ArtworkViewer = ({
             style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
           >
             <div
-              className="transition-transform duration-200 ease-out w-full h-full flex items-center justify-center p-8"
+              className="w-full h-full flex items-center justify-center p-8"
               style={{
                 transform: `scale(${zoom}) translate(${panPosition.x / zoom}px, ${panPosition.y / zoom}px)`,
                 pointerEvents: 'none',
