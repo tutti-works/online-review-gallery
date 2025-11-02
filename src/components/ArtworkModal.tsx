@@ -151,10 +151,12 @@ const ArtworkModal = ({
       }
       setShowAnnotation(false);
       setAnnotationDirty(false);
+      setIsSidebarOpen(false);
       return;
     }
 
     setShowAnnotation(true);
+    setIsSidebarOpen(false);
   }, [requestAutoSave, showAnnotation]);
 
   const handleLike = () => {
