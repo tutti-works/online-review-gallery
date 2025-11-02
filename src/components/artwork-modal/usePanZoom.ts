@@ -19,21 +19,18 @@ export const usePanZoom = () => {
 
   const handleMouseDown = useCallback(
     (event: MouseEvent) => {
-      if (zoom <= 1) {
-        return;
-      }
       setIsDragging(true);
       setDragStart({
         x: event.clientX - panPosition.x,
         y: event.clientY - panPosition.y,
       });
     },
-    [zoom, panPosition],
+    [panPosition],
   );
 
   const handleMouseMove = useCallback(
     (event: MouseEvent) => {
-      if (!isDragging || zoom <= 1) {
+      if (!isDragging) {
         return;
       }
 
@@ -42,7 +39,7 @@ export const usePanZoom = () => {
         y: event.clientY - dragStart.y,
       });
     },
-    [isDragging, zoom, dragStart],
+    [isDragging, dragStart],
   );
 
   const handleMouseUp = useCallback(() => {
