@@ -97,19 +97,18 @@ const ArtworkSidebar = ({
     <>
       <button
         onClick={onToggle}
-        className="absolute right-0 top-1/2 z-20 -translate-y-1/2 rounded-l-lg bg-white p-2 shadow-lg transition-all hover:bg-gray-50"
+        className="absolute right-0 top-1/2 z-20 flex h-11 w-8 -translate-y-1/2 items-center justify-center rounded-l-lg bg-white p-2 shadow-lg hover:bg-gray-50"
         style={{
-          right: isOpen ? '310px' : '0px',
-          transition: 'right 300ms ease-in-out',
+          transform: `translateY(-50%) translateX(${isOpen ? '-311px' : '0px'})`,
+          transition: 'transform 300ms ease-in-out',
         }}
         title={isOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
+        aria-expanded={isOpen}
       >
         <svg
-          className="h-5 w-5 text-gray-600 transition-transform"
-          style={{
-            transform: isOpen ? 'rotate(0deg)' : 'rotate(180deg)',
-            transition: 'transform 300ms ease-in-out',
-          }}
+          className={`h-5 w-5 text-gray-600 transition-transform duration-300 ease-in-out ${
+            isOpen ? 'rotate-0' : '-rotate-180'
+          }`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
