@@ -11,7 +11,6 @@ import ArtworkViewer from './artwork-modal/ArtworkViewer';
 import ArtworkSidebar from './artwork-modal/ArtworkSidebar';
 import { convertLinesToStageJSON } from '@/utils/annotations';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
-import { clearAnnotationDraft, loadAnnotationDraft, saveAnnotationDraft } from '@/utils/annotationDrafts';
 
 interface ArtworkModalProps {
   artwork: Artwork;
@@ -42,8 +41,6 @@ const ArtworkModal = ({
   const [isSavingAnnotation, setIsSavingAnnotation] = useState(false);
   const [annotationDirty, setAnnotationDirty] = useState(false);
   const [annotationOverlayVisible, setAnnotationOverlayVisible] = useState(true);
-  const [draftRevision, setDraftRevision] = useState(0);
-  const [activeDraft, setActiveDraft] = useState<{ key: string; savedAt: number } | null>(null);
   const annotationCanvasRef = useRef<AnnotationCanvasHandle | null>(null);
   const { isOnline } = useNetworkStatus();
 
@@ -101,91 +98,30 @@ const ArtworkModal = ({
 
   const currentPageNumber = currentImage?.pageNumber ?? currentPage + 1;
 
-  const draftAnnotation = useMemo(() => {
-    void draftRevision;
-    return loadAnnotationDraft(artwork.id, currentPageNumber);
-  }, [artwork.id, currentPageNumber, draftRevision]);
-
-  const resolvedAnnotation = useMemo(() => {
+  const currentAnnotation = useMemo(() => {
     const pageKey = String(currentPageNumber);
-
-    const toTimestamp = (value: unknown): number => {
-      if (!value) {
-        return 0;
-      }
-      if (value instanceof Date) {
-        return value.getTime();
-      }
-      if (typeof value === 'number') {
-        return value;
-      }
-      if (typeof value === 'string') {
-        const parsed = Date.parse(value);
-        return Number.isNaN(parsed) ? 0 : parsed;
-      }
-      if (typeof value === 'object' && 'toDate' in (value as any)) {
-        try {
-          const dateValue = (value as { toDate: () => Date }).toDate();
-          return dateValue.getTime();
-        } catch {
-          return 0;
-        }
-      }
-      return 0;
-    };
-
-    let remotePayload: AnnotationSavePayload | null = null;
-    let remoteUpdatedAt = 0;
 
     const mapAnnotation = artwork.annotationsMap?.[pageKey];
     if (mapAnnotation) {
-      remotePayload = {
+      return {
         data: convertLinesToStageJSON(mapAnnotation.lines || [], mapAnnotation.width, mapAnnotation.height),
         width: mapAnnotation.width,
         height: mapAnnotation.height,
       };
-      remoteUpdatedAt = toTimestamp(mapAnnotation.updatedAt);
-    } else {
-      const legacyAnnotation =
-        artwork.annotations?.find((annotation) => annotation.pageNumber === currentPageNumber) ?? null;
-      if (legacyAnnotation) {
-        remotePayload = {
-          data: legacyAnnotation.data,
-          width: legacyAnnotation.width,
-          height: legacyAnnotation.height,
-        };
-        remoteUpdatedAt = toTimestamp(legacyAnnotation.updatedAt);
-      }
     }
 
-    if (draftAnnotation) {
-      if (!remotePayload || draftAnnotation.savedAt >= remoteUpdatedAt) {
-        return {
-          payload: draftAnnotation.payload,
-          source: 'draft' as const,
-          draft: draftAnnotation,
-          remoteUpdatedAt,
-        };
-      }
+    const legacyAnnotation =
+      artwork.annotations?.find((annotation) => annotation.pageNumber === currentPageNumber) ?? null;
+    if (legacyAnnotation) {
+      return {
+        data: legacyAnnotation.data,
+        width: legacyAnnotation.width,
+        height: legacyAnnotation.height,
+      };
     }
 
-    return {
-      payload: remotePayload,
-      source: 'remote' as const,
-      draft: draftAnnotation,
-      remoteUpdatedAt,
-    };
-  }, [artwork.annotations, artwork.annotationsMap, currentPageNumber, draftAnnotation]);
-
-  const currentAnnotation = resolvedAnnotation.payload;
-
-  useEffect(() => {
-    if (resolvedAnnotation.source === 'draft' && resolvedAnnotation.draft) {
-      setActiveDraft({ key: resolvedAnnotation.draft.key, savedAt: resolvedAnnotation.draft.savedAt });
-    } else {
-      setActiveDraft(null);
-    }
-  }, [resolvedAnnotation]);
+    return null;
+  }, [artwork.annotations, artwork.annotationsMap, currentPageNumber]);
 
   const handlePageChange = useCallback(
     async (index: number) => {
@@ -202,7 +138,6 @@ const ArtworkModal = ({
 
       setCurrentPage(index);
       setAnnotationDirty(false);
-      setDraftRevision((prev) => prev + 1);
     },
     [annotationDirty, currentPage, requestAutoSave, showAnnotation],
   );
@@ -211,12 +146,6 @@ const ArtworkModal = ({
     setAnnotationOverlayVisible((prev) => !prev);
   }, []);
 
-  const handleDiscardDraft = useCallback(() => {
-    clearAnnotationDraft(artwork.id, currentPageNumber);
-    setDraftRevision((prev) => prev + 1);
-    setActiveDraft(null);
-  }, [artwork.id, currentPageNumber]);
-
   const handleSaveAnnotation = async (payload: AnnotationSavePayload | null) => {
     if (!onSaveAnnotation) return;
 
@@ -224,29 +153,17 @@ const ArtworkModal = ({
     try {
       await onSaveAnnotation(artwork.id, currentPageNumber, payload);
       setAnnotationDirty(false);
-      clearAnnotationDraft(artwork.id, currentPageNumber);
-      setDraftRevision((prev) => prev + 1);
     } catch (error) {
-      console.error('Failed to save annotation:', error);
+      console.error('[ArtworkModal] Save failed:', error);
       const online = typeof navigator === 'undefined' ? true : navigator.onLine;
 
-      if (payload) {
-        const result = saveAnnotationDraft(artwork.id, currentPageNumber, payload);
-        if (result.saved) {
-          console.log('[ArtworkModal] Annotation saved to localStorage as draft');
-        } else {
-          console.warn('[ArtworkModal] Failed to save draft to localStorage:', result.reason);
-        }
-      }
-
       if (!online) {
-        alert('オフラインのため注釈を保存できませんでした。最新の変更はローカルに退避されています。オンライン復帰後に再度保存してください。');
+        alert('オフラインのため注釈を保存できませんでした。オンライン復帰後に再度保存してください。');
       } else if (error instanceof Error && error.message) {
         alert(`注釈の保存に失敗しました。\n詳細: ${error.message}`);
       } else {
         alert('注釈の保存に失敗しました。時間をおいて再度お試しください。');
       }
-      setDraftRevision((prev) => prev + 1);
     } finally {
       setIsSavingAnnotation(false);
     }
@@ -295,28 +212,11 @@ const ArtworkModal = ({
     <div className="fixed inset-0 z-50 bg-black bg-opacity-90">
       <div className="flex h-full w-full p-4">
         <div className="relative flex h-full w-full overflow-hidden rounded-lg bg-white shadow-2xl flex-col">
-          {(!isOnline || activeDraft) && (
-            <div className="space-y-2 border-b border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900">
-              {!isOnline && (
-                <div className="rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-amber-900">
-                  オフラインモードです。注釈の保存はオンライン復帰後に再実行してください。
-                </div>
-              )}
-              {activeDraft && (
-                <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-blue-900">
-                  <div>
-                    ローカルに保存された注釈を読み込みました。
-                    <span className="ml-2 text-xs text-blue-700">{new Date(activeDraft.savedAt).toLocaleString()}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded border border-blue-400 px-3 py-1 text-xs font-semibold text-blue-800 transition hover:bg-blue-100"
-                    onClick={handleDiscardDraft}
-                  >
-                    ローカル保存を破棄
-                  </button>
-                </div>
-              )}
+          {!isOnline && (
+            <div className="border-b border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900">
+              <div className="rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-amber-900">
+                オフラインモードです。注釈の保存はオンライン復帰後に再実行してください。
+              </div>
             </div>
           )}
           <div className="flex flex-1 overflow-hidden">

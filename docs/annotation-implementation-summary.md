@@ -277,28 +277,27 @@ NEXT_PUBLIC_IMAGE_CACHE_DEBUG=true
 - `src/config/annotation.ts` (53行) - 注釈設定
 - `src/config/imageCache.ts` (38行) - 画像キャッシュ設定
 
-#### 8. エラーハンドリング強化 - ✅ 実装完了
+#### 8. エラーハンドリング強化 - ✅ 実装完了（シンプル版）
 - **ネットワークエラー検知**: `useNetworkStatus` フックで online/offline イベントを監視
 - **オフライン警告表示**: ArtworkModal にオフライン時のバナー表示
-- **ドラフト自動保存**: localStorage へ注釈を一時保存（最大8件、4MB制限）
-- **ドラフト復元**: リモートデータより新しいドラフトがあれば自動復元
-- **リトライユーティリティ**: `withRetries` 関数（指数バックオフ、カスタム判定）
 - **ユーザーフレンドリーなエラーメッセージ**: オフライン時、エラー時の具体的なメッセージ表示
+- **自動保存機能**: ページ切り替え時・モード終了時に自動保存
 
 **実装ファイル:**
 - `src/hooks/useNetworkStatus.ts` (42行) - ネットワーク状態監視フック
-- `src/utils/annotationDrafts.ts` (195行) - localStorage ドラフト管理
-- `src/utils/retry.ts` (41行) - リトライロジック
-- `src/components/ArtworkModal.tsx` - オフライン/ドラフト警告バナー、ドラフト破棄機能
-- `src/app/gallery/page.tsx` - エラーハンドリング、`isRetryableFirestoreError` 判定
+- `src/components/ArtworkModal.tsx` - オフライン警告バナー、エラーハンドリング
+- `src/app/gallery/page.tsx` - エラーハンドリング
 
 **主な機能:**
 1. **ネットワーク監視**: `navigator.onLine` API を使用し、オンライン/オフライン状態を検知
-2. **ドラフト保存**: 保存失敗時に自動的にローカルストレージへ退避
-3. **ドラフト復元**: ページ切り替え時に最新のドラフトを自動検出・表示
-4. **ドラフト破棄**: ユーザーが明示的にローカル保存を破棄可能
-5. **リトライ可能判定**: Firestore エラーコードに基づいて再試行可否を判定
-6. **エラーメッセージ**: オフライン時、エラー時に状況に応じた具体的なメッセージを表示
+2. **オフライン警告**: オフライン時に明確なバナーを表示
+3. **自動保存**: ページ切り替えやモード終了時に未保存の変更を自動保存
+4. **エラーメッセージ**: オフライン時、エラー時に状況に応じた具体的なメッセージを表示
+
+**設計判断:**
+- localStorage ドラフト機能は複雑性を増すため削除
+- 自動保存機能で十分にユーザー体験を担保
+- シンプルで保守しやすいコードを優先
 
 ---
 
@@ -374,8 +373,6 @@ NEXT_PUBLIC_IMAGE_CACHE_DEBUG=true
 ### ユーティリティ
 - `src/utils/annotations.ts` (134行) - 注釈データの変換ユーティリティ
 - `src/utils/imageCache.ts` (222行) - 画像キャッシュマネージャー
-- `src/utils/annotationDrafts.ts` (195行) - localStorage ドラフト管理
-- `src/utils/retry.ts` (41行) - リトライロジック
 - `src/components/annotation-canvas/history.ts` (92行) - Undo/Redo履歴管理
 - `src/components/annotation-canvas/cursor.ts` (70行) - カスタムカーソル生成
 - `src/components/annotation-canvas/utils.ts` (10行) - ユーティリティ関数
