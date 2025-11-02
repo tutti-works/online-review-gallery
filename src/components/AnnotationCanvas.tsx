@@ -204,6 +204,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [baseSize, setBaseSize] = useState<{ width: number; height: number } | null>(null);
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
+  const [stageSize, setStageSize] = useState<{ width: number; height: number } | null>(null);
   const [displayScale, setDisplayScale] = useState<{ x: number; y: number }>({ x: 1, y: 1 });
   const [lines, setLines] = useState<LineShape[]>([]);
   const [mode, setMode] = useState<ToolMode>('draw');
@@ -309,10 +310,22 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   ]);
   const stageCenter = useMemo(
     () =>
-      displaySize
-        ? { x: displaySize.width / 2, y: displaySize.height / 2 }
+      stageSize
+        ? { x: stageSize.width / 2, y: stageSize.height / 2 }
         : { x: 0, y: 0 },
-    [displaySize],
+    [stageSize],
+  );
+  const imageOffset = useMemo(
+    () => {
+      if (!stageSize || !displaySize) {
+        return { x: 0, y: 0 };
+      }
+      return {
+        x: (stageSize.width - displaySize.width) / 2,
+        y: (stageSize.height - displaySize.height) / 2,
+      };
+    },
+    [stageSize, displaySize],
   );
   const activeStrokeWidth = isEraseMode ? eraserWidth : brushWidth;
   const handleBrushWidthChange = useCallback(
@@ -332,10 +345,6 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     }
   }, [interactionsEnabled, isPanMode, onPanMouseUp]);
 
-  const displayHeight = useMemo(
-    () => displaySize?.height ?? baseSize?.height ?? DEFAULT_HEIGHT,
-    [displaySize, baseSize],
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -375,15 +384,13 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
 
   const updateDisplayLayout = useCallback(() => {
     const stage = stageRef.current;
-    const rawContainerWidth = containerRef.current?.clientWidth ?? 0;
-    const fallbackWidth = baseSize?.width ?? DEFAULT_WIDTH;
-    const containerWidth = rawContainerWidth > 0 ? rawContainerWidth : fallbackWidth;
+    const container = containerRef.current;
 
-    if (!baseSize) {
-      const safeWidth = containerWidth || DEFAULT_WIDTH;
-      setDisplayScale({ x: 1, y: 1 });
-      setDisplaySize({ width: safeWidth, height: DEFAULT_HEIGHT });
-      if (stage) {
+    if (!container || !baseSize) {
+      if (!baseSize && stage) {
+        const safeWidth = DEFAULT_WIDTH;
+        setDisplayScale({ x: 1, y: 1 });
+        setDisplaySize({ width: safeWidth, height: DEFAULT_HEIGHT });
         stage.width(safeWidth);
         stage.height(DEFAULT_HEIGHT);
         stage.scale({ x: 1, y: 1 });
@@ -392,19 +399,32 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       return;
     }
 
-    const widthScale =
-      baseSize.width > 0 ? Math.max(containerWidth / baseSize.width, 0.01) : 1;
-    const width = containerWidth;
-    const height = baseSize.height * widthScale;
-    const heightScale =
-      baseSize.height > 0 ? Math.max(height / baseSize.height, 0.01) : widthScale;
+    // コンテナ全体を使用するが、画像サイズ計算時にマージンを考慮
+    const containerWidth = Math.max(container.clientWidth, 100);
+    const containerHeight = Math.max(container.clientHeight, 100);
 
-    setDisplayScale({ x: widthScale, y: heightScale });
-    setDisplaySize({ width, height });
+    // 画像サイズ計算用のマージン (以前のpaddingと同じ)
+    const margin = 64; // 32px on each side
+    const availableWidth = Math.max(containerWidth - margin, 100);
+    const availableHeight = Math.max(containerHeight - margin, 100);
+
+    // 幅と高さの両方を考慮して、画像が完全に収まる縮小率を計算
+    const widthScale = baseSize.width > 0 ? availableWidth / baseSize.width : 1;
+    const heightScale = baseSize.height > 0 ? availableHeight / baseSize.height : 1;
+    const scale = Math.min(widthScale, heightScale, 1); // 1を超えて拡大しない
+
+    // 画像の表示サイズ(中央配置用)
+    const imageWidth = baseSize.width * scale;
+    const imageHeight = baseSize.height * scale;
+
+    setDisplayScale({ x: scale, y: scale });
+    setDisplaySize({ width: imageWidth, height: imageHeight });
+    setStageSize({ width: availableWidth, height: availableHeight });
 
     if (stage) {
-      stage.width(width);
-      stage.height(height);
+      // Stageはコンテナ全体のサイズに設定
+      stage.width(availableWidth);
+      stage.height(availableHeight);
       stage.scale({ x: 1, y: 1 });
       stage.batchDraw();
     }
@@ -530,10 +550,10 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     const scaleX = displayScale.x || 1;
     const scaleY = displayScale.y || 1;
     return {
-      x: pointer.x / scaleX,
-      y: pointer.y / scaleY,
+      x: (pointer.x - imageOffset.x) / scaleX,
+      y: (pointer.y - imageOffset.y) / scaleY,
     };
-  }, [displayScale]);
+  }, [displayScale, imageOffset]);
 
   const handlePointerDown = useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -778,13 +798,66 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       }
 
       const hasLines = lines.length > 0;
-      const payload: AnnotationSavePayload | null = hasLines
-        ? {
-            data: stage.toJSON(),
-            width: stage.width(),
-            height: stage.height(),
-          }
-        : null;
+      let payload: AnnotationSavePayload | null = null;
+
+      if (hasLines && baseSize) {
+        // 保存前にStageとLayerの状態を一時的に変更
+        const drawingLayer = stage.findOne(`#${DRAWING_LAYER_NAME}`);
+        const backgroundLayer = stage.findOne('.background-layer');
+        const backgroundImageNode = backgroundLayer?.findOne('Image');
+
+        // 元の状態を保存
+        const originalStageSize = { width: stage.width(), height: stage.height() };
+        const originalDrawingOffset = drawingLayer ? { x: drawingLayer.x(), y: drawingLayer.y() } : null;
+        const originalBackgroundOffset = backgroundLayer ? { x: backgroundLayer.x(), y: backgroundLayer.y() } : null;
+        const originalImageSize = backgroundImageNode
+          ? { width: backgroundImageNode.width(), height: backgroundImageNode.height() }
+          : null;
+
+        // Stageサイズを元画像サイズに変更
+        stage.width(baseSize.width);
+        stage.height(baseSize.height);
+
+        // 背景画像サイズを元画像サイズに変更
+        if (backgroundImageNode) {
+          backgroundImageNode.width(baseSize.width);
+          backgroundImageNode.height(baseSize.height);
+        }
+
+        // Layerオフセットを削除
+        if (drawingLayer) {
+          drawingLayer.x(0);
+          drawingLayer.y(0);
+        }
+        if (backgroundLayer) {
+          backgroundLayer.x(0);
+          backgroundLayer.y(0);
+        }
+
+        payload = {
+          data: stage.toJSON(),
+          width: baseSize.width,
+          height: baseSize.height,
+        };
+
+        // 状態を復元
+        stage.width(originalStageSize.width);
+        stage.height(originalStageSize.height);
+
+        if (backgroundImageNode && originalImageSize) {
+          backgroundImageNode.width(originalImageSize.width);
+          backgroundImageNode.height(originalImageSize.height);
+        }
+
+        if (drawingLayer && originalDrawingOffset) {
+          drawingLayer.x(originalDrawingOffset.x);
+          drawingLayer.y(originalDrawingOffset.y);
+        }
+        if (backgroundLayer && originalBackgroundOffset) {
+          backgroundLayer.x(originalBackgroundOffset.x);
+          backgroundLayer.y(originalBackgroundOffset.y);
+        }
+      }
 
       try {
         await onSave(payload);
@@ -805,6 +878,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       }
     },
     [
+      baseSize,
       clearIndicatorTimer,
       editable,
       isDirty,
@@ -852,218 +926,14 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   );
 
   return (
-    <div className={className}>
-      {editable && (
-        <div className="mb-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-          <div className="flex flex-wrap items-start gap-4">
-            <div className="flex min-w-[180px] flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">TOOLS</span>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleSetMode('draw')}
-                  disabled={controlsDisabled}
-                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
-                    isDrawMode
-                      ? 'border-blue-600 bg-blue-600 text-white'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-blue-50'
-                  } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
-                >
-                  Draw
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetMode('select')}
-                  disabled={controlsDisabled}
-                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
-                    isSelectMode
-                      ? 'border-blue-600 bg-blue-600 text-white'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-blue-50'
-                  } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
-                >
-                  Select Line
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetMode('erase')}
-                  disabled={controlsDisabled}
-                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
-                    isEraseMode
-                      ? 'border-blue-600 bg-blue-600 text-white'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-blue-50'
-                  } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
-                  title="Erase"
-                >
-                  Erase
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetMode('pan')}
-                  disabled={controlsDisabled}
-                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
-                    isPanMode
-                      ? 'border-blue-600 bg-blue-600 text-white'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-blue-50'
-                  } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
-                >
-                  Pan
-                </button>
-              </div>
-            </div>
-            <div className="flex min-w-[220px] flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">BRUSH</span>
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1">
-                  {COLOR_PRESETS.map((preset) => {
-                    const isSelected = brushColor.toLowerCase() === preset.value.toLowerCase();
-                    return (
-                      <button
-                        key={preset.value}
-                        type="button"
-                        onClick={() => setBrushColor(preset.value)}
-                        disabled={controlsDisabled}
-                        className={`h-7 w-7 rounded-full border transition ${
-                          isSelected
-                            ? 'border-blue-500 ring-2 ring-blue-200'
-                            : 'border-gray-300 hover:border-gray-400'
-                        } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
-                        style={{ backgroundColor: preset.value }}
-                        title={`Color: ${preset.label}`}
-                        aria-pressed={isSelected}
-                      >
-                        <span className="sr-only">Color {preset.label}</span>
-                      </button>
-                    );
-                  })}
-                  {!COLOR_PRESETS.some((preset) => preset.value.toLowerCase() === brushColor.toLowerCase()) && (
-                    <button
-                      type="button"
-                      onClick={() => setBrushColor(brushColor)}
-                      disabled={controlsDisabled}
-                      className={`h-7 w-7 rounded-full border border-dashed transition ${
-                        controlsDisabled ? 'cursor-not-allowed opacity-60' : 'hover:border-gray-400'
-                      }`}
-                      style={{ backgroundColor: brushColor || '#000000' }}
-                      title={`Custom color (${brushColor})`}
-                    >
-                      <span className="sr-only">Custom color</span>
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  {BRUSH_WIDTH_OPTIONS.map((option) => {
-                    const isSelected = activeStrokeWidth === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => handleBrushWidthChange(option.value)}
-                        disabled={controlsDisabled}
-                        className={`rounded-md border px-2 py-1 text-xs transition ${
-                          isSelected
-                            ? 'border-blue-600 bg-white text-blue-600'
-                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
-                        } ${controlsDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
-                        title={`${isEraseMode ? 'Eraser' : 'Brush'} width: ${option.label}`}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                  {!BRUSH_WIDTH_OPTIONS.some((option) => option.value === activeStrokeWidth) && (
-                    <span className="rounded-md border border-dashed border-gray-300 px-2 py-1 text-xs text-gray-500">
-                      {activeStrokeWidth}px
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-1 flex-col gap-2 md:items-end">
-              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">ACTIONS</span>
-              <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                <button
-                  type="button"
-                  onClick={handleUndo}
-                  disabled={controlsDisabled || !canUndo}
-                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
-                    controlsDisabled || !canUndo
-                      ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
-                  }`}
-                  title="Undo (Ctrl+Z)"
-                >
-                  Undo
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRedo}
-                  disabled={controlsDisabled || !canRedo}
-                  className={`flex items-center gap-1 rounded-md border px-3 py-1 transition ${
-                    controlsDisabled || !canRedo
-                      ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
-                  }`}
-                  title="Redo (Ctrl+Shift+Z)"
-                >
-                  Redo
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteSelected}
-                  disabled={controlsDisabled || !selectedId}
-                  className={`rounded-md border px-3 py-1 transition ${
-                    controlsDisabled || !selectedId
-                      ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Delete Selection
-                </button>
-                <button
-                  type="button"
-                  onClick={handleClearAll}
-                  disabled={controlsDisabled || lines.length === 0}
-                  className={`rounded-md border px-3 py-1 transition ${
-                    controlsDisabled || lines.length === 0
-                      ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Clear All
-                </button>
-                <button
-                  type="button"
-                  onClick={handleManualSave}
-                  disabled={controlsDisabled || !isDirty}
-                  className={`rounded-md border px-3 py-1 transition ${
-                    controlsDisabled || !isDirty
-                      ? 'cursor-not-allowed border-gray-300 bg-gray-200 text-gray-500'
-                      : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
-                >
-                  Save Annotation
-                </button>
-                {autoSaveStatus !== 'idle' && (
-                  <span
-                    className={`text-xs ${
-                      autoSaveStatus === 'saving' ? 'text-blue-600' : 'text-green-600'
-                    }`}
-                  >
-                    {autoSaveStatus === 'saving' ? 'Auto-saving...' : 'Autosaved'}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+    <div className={`relative h-full w-full ${className || ''}`}>
       {!editable && (
         <div className="mb-2 text-sm text-gray-500">Annotations are read-only. Please sign in as an administrator to edit.</div>
       )}
       <div
         ref={containerRef}
-        className="relative w-full overflow-hidden rounded border border-gray-300 bg-white"
-        style={{ height: displayHeight, cursor: containerCursor }}
+        className="h-full w-full flex items-center justify-center overflow-hidden bg-gray-100"
+        style={{ cursor: containerCursor }}
         onMouseDown={isPanMode ? handlePanMouseDown : undefined}
         onMouseMove={isPanMode ? handlePanMouseMove : undefined}
         onMouseUp={isPanMode ? handlePanMouseUp : undefined}
@@ -1074,11 +944,11 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
             <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-600" />
           </div>
         )}
-        {backgroundImage && baseSize && displaySize && (
+        {backgroundImage && baseSize && displaySize && stageSize && (
           <Stage
             ref={stageRef}
-            width={displaySize.width}
-            height={displaySize.height}
+            width={stageSize.width}
+            height={stageSize.height}
             scaleX={zoom}
             scaleY={zoom}
             x={stageCenter.x + panPosition.x}
@@ -1095,7 +965,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
             onMouseLeave={finishDrawing}
             onTouchCancel={finishDrawing}
           >
-            <Layer name="background-layer">
+            <Layer name="background-layer" x={imageOffset.x} y={imageOffset.y}>
               <KonvaImage
                 image={backgroundImage}
                 width={displaySize.width}
@@ -1106,6 +976,8 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
             <Layer
               name={DRAWING_LAYER_NAME}
               id={DRAWING_LAYER_NAME}
+              x={imageOffset.x}
+              y={imageOffset.y}
               clipFunc={(ctx) => {
                 ctx.rect(0, 0, displaySize.width, displaySize.height);
               }}
@@ -1153,13 +1025,183 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
           </Stage>
         )}
       </div>
-      {editable && !isDirty && (
-        <p className="mt-2 text-xs text-gray-500">After editing the annotations, click &quot;Save Annotation&quot;.</p>
-      )}
-      {editable && isDirty && (
-        <p className="mt-2 text-xs text-orange-500">
-          {saving ? 'Saving... Please wait.' : 'There are unsaved changes.'}
-        </p>
+      {editable && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 max-w-[95%]">
+          <div className="rounded-lg bg-gray-700 bg-opacity-90 backdrop-blur-sm px-3 py-2 shadow-lg">
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleSetMode('draw')}
+                  disabled={controlsDisabled}
+                  className={`rounded px-2 py-1 text-xs font-medium transition ${
+                    isDrawMode
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                  } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                >
+                  Draw
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetMode('select')}
+                  disabled={controlsDisabled}
+                  className={`rounded px-2 py-1 text-xs font-medium transition ${
+                    isSelectMode
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                  } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                >
+                  Select
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetMode('erase')}
+                  disabled={controlsDisabled}
+                  className={`rounded px-2 py-1 text-xs font-medium transition ${
+                    isEraseMode
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                  } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                >
+                  Erase
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetMode('pan')}
+                  disabled={controlsDisabled}
+                  className={`rounded px-2 py-1 text-xs font-medium transition ${
+                    isPanMode
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                  } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                >
+                  Pan
+                </button>
+              </div>
+              <div className="h-4 w-px bg-gray-500" />
+              <div className="flex items-center gap-1">
+                {COLOR_PRESETS.map((preset) => {
+                  const isSelected = brushColor.toLowerCase() === preset.value.toLowerCase();
+                  return (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      onClick={() => setBrushColor(preset.value)}
+                      disabled={controlsDisabled}
+                      className={`h-5 w-5 rounded-full border-2 transition ${
+                        isSelected
+                          ? 'border-blue-400 ring-2 ring-blue-300'
+                          : 'border-gray-400 hover:border-gray-300'
+                      } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                      style={{ backgroundColor: preset.value }}
+                      title={preset.label}
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-1">
+                {BRUSH_WIDTH_OPTIONS.map((option) => {
+                  const isSelected = activeStrokeWidth === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => handleBrushWidthChange(option.value)}
+                      disabled={controlsDisabled}
+                      className={`rounded px-2 py-1 text-xs transition ${
+                        isSelected
+                          ? 'bg-gray-800 text-white'
+                          : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                      } ${controlsDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="h-4 w-px bg-gray-500" />
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleUndo}
+                  disabled={controlsDisabled || !canUndo}
+                  className={`rounded px-2 py-1 text-xs font-medium transition ${
+                    controlsDisabled || !canUndo
+                      ? 'cursor-not-allowed bg-gray-700 text-gray-500'
+                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                  }`}
+                  title="Undo"
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRedo}
+                  disabled={controlsDisabled || !canRedo}
+                  className={`rounded px-2 py-1 text-xs font-medium transition ${
+                    controlsDisabled || !canRedo
+                      ? 'cursor-not-allowed bg-gray-700 text-gray-500'
+                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                  }`}
+                  title="Redo"
+                >
+                  Redo
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelected}
+                  disabled={controlsDisabled || !selectedId}
+                  className={`rounded px-2 py-1 text-xs font-medium transition ${
+                    controlsDisabled || !selectedId
+                      ? 'cursor-not-allowed bg-gray-700 text-gray-500'
+                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                  }`}
+                >
+                  Delete
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  disabled={controlsDisabled || lines.length === 0}
+                  className={`rounded px-2 py-1 text-xs font-medium transition ${
+                    controlsDisabled || lines.length === 0
+                      ? 'cursor-not-allowed bg-gray-700 text-gray-500'
+                      : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                  }`}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={handleManualSave}
+                  disabled={controlsDisabled || !isDirty}
+                  className={`rounded px-2 py-1 text-xs font-medium transition ${
+                    controlsDisabled || !isDirty
+                      ? 'cursor-not-allowed bg-gray-700 text-gray-500'
+                      : 'bg-blue-600 text-white hover:bg-blue-500'
+                  }`}
+                >
+                  Save
+                </button>
+                {autoSaveStatus !== 'idle' && (
+                  <span
+                    className={`text-xs ${
+                      autoSaveStatus === 'saving' ? 'text-blue-300' : 'text-green-300'
+                    }`}
+                  >
+                    {autoSaveStatus === 'saving' ? 'Saving...' : 'Saved'}
+                  </span>
+                )}
+              </div>
+            </div>
+            {isDirty && (
+              <div className="mt-1 text-center text-xs text-orange-300">
+                {saving ? 'Saving...' : 'Unsaved changes'}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
