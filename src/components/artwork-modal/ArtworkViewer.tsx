@@ -239,7 +239,7 @@ const ArtworkViewer = ({
 
       <div ref={viewportRef} className="flex-1 flex items-center justify-center overflow-hidden relative bg-gray-100">
         {showAnnotation ? (
-          <div className="h-full w-full p-8">
+          <div className="h-full w-full">
             {AnnotationCanvasComponent ? (
               <AnnotationCanvasComponent
                 ref={annotationCanvasRef}

@@ -230,6 +230,197 @@
 
 ## 🐛 トラブルシューティング記録
 
+### 問題: 注釈キャンバスの表示とセンタリング（2025-11-02）
+
+**症状:**
+1. 注釈モード開始時にキャンバス背景色が通常表示モードと異なる（白 vs グレー）
+2. キャンバスが初期画像サイズで固定され、モーダル全体を使っていない
+3. 画像が左に寄って表示される
+4. padding削除時に画像サイズが変わってしまう
+5. 描画した線がカーソル位置からずれる
+
+**原因:**
+1. **背景色の不一致**
+   - `AnnotationCanvas`の背景が`bg-white`で、通常表示の`bg-gray-100`と異なっていた
+
+2. **Stageサイズの固定**
+   - Stageのサイズが画像の表示サイズ（`displaySize`）と同じに設定されていた
+   - コンテナ全体を活用せず、画像周りの余白部分が使えていなかった
+
+3. **画像の中央配置不足**
+   - Stageを拡大した際、Layerが(0, 0)に配置されたまま
+   - 画像をStage内で中央に配置する処理が不足
+
+4. **padding削除時の副作用**
+   - paddingを削除すると、available spaceの計算がcontainerサイズ全体になってしまう
+   - 画像が大きく表示されすぎる
+
+5. **座標変換の不完全**
+   - `getRelativePointerPosition`で`imageOffset`を考慮していなかった
+   - マウス座標からcanvas座標への変換が不正確
+
+**解決策:**
+
+1. **背景色の統一**
+   ```tsx
+   // ArtworkViewer.tsx & AnnotationCanvas.tsx
+   className="... bg-gray-100"
+   ```
+
+2. **stageSize状態の追加**
+   ```tsx
+   const [stageSize, setStageSize] = useState<{ width: number; height: number } | null>(null);
+   ```
+   - `stageSize`: Stageの実際のサイズ（コンテナ全体）
+   - `displaySize`: 画像の表示サイズ（マージン考慮後）
+   - `baseSize`: 元画像のサイズ
+
+3. **imageOffsetの計算と適用**
+   ```tsx
+   const imageOffset = useMemo(() => {
+     if (!stageSize || !displaySize) return { x: 0, y: 0 };
+     return {
+       x: (stageSize.width - displaySize.width) / 2,
+       y: (stageSize.height - displaySize.height) / 2,
+     };
+   }, [stageSize, displaySize]);
+
+   // Layerに適用
+   <Layer name="background-layer" x={imageOffset.x} y={imageOffset.y}>
+   <Layer name={DRAWING_LAYER_NAME} x={imageOffset.x} y={imageOffset.y}>
+   ```
+
+4. **updateDisplayLayoutの改善**
+   ```tsx
+   // コンテナ全体のサイズを取得
+   const containerWidth = Math.max(container.clientWidth, 100);
+   const containerHeight = Math.max(container.clientHeight, 100);
+
+   // 画像サイズ計算用の仮想マージン（表示上のpaddingは削除）
+   const margin = 64; // 32px on each side
+   const availableWidth = Math.max(containerWidth - margin, 100);
+   const availableHeight = Math.max(containerHeight - margin, 100);
+
+   // Stageはコンテナ全体、画像はマージンを考慮したサイズ
+   setStageSize({ width: availableWidth, height: availableHeight });
+   ```
+
+5. **座標変換の修正**
+   ```tsx
+   const getRelativePointerPosition = useCallback(() => {
+     const stage = stageRef.current;
+     if (!stage) return null;
+     const pointer = stage.getRelativePointerPosition();
+     if (!pointer) return null;
+     const scaleX = displayScale.x || 1;
+     const scaleY = displayScale.y || 1;
+     return {
+       x: (pointer.x - imageOffset.x) / scaleX,
+       y: (pointer.y - imageOffset.y) / scaleY,
+     };
+   }, [displayScale, imageOffset]);
+   ```
+
+**学んだこと:**
+- Konva.jsでは、Stageサイズと実際のコンテンツサイズを分離して管理すべき
+- Layerのオフセット（x, y）を使って、コンテンツをStage内で自由に配置できる
+- 座標変換関数では、すべてのオフセットとスケールを正しく考慮する必要がある
+- 表示上のpadding削除と、計算上のマージンを分けて扱うことで柔軟性が向上
+
+---
+
+### 問題: 注釈保存時の正規化（2025-11-02）
+
+**症状:**
+1. 注釈を保存すると、横につぶれて左端に寄ってしまう
+2. 2回目の修正後、さらに小さく保存されるようになった
+3. 左上の角を基準に小さくなる
+
+**原因:**
+1. **Stageサイズの不一致**
+   - `stage.toJSON()`実行時、Stageのサイズが`availableWidth/Height`（マージン考慮後の小さいサイズ）
+   - 保存payloadの`width/height`には`baseSize`を指定
+   - JSON内のStageサイズと、payloadのwidth/heightが不一致
+
+2. **Layerオフセットの保存**
+   - `imageOffset`を適用したLayerのx/y座標がそのまま保存される
+   - 読み込み時にオフセットが二重に適用されてしまう
+
+3. **背景画像サイズの不一致**
+   - 背景画像が`displaySize`（スケールダウンされたサイズ）のまま
+   - Stageサイズだけ変更しても、画像サイズが合っていないため正しく保存されない
+
+**解決策:**
+
+**完全な正規化パターン**を実装:
+
+```tsx
+if (hasLines && baseSize) {
+  const drawingLayer = stage.findOne(`#${DRAWING_LAYER_NAME}`);
+  const backgroundLayer = stage.findOne('.background-layer');
+  const backgroundImageNode = backgroundLayer?.findOne('Image');
+
+  // 1. 元の状態を保存
+  const originalStageSize = { width: stage.width(), height: stage.height() };
+  const originalDrawingOffset = drawingLayer ? { x: drawingLayer.x(), y: drawingLayer.y() } : null;
+  const originalBackgroundOffset = backgroundLayer ? { x: backgroundLayer.x(), y: backgroundLayer.y() } : null;
+  const originalImageSize = backgroundImageNode
+    ? { width: backgroundImageNode.width(), height: backgroundImageNode.height() }
+    : null;
+
+  // 2. baseSizeに正規化
+  stage.width(baseSize.width);
+  stage.height(baseSize.height);
+
+  if (backgroundImageNode) {
+    backgroundImageNode.width(baseSize.width);
+    backgroundImageNode.height(baseSize.height);
+  }
+
+  if (drawingLayer) {
+    drawingLayer.x(0);
+    drawingLayer.y(0);
+  }
+  if (backgroundLayer) {
+    backgroundLayer.x(0);
+    backgroundLayer.y(0);
+  }
+
+  // 3. 正規化された状態で保存
+  payload = {
+    data: stage.toJSON(),
+    width: baseSize.width,
+    height: baseSize.height,
+  };
+
+  // 4. 元の状態を復元
+  stage.width(originalStageSize.width);
+  stage.height(originalStageSize.height);
+
+  if (backgroundImageNode && originalImageSize) {
+    backgroundImageNode.width(originalImageSize.width);
+    backgroundImageNode.height(originalImageSize.height);
+  }
+
+  if (drawingLayer && originalDrawingOffset) {
+    drawingLayer.x(originalDrawingOffset.x);
+    drawingLayer.y(originalDrawingOffset.y);
+  }
+  if (backgroundLayer && originalBackgroundOffset) {
+    backgroundLayer.x(originalBackgroundOffset.x);
+    backgroundLayer.y(originalBackgroundOffset.y);
+  }
+}
+```
+
+**学んだこと:**
+- Konva.jsの`toJSON()`は現在の状態をそのまま保存する
+- Stage、Layer、Imageノードすべてのサイズとオフセットを正規化する必要がある
+- 保存前に一時的に正規化し、保存後に復元するパターンが安全
+- 段階的な修正では見落としが発生しやすい（完全な正規化が重要）
+
+---
+
 ### 問題: 注釈オーバーレイ実装後の画像表示崩れ（2025-11-01）
 
 **症状:**
