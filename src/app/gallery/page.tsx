@@ -352,6 +352,8 @@ function GalleryPage() {
 
         await updateDoc(artworkRef, updatePayload);
 
+        clearAnnotationDraft(artworkId, pageNumber);
+
         setArtworks((prev) =>
           prev.map((item) => {
             if (item.id !== artworkId) {
@@ -397,6 +399,8 @@ function GalleryPage() {
 
         await updateDoc(artworkRef, updatePayload);
 
+        clearAnnotationDraft(artworkId, pageNumber);
+
         setArtworks((prev) =>
           prev.map((item) => {
             if (item.id !== artworkId) {
@@ -429,7 +433,18 @@ function GalleryPage() {
       }
     } catch (error) {
       console.error('Save annotation error:', error);
+
+      if (annotation) {
+        const result = saveAnnotationDraft(artworkId, pageNumber, annotation);
+        if (result.saved) {
+          console.log('[GalleryPage] Annotation saved to localStorage as draft');
+        } else {
+          console.warn('[GalleryPage] Failed to save draft to localStorage:', result.reason);
+        }
+      }
+
       alert('注釈の保存に失敗しました');
+      throw error;
     }
   };
 

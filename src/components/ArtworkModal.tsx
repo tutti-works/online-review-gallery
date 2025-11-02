@@ -11,7 +11,7 @@ import ArtworkViewer from './artwork-modal/ArtworkViewer';
 import ArtworkSidebar from './artwork-modal/ArtworkSidebar';
 import { convertLinesToStageJSON } from '@/utils/annotations';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
-import { clearAnnotationDraft, loadAnnotationDraft } from '@/utils/annotationDrafts';
+import { clearAnnotationDraft, loadAnnotationDraft, saveAnnotationDraft } from '@/utils/annotationDrafts';
 
 interface ArtworkModalProps {
   artwork: Artwork;
@@ -224,10 +224,21 @@ const ArtworkModal = ({
     try {
       await onSaveAnnotation(artwork.id, currentPageNumber, payload);
       setAnnotationDirty(false);
+      clearAnnotationDraft(artwork.id, currentPageNumber);
       setDraftRevision((prev) => prev + 1);
     } catch (error) {
       console.error('Failed to save annotation:', error);
       const online = typeof navigator === 'undefined' ? true : navigator.onLine;
+
+      if (payload) {
+        const result = saveAnnotationDraft(artwork.id, currentPageNumber, payload);
+        if (result.saved) {
+          console.log('[ArtworkModal] Annotation saved to localStorage as draft');
+        } else {
+          console.warn('[ArtworkModal] Failed to save draft to localStorage:', result.reason);
+        }
+      }
+
       if (!online) {
         alert('オフラインのため注釈を保存できませんでした。最新の変更はローカルに退避されています。オンライン復帰後に再度保存してください。');
       } else if (error instanceof Error && error.message) {
