@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent } from 'react';
+import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from 'react';
 
 export type AnnotationSavePayload = {
   data: string;
@@ -44,4 +44,7 @@ export type AnnotationCanvasProps = {
   onPanMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   onPanMouseMove: (event: ReactMouseEvent<HTMLDivElement>) => void;
   onPanMouseUp: () => void;
+  onPanTouchStart: (event: ReactTouchEvent<HTMLDivElement>) => void;
+  onPanTouchMove: (event: ReactTouchEvent<HTMLDivElement>) => void;
+  onPanTouchEnd: () => void;
 };

@@ -13,6 +13,7 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type TouchEvent as ReactTouchEvent,
 } from 'react';
 
 import { ANNOTATION_CONFIG } from '@/config/annotation';
@@ -52,6 +53,9 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     onPanMouseDown,
     onPanMouseMove,
     onPanMouseUp,
+    onPanTouchStart,
+    onPanTouchMove,
+    onPanTouchEnd,
   },
   ref,
 ) {
@@ -561,6 +565,29 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
     onPanMouseUp();
   }, [isPanMode, onPanMouseUp]);
 
+  const handlePanTouchStartWrapper = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      if (!interactionsEnabled || !isPanMode) return;
+      event.preventDefault();
+      onPanTouchStart(event);
+    },
+    [interactionsEnabled, isPanMode, onPanTouchStart],
+  );
+
+  const handlePanTouchMoveWrapper = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      if (!interactionsEnabled || !isPanMode) return;
+      event.preventDefault();
+      onPanTouchMove(event);
+    },
+    [interactionsEnabled, isPanMode, onPanTouchMove],
+  );
+
+  const handlePanTouchEndWrapper = useCallback(() => {
+    if (!isPanMode) return;
+    onPanTouchEnd();
+  }, [isPanMode, onPanTouchEnd]);
+
   const handleLineSelect = useCallback(
     (id: string) => {
       if (!interactionsEnabled || !isSelectMode) return;
@@ -868,6 +895,9 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
         onMouseMove={isPanMode ? handlePanMouseMoveWrapper : undefined}
         onMouseUp={isPanMode ? handlePanMouseUpWrapper : undefined}
         onMouseLeave={isPanMode ? handlePanMouseUpWrapper : undefined}
+        onTouchStart={isPanMode ? handlePanTouchStartWrapper : undefined}
+        onTouchMove={isPanMode ? handlePanTouchMoveWrapper : undefined}
+        onTouchEnd={isPanMode ? handlePanTouchEndWrapper : undefined}
       >
         {isLoading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70">

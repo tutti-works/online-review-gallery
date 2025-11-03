@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, type DragEvent, type MouseEvent } from 'react';
+import { useCallback, useState, type DragEvent, type MouseEvent, type TouchEvent } from 'react';
 
 type PanPosition = {
   x: number;
@@ -46,6 +46,49 @@ export const usePanZoom = () => {
     setIsDragging(false);
   }, []);
 
+  const handleTouchStart = useCallback(
+    (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        return;
+      }
+
+      const touch = event.touches[0];
+      if (!touch) {
+        return;
+      }
+
+      setIsDragging(true);
+      setDragStart({
+        x: touch.clientX - panPosition.x,
+        y: touch.clientY - panPosition.y,
+      });
+    },
+    [panPosition],
+  );
+
+  const handleTouchMove = useCallback(
+    (event: TouchEvent) => {
+      if (!isDragging || event.touches.length !== 1) {
+        return;
+      }
+
+      const touch = event.touches[0];
+      if (!touch) {
+        return;
+      }
+
+      setPanPosition({
+        x: touch.clientX - dragStart.x,
+        y: touch.clientY - dragStart.y,
+      });
+    },
+    [isDragging, dragStart],
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
   const handleDragStart = useCallback((event: DragEvent) => {
     event.preventDefault();
   }, []);
@@ -70,6 +113,9 @@ export const usePanZoom = () => {
     handleMouseDown,
     handleMouseMove,
     handleMouseUp,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
     handleDragStart,
     handleZoomIn,
     handleZoomOut,

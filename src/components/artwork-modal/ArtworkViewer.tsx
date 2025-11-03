@@ -89,6 +89,9 @@ const ArtworkViewer = ({
     handleMouseDown,
     handleMouseMove,
     handleMouseUp,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
     handleDragStart,
     handleZoomIn,
     handleZoomOut,
@@ -342,6 +345,9 @@ const ArtworkViewer = ({
                 onPanMouseDown={handleMouseDown}
                 onPanMouseMove={handleMouseMove}
                 onPanMouseUp={handleMouseUp}
+                onPanTouchStart={handleTouchStart}
+                onPanTouchMove={handleTouchMove}
+                onPanTouchEnd={handleTouchEnd}
               />
             ) : (
               <div className="flex h-full items-center justify-center">
@@ -364,6 +370,9 @@ const ArtworkViewer = ({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
             style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
           >
             <div
