@@ -50,6 +50,7 @@ type OverlayLine = {
   x: number;
   y: number;
   opacity: number;
+  tool: 'draw' | 'erase';
 };
 
 type OverlayAnnotationData = {
@@ -80,6 +81,7 @@ const ArtworkViewer = ({
   const [isAnnotationCanvasLoading, setAnnotationCanvasLoading] = useState(true);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const {
     zoom,
     panPosition,
@@ -156,6 +158,11 @@ const ArtworkViewer = ({
       return;
     }
 
+    // 画像がすでに読み込まれている場合（キャッシュされている場合）は即座に寸法を更新
+    if (img.complete && img.naturalWidth > 0) {
+      updateImageDimensions();
+    }
+
     updateImageDimensions();
 
     if (typeof ResizeObserver === 'undefined') {
@@ -217,6 +224,10 @@ const ArtworkViewer = ({
                   x: typeof attrs.x === 'number' ? attrs.x : 0,
                   y: typeof attrs.y === 'number' ? attrs.y : 0,
                   opacity: typeof attrs.opacity === 'number' ? attrs.opacity : 1,
+                  tool:
+                    attrs.globalCompositeOperation === 'destination-out' || attrs.tool === 'erase'
+                      ? 'erase'
+                      : 'draw',
                 };
               })
           : [];
@@ -232,14 +243,66 @@ const ArtworkViewer = ({
     }
   }, [currentAnnotation]);
 
+  useEffect(() => {
+    const canvas = overlayCanvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const hasOverlay = overlayAnnotation !== null && overlayAnnotation.lines.length > 0;
+    const shouldShow = !showAnnotation && annotationOverlayVisible && hasOverlay;
+
+    if (!shouldShow || !overlayAnnotation) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      return;
+    }
+
+    canvas.width = overlayAnnotation.width;
+    canvas.height = overlayAnnotation.height;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    overlayAnnotation.lines.forEach((line) => {
+      if (!line.points || line.points.length < 4) {
+        return;
+      }
+
+      ctx.save();
+      ctx.globalCompositeOperation = line.tool === 'erase' ? 'destination-out' : 'source-over';
+      ctx.strokeStyle = line.tool === 'erase' ? '#000000' : line.stroke;
+      ctx.lineWidth = line.strokeWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.globalAlpha = line.opacity ?? 1;
+
+      ctx.beginPath();
+      ctx.moveTo((line.points[0] ?? 0) + line.x, (line.points[1] ?? 0) + line.y);
+      for (let i = 2; i < line.points.length; i += 2) {
+        const x = (line.points[i] ?? 0) + line.x;
+        const y = (line.points[i + 1] ?? 0) + line.y;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    });
+  }, [overlayAnnotation, imageDimensions, showAnnotation, annotationOverlayVisible]);
+
 
   const hasOverlay = overlayAnnotation !== null && overlayAnnotation.lines.length > 0;
   const shouldShowOverlay = !showAnnotation && annotationOverlayVisible && hasOverlay;
   const overlayToggleTitle = hasOverlay
     ? annotationOverlayVisible
-      ? '豕ｨ驥医ｒ髱櫁｡ｨ遉ｺ'
-      : '豕ｨ驥医ｒ陦ｨ遉ｺ'
-    : '豕ｨ驥医・縺ゅｊ縺ｾ縺帙ｓ';
+      ? '注釈を非表示'
+      : '注釈を表示'
+    : '注釈はありません';
 
   return (
     <div className="flex-1 flex flex-col bg-gray-100 relative">
@@ -322,53 +385,38 @@ const ArtworkViewer = ({
                 onLoad={updateImageDimensions}
               />
             </div>
-            {shouldShowOverlay && overlayAnnotation && imageDimensions && (
-              <div
-                ref={containerRef}
-                className="pointer-events-none absolute"
-                style={{
-                  transform: `scale(${zoom}) translate(${panPosition.x / zoom}px, ${panPosition.y / zoom}px)`,
-                  left: '50%',
-                  top: '50%',
-                  marginLeft: -imageDimensions.width / 2,
-                  marginTop: -imageDimensions.height / 2,
-                  width: imageDimensions.width,
-                  height: imageDimensions.height,
-                }}
-              >
-                <svg
-                  className="h-full w-full"
-                  viewBox={`0 0 ${overlayAnnotation.width} ${overlayAnnotation.height}`}
-                  preserveAspectRatio="xMidYMid meet"
+            {shouldShowOverlay && overlayAnnotation && (() => {
+              const dims = imageDimensions || (imageRef.current ? {
+                width: imageRef.current.getBoundingClientRect().width,
+                height: imageRef.current.getBoundingClientRect().height
+              } : null);
+
+              if (!dims || dims.width === 0 || dims.height === 0) {
+                return null;
+              }
+
+              return (
+                <div
+                  ref={containerRef}
+                  className="pointer-events-none absolute"
+                  style={{
+                    transform: `scale(${zoom}) translate(${panPosition.x / zoom}px, ${panPosition.y / zoom}px)`,
+                    left: '50%',
+                    top: '50%',
+                    marginLeft: -dims.width / 2,
+                    marginTop: -dims.height / 2,
+                    width: dims.width,
+                    height: dims.height,
+                  }}
                 >
-                  {overlayAnnotation.lines.map((line) => {
-                    if (!line.points || line.points.length < 4) {
-                      return null;
-                    }
-
-                    const points: string[] = [];
-                    for (let i = 0; i < line.points.length; i += 2) {
-                      const x = (line.points[i] ?? 0) + line.x;
-                      const y = (line.points[i + 1] ?? 0) + line.y;
-                      points.push(`${x},${y}`);
-                    }
-
-                    return (
-                      <polyline
-                        key={line.id}
-                        points={points.join(' ')}
-                        stroke={line.stroke}
-                        strokeWidth={line.strokeWidth}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        opacity={line.opacity}
-                        fill="none"
-                      />
-                    );
-                  })}
-                </svg>
-              </div>
-            )}
+                  <canvas
+                    ref={overlayCanvasRef}
+                    className="h-full w-full"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                </div>
+              );
+            })()}
           </div>
         )}
         <div className="absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center space-x-4 rounded-full bg-gray-700 bg-opacity-70 px-3 py-1 backdrop-blur-sm transition-all duration-300 ease-in-out">
@@ -494,3 +542,5 @@ const ArtworkViewer = ({
 };
 
 export default ArtworkViewer;
+
+
