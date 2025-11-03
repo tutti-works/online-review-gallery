@@ -89,7 +89,7 @@ const GalleryHeader = ({
                     const totalValue = index + 1;
                     return (
                       <option key={totalValue} value={totalValue}>
-                        {totalValue}個
+                        {totalValue}
                       </option>
                     );
                   })}
@@ -242,7 +242,7 @@ const GalleryHeader = ({
                       const totalValue = index + 1;
                       return (
                         <option key={totalValue} value={totalValue}>
-                          {totalValue}個
+                          {totalValue}
                         </option>
                       );
                     })}
@@ -351,11 +351,11 @@ const GalleryHeader = ({
                         <div className="space-y-4">
                           <div>
                             <h3 className="mb-2 text-sm font-semibold text-gray-900">ラベルフィルター</h3>
-                            <div className="grid grid-cols-4 gap-2">
+                            <div className="grid grid-cols-5 gap-2">
                               {LABEL_DEFINITIONS.map((label) => {
                                 const isSelected = selectedLabels.includes(label.type);
                                 const buttonClasses = [
-                                  'flex flex-col items-center justify-center h-16 text-xs font-bold rounded-lg border-2 transition-all',
+                                  'flex flex-col items-center justify-center h-11 text-xs font-bold rounded-lg border-2 transition-all',
                                   isSelected
                                     ? `${label.bgColor} border-gray-400 shadow-md scale-105`
                                     : `bg-white border-gray-300 ${isTotalLabelFilterActive ? '' : 'hover:bg-gray-50 hover:border-gray-400 hover:shadow'}`,
@@ -372,7 +372,7 @@ const GalleryHeader = ({
                                     className={buttonClasses}
                                   >
                                     <LabelBadge label={label.type} isActive={isSelected} className="h-6 w-6" />
-                                    <span className="mt-1 text-[10px] text-gray-600">{label.symbol}</span>
+                                    {/* <span className="mt-1 text-[10px] text-gray-600">{label.symbol}</span> */}
                                   </button>
                                 );
                               })}
@@ -390,7 +390,7 @@ const GalleryHeader = ({
                                 const totalValue = index + 1;
                                 return (
                                   <option key={totalValue} value={totalValue}>
-                                    {totalValue}個
+                                    {totalValue}
                                   </option>
                                 );
                               })}
