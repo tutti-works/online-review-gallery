@@ -14,6 +14,9 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
 interface ArtworkModalProps {
   artwork: Artwork;
+  artworks: Artwork[];
+  currentIndex: number;
+  onNavigate: (artwork: Artwork) => void;
   isOpen: boolean;
   onClose: () => void;
   onLike?: (artworkId: string) => void;
@@ -26,6 +29,9 @@ interface ArtworkModalProps {
 
 const ArtworkModal = ({
   artwork,
+  artworks,
+  currentIndex,
+  onNavigate,
   isOpen,
   onClose,
   onLike,
@@ -142,6 +148,25 @@ const ArtworkModal = ({
     [annotationDirty, currentPage, requestAutoSave, showAnnotation],
   );
 
+  const handleArtworkChange = useCallback(
+    async (direction: 'prev' | 'next') => {
+      if (showAnnotation && annotationDirty) {
+        const success = await requestAutoSave('artwork-change');
+        if (!success) {
+          return;
+        }
+      }
+
+      const newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
+      if (newIndex >= 0 && newIndex < artworks.length) {
+        onNavigate(artworks[newIndex]);
+        setCurrentPage(0);
+        setAnnotationDirty(false);
+      }
+    },
+    [annotationDirty, artworks, currentIndex, onNavigate, requestAutoSave, showAnnotation],
+  );
+
   const handleToggleOverlayVisibility = useCallback(() => {
     setAnnotationOverlayVisible((prev) => !prev);
   }, []);
@@ -236,6 +261,9 @@ const ArtworkModal = ({
               onPageChange={handlePageChange}
               onSaveAnnotation={handleSaveAnnotation}
               onAnnotationDirtyChange={setAnnotationDirty}
+              currentArtworkIndex={currentIndex}
+              totalArtworks={artworks.length}
+              onArtworkChange={handleArtworkChange}
             />
 
             <ArtworkSidebar

@@ -40,6 +40,9 @@ type ArtworkViewerProps = {
   onPageChange: (index: number) => Promise<void> | void;
   onSaveAnnotation: (payload: AnnotationSavePayload | null) => Promise<void>;
   onAnnotationDirtyChange: (dirty: boolean) => void;
+  currentArtworkIndex: number;
+  totalArtworks: number;
+  onArtworkChange: (direction: 'prev' | 'next') => Promise<void> | void;
 };
 
 type OverlayLine = {
@@ -75,6 +78,9 @@ const ArtworkViewer = ({
   onPageChange,
   onSaveAnnotation,
   onAnnotationDirtyChange,
+  currentArtworkIndex,
+  totalArtworks,
+  onArtworkChange,
 }: ArtworkViewerProps) => {
   const [AnnotationCanvasComponent, setAnnotationCanvasComponent] =
     useState<ForwardRefExoticComponent<AnnotationCanvasProps & RefAttributes<AnnotationCanvasHandle>> | null>(null);
@@ -429,8 +435,34 @@ const ArtworkViewer = ({
           </div>
         )}
         <div className="absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center space-x-4 rounded-full bg-gray-700 bg-opacity-70 px-3 py-1 backdrop-blur-sm transition-all duration-300 ease-in-out">
+          {/* 作品間ナビゲーション */}
+          <button
+            onClick={() => void onArtworkChange('prev')}
+            disabled={currentArtworkIndex === 0 || isSavingAnnotation}
+            className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+            title="前の作品"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+          </button>
+          <span className="min-w-[70px] text-center text-xs font-medium text-white">
+            作品 {currentArtworkIndex + 1}/{totalArtworks}
+          </span>
+          <button
+            onClick={() => void onArtworkChange('next')}
+            disabled={currentArtworkIndex === totalArtworks - 1 || isSavingAnnotation}
+            className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+            title="次の作品"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+          </button>
+
           {artwork.images.length > 1 && (
             <>
+              <div className="h-6 w-px bg-white bg-opacity-30" />
               <button
                 onClick={() => void onPageChange(Math.max(0, currentPage - 1))}
                 disabled={currentPage === 0 || isSavingAnnotation}
@@ -454,9 +486,9 @@ const ArtworkViewer = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                 </svg>
               </button>
-              <div className="h-6 w-px bg-white bg-opacity-30" />
             </>
           )}
+          <div className="h-6 w-px bg-white bg-opacity-30" />
 
           {!showAnnotation && (
             <>

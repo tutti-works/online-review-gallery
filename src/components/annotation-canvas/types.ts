@@ -6,7 +6,7 @@ export type AnnotationSavePayload = {
   height: number;
 };
 
-export type AnnotationSaveReason = 'manual' | 'idle' | 'page-change' | 'mode-exit';
+export type AnnotationSaveReason = 'manual' | 'idle' | 'page-change' | 'mode-exit' | 'artwork-change';
 
 export type AnnotationCanvasHandle = {
   save: (options?: { reason?: AnnotationSaveReason; force?: boolean }) => Promise<void>;

@@ -4,11 +4,12 @@
 
 作品注釈機能の実装状況と今後のロードマップをまとめたドキュメントです。
 
-**最新情報:** フェーズ3完了 - パフォーマンス最適化実装完了！
+**最新情報:** フェーズ3完了 + タブレット対応完了！
 - フェーズ1: 自動保存機能、カラーパレット＆太さプリセット、注釈オーバーレイ表示
 - フェーズ2: ズーム・パン連携、Undo/Redo、消しゴムツール
 - **フェーズ3（2025-11-03）**: パフォーマンス最適化 - 画像キャッシュ、perfectDraw動的制御、差分更新
 - **UIデザイン改善（2025-11-03）**: 縦型サイドバー＋ポップオーバー方式で画面を最大活用
+- **タブレット対応（2025-11-04）**: タッチイベント対応、レスポンシブレイアウト改善
 
 ---
 
@@ -26,7 +27,9 @@
 - ✅ 画像サイズ変更時の自動スケーリング
 
 ### UI/UX
-- ✅ タッチデバイス対応
+- ✅ タッチデバイス対応（タブレット・スマートフォン完全対応）
+- ✅ タッチイベント（タッチスクロール、ピンチ操作）
+- ✅ レスポンシブレイアウト（1131px/1651px カスタムブレークポイント）
 - ✅ 選択中の線のシャドウハイライト
 - ✅ 未保存警告（注釈モード終了時）
 - ✅ ローディング表示
@@ -392,6 +395,272 @@ NEXT_PUBLIC_IMAGE_CACHE_DEBUG=true
 
 ## 🐛 トラブルシューティング記録
 
+### 問題: タブレットでのタッチ操作が動作しない（2025-11-04）
+
+**症状:**
+1. タブレット（タッチデバイス）で注釈モードのパン操作ができない
+2. 通常表示モードでも画像の移動（パン）ができない
+3. PCではマウス操作が正常に動作している
+
+**原因:**
+- `usePanZoom` フックがマウスイベント（`MouseEvent`）のみに対応
+- タッチイベント（`TouchEvent`）のハンドラが実装されていなかった
+- `ArtworkViewer` と `AnnotationCanvas` でタッチイベントが処理されていなかった
+
+**解決策:**
+
+1. **usePanZoom フックにタッチイベントハンドラを追加**
+   ```typescript
+   // src/components/artwork-modal/usePanZoom.ts
+   const handleTouchStart = useCallback((event: TouchEvent) => {
+     if (event.touches.length !== 1) return;
+     const touch = event.touches[0];
+     if (!touch) return;
+     setIsDragging(true);
+     setDragStart({
+       x: touch.clientX - panPosition.x,
+       y: touch.clientY - panPosition.y,
+     });
+   }, [panPosition]);
+
+   const handleTouchMove = useCallback((event: TouchEvent) => {
+     if (!isDragging || event.touches.length !== 1) return;
+     const touch = event.touches[0];
+     if (!touch) return;
+     setPanPosition({
+       x: touch.clientX - dragStart.x,
+       y: touch.clientY - dragStart.y,
+     });
+   }, [isDragging, dragStart]);
+
+   const handleTouchEnd = useCallback(() => {
+     setIsDragging(false);
+   }, []);
+
+   return {
+     // ... existing handlers
+     handleTouchStart,
+     handleTouchMove,
+     handleTouchEnd,
+   };
+   ```
+
+2. **ArtworkViewer でタッチイベントを適用**
+   ```tsx
+   // 通常表示モード
+   <div
+     onMouseDown={handleMouseDown}
+     onMouseMove={handleMouseMove}
+     onMouseUp={handleMouseUp}
+     onMouseLeave={handleMouseUp}
+     onTouchStart={handleTouchStart}
+     onTouchMove={handleTouchMove}
+     onTouchEnd={handleTouchEnd}
+     style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+   >
+
+   // 注釈モード
+   <AnnotationCanvas
+     onPanMouseDown={handleMouseDown}
+     onPanMouseMove={handleMouseMove}
+     onPanMouseUp={handleMouseUp}
+     onPanTouchStart={handleTouchStart}
+     onPanTouchMove={handleTouchMove}
+     onPanTouchEnd={handleTouchEnd}
+   />
+   ```
+
+3. **AnnotationCanvas でタッチイベントラッパーを実装**
+   ```tsx
+   const handlePanTouchStartWrapper = useCallback(
+     (event: ReactTouchEvent<HTMLDivElement>) => {
+       if (!interactionsEnabled || !isPanMode) return;
+       event.preventDefault();
+       onPanTouchStart(event);
+     },
+     [interactionsEnabled, isPanMode, onPanTouchStart],
+   );
+   // ... 同様にMove/Endラッパーも実装
+   ```
+
+4. **型定義の更新**
+   ```typescript
+   // src/components/annotation-canvas/types.ts
+   import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from 'react';
+
+   export type AnnotationCanvasProps = {
+     // ... existing props
+     onPanTouchStart: (event: ReactTouchEvent<HTMLDivElement>) => void;
+     onPanTouchMove: (event: ReactTouchEvent<HTMLDivElement>) => void;
+     onPanTouchEnd: () => void;
+   };
+   ```
+
+**学んだこと:**
+- タッチデバイス対応では、マウスイベントとタッチイベントの両方を実装する必要がある
+- `event.touches[0]` でタッチ位置を取得し、`clientX/clientY` で座標を取得
+- タッチイベントでは `event.preventDefault()` で標準のブラウザ動作を防ぐ
+- 1本指のタッチのみを処理する（`event.touches.length !== 1` でフィルタ）
+
+---
+
+### 問題: ギャラリーヘッダーのレスポンシブレイアウトが崩れる（2025-11-04）
+
+**症状:**
+1. タブレット表示時にヘッダーのレイアウトが崩れる
+2. 1630px以下で1行レイアウトが収まらず3段になる
+3. 授業名・課題名が長い場合にレイアウトが破綻する
+
+**原因:**
+1. Tailwind CSSの標準ブレークポイント（lg: 1024px、xl: 1280px、2xl: 1536px）では、実際のコンテンツ幅に対応できていなかった
+2. 長い授業名・課題名に対する処理がなかった
+3. xl breakpoint (1280px-1535px) で `flex-wrap` を使用したが、折り返しで3段になってしまった
+
+**解決策:**
+
+1. **カスタムブレークポイントの追加**
+   ```javascript
+   // tailwind.config.js
+   module.exports = {
+     theme: {
+       extend: {
+         screens: {
+           'layout-lg': '1131px',  // 2行レイアウトの開始点
+           'layout-2xl': '1651px', // 1行レイアウトの開始点
+         },
+       },
+     },
+   };
+   ```
+
+2. **3段階レスポンシブレイアウトの実装**
+   ```tsx
+   {/* 1行レイアウト (1651px以上) */}
+   <div className="hidden layout-2xl:flex h-16 items-center justify-between">
+     {/* すべての要素を1行に配置 */}
+   </div>
+
+   {/* 2行レイアウト (1131px〜1650px) */}
+   <div className="hidden layout-lg:block layout-2xl:hidden">
+     {/* 1行目: タイトル + アクションボタン */}
+     {/* 2行目: GallerySwitcher + フィルター・ソート */}
+   </div>
+
+   {/* 簡略レイアウト (1130px以下) */}
+   <div className="layout-lg:hidden">
+     {/* 2行レイアウト + フィルタードロップダウン */}
+   </div>
+   ```
+
+3. **長い授業名・課題名の省略表示**
+   ```tsx
+   // GallerySwitcher.tsx
+   <select
+     className="max-w-[180px] truncate ..."
+     title={selectedCourse || '授業を選択'}
+   >
+     <option value="" title={courseName}>
+       {courseName}
+     </option>
+   </select>
+   ```
+
+4. **フィルタードロップダウンのグリッド調整**
+   ```tsx
+   {/* ラベルフィルターを5列グリッドに変更 */}
+   <div className="grid grid-cols-5 gap-2">
+     {LABEL_DEFINITIONS.map((label) => (
+       <button className="h-11 ...">
+         <LabelBadge />
+       </button>
+     ))}
+   </div>
+   ```
+
+**実装ファイル:**
+- `tailwind.config.js` - カスタムブレークポイント定義
+- `src/app/gallery/components/GalleryHeader.tsx` - 3段階レスポンシブレイアウト
+- `src/components/GallerySwitcher.tsx` - テキスト省略表示
+
+**学んだこと:**
+- Tailwind CSSの標準ブレークポイントでは不十分な場合、カスタムブレークポイントを定義すべき
+- レスポンシブデザインでは、実際のコンテンツ量を考慮してブレークポイントを決定する
+- `max-w-*` と `truncate` の組み合わせで長いテキストを適切に省略できる
+- `title` 属性でホバー時に全文を表示できる
+
+---
+
+### 問題: 注釈オーバーレイが初回表示時に表示されない（2025-11-04）
+
+**症状:**
+1. モーダルを初回表示した時、注釈オーバーレイが表示されない
+2. 画像がキャッシュされている場合のみ、即座に表示される
+3. 注釈表示/非表示の切り替えが正しく動作しない
+
+**原因:**
+1. `imageDimensions` の取得タイミングが遅い（画像ロード完了後）
+2. 画像がキャッシュされている場合、`onLoad` イベントが発火しないことがある
+3. `useEffect` の依存配列に `showAnnotation` と `annotationOverlayVisible` が含まれていなかった
+
+**解決策:**
+
+1. **画像寸法の即座取得**
+   ```tsx
+   useEffect(() => {
+     if (!imageRef.current) return;
+
+     // キャッシュされている場合は即座に寸法を更新
+     if (imageRef.current.complete && imageRef.current.naturalWidth > 0) {
+       const rect = imageRef.current.getBoundingClientRect();
+       setImageDimensions({
+         width: rect.width,
+         height: rect.height,
+         offsetX: rect.left,
+         offsetY: rect.top,
+       });
+     }
+   }, [currentImage.url]);
+   ```
+
+2. **getBoundingClientRect() のフォールバック**
+   ```tsx
+   const handleImageLoad = () => {
+     if (!imageRef.current) return;
+     const rect = imageRef.current.getBoundingClientRect();
+     setImageDimensions({
+       width: rect.width,
+       height: rect.height,
+       offsetX: rect.left,
+       offsetY: rect.top,
+     });
+   };
+   ```
+
+3. **useEffect 依存配列の修正**
+   ```tsx
+   useEffect(() => {
+     if (!imageRef.current || !shouldShowOverlay) return;
+     // ... canvas描画処理
+   }, [
+     currentAnnotation,
+     imageDimensions,
+     showAnnotation,           // 追加
+     annotationOverlayVisible, // 追加
+   ]);
+   ```
+
+4. **注釈アイコンの修正**
+   - 文字化けしていたアイコンを絵文字（📝）に変更
+
+**学んだこと:**
+- 画像がキャッシュされている場合、`onLoad` イベントが発火しないことがあるため、`complete` フラグを確認すべき
+- `getBoundingClientRect()` は `imageDimensions` が null の場合のフォールバックとして有効
+- 状態変更に反応する `useEffect` では、すべての関連する状態を依存配列に含める必要がある
+
+---
+
+
+
 ### 問題: 注釈キャンバスの表示とセンタリング（2025-11-02）
 
 **症状:**
@@ -647,6 +916,9 @@ if (hasLines && baseSize) {
 - ✅ 100%以下でのパン操作 → **修正完了**
 - ✅ 画像表示サイズの問題 → **修正完了**
 - ✅ UIデザイン改善（縦型サイドバー） → **2025-11-03完了**
+- ✅ タブレット/タッチデバイス対応 → **2025-11-04完了**
+- ✅ レスポンシブレイアウト（カスタムブレークポイント） → **2025-11-04完了**
+- ✅ 注釈オーバーレイ初回表示の問題 → **2025-11-04修正完了**
 
 ---
 
@@ -678,4 +950,4 @@ if (hasLines && baseSize) {
 
 ---
 
-最終更新日: 2025-11-03（フェーズ3実装完了 - パフォーマンス最適化）
+最終更新日: 2025-11-04（タブレット対応完了 - タッチイベント・レスポンシブレイアウト）

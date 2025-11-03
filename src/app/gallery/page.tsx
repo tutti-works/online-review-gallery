@@ -480,6 +480,9 @@ function GalleryPage() {
       {selectedArtwork && (
         <ArtworkModal
           artwork={selectedArtwork}
+          artworks={filteredArtworks}
+          currentIndex={filteredArtworks.findIndex((a) => a.id === selectedArtwork.id)}
+          onNavigate={(newArtwork) => setSelectedArtwork(newArtwork)}
           isOpen={true}
           onClose={() => setSelectedArtwork(null)}
           onLike={handleLike}
