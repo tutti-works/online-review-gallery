@@ -533,7 +533,7 @@ const ArtworkViewer = ({
           </button>
           <button
             onClick={resetZoom}
-            className="ml-2 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white hover:bg-opacity-20"
+            className="ml-2 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white hover:bg-opacity-20 whitespace-nowrap"
             title="リセット"
           >
             リセット
