@@ -40,8 +40,8 @@ const GalleryHeader = ({
   return (
     <header className="bg-white shadow-sm">
       <div className="w-full px-4 sm:px-6 lg:px-8">
-        {/* 超大型デスクトップ (2xl: 1536px以上): 完全1行レイアウト */}
-        <div className="hidden 2xl:flex h-16 items-center justify-between">
+        {/* 1行レイアウト (1651px以上) */}
+        <div className="hidden layout-2xl:flex h-16 items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">作品ギャラリー</h1>
           <div className="flex items-center gap-4">
             <Suspense fallback={<div className="text-sm text-gray-500">読み込み中...</div>}>
@@ -147,8 +147,8 @@ const GalleryHeader = ({
           </div>
         </div>
 
-        {/* デスクトップ (lg-2xl: 1024px〜1535px): 2行レイアウト */}
-        <div className="hidden lg:block 2xl:hidden">
+        {/* 2行レイアウト (1131px〜1650px) */}
+        <div className="hidden layout-lg:block layout-2xl:hidden">
           {/* 1行目: タイトル + アクションボタン */}
           <div className="flex h-14 items-center justify-between border-b border-gray-200">
             <h1 className="text-lg font-semibold text-gray-900">作品ギャラリー</h1>
@@ -264,8 +264,8 @@ const GalleryHeader = ({
           </div>
         </div>
 
-        {/* タブレット (md: 768px〜1023px): 2行・簡略レイアウト */}
-        <div className="lg:hidden">
+        {/* 簡略レイアウト (1130px以下) */}
+        <div className="layout-lg:hidden">
           {/* 1行目: タイトル + アクションボタン */}
           <div className="flex h-14 items-center justify-between border-b border-gray-200">
             <h1 className="text-lg font-semibold text-gray-900">作品ギャラリー</h1>
