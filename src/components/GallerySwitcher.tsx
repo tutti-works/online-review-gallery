@@ -111,7 +111,7 @@ export default function GallerySwitcher() {
       <select
         value={selectedCourse}
         onChange={(e) => handleCourseChange(e.target.value)}
-        className="max-w-[240px] truncate rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        className="max-w-[180px] truncate rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         title={selectedCourse || '授業を選択'}
       >
         <option value="">授業を選択</option>
@@ -127,7 +127,7 @@ export default function GallerySwitcher() {
         value={selectedGalleryId}
         onChange={(e) => handleAssignmentChange(e.target.value)}
         disabled={!selectedCourse}
-        className="max-w-[240px] truncate rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed disabled:hover:border-gray-300"
+        className="max-w-[180px] truncate rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed disabled:hover:border-gray-300"
         title={selectedGalleryId ? assignments.find(g => g.id === selectedGalleryId)?.assignmentName : '課題を選択'}
       >
         <option value="">課題を選択</option>
