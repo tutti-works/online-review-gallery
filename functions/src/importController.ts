@@ -172,7 +172,17 @@ export async function initializeImport(
       console.log(JSON.stringify(submission, null, 2));
       console.log('========================');
 
-      if (!submission.assignmentSubmission?.attachments) continue;
+      // 提出状態を確認（TURNED_INまたはRETURNEDのみ処理）
+      const submissionState = submission.state;
+      const isTurnedIn = submissionState === 'TURNED_IN' || submissionState === 'RETURNED';
+
+      console.log(`  Submission state: ${submissionState}, isTurnedIn: ${isTurnedIn}`);
+
+      // 提出されていない、または添付ファイルがない場合はスキップ
+      if (!isTurnedIn || !submission.assignmentSubmission?.attachments) {
+        console.log(`  ⏭️ Skipping - not turned in or no attachments`);
+        continue;
+      }
 
       // 学生情報を取得
       let studentName = 'Unknown Student';
@@ -275,8 +285,8 @@ export async function initializeImport(
       }
     }
 
-    // 学生提出物（複数ファイルをまとめたもの）をタスクとして作成
-    const tasks: Array<{
+    // 学生提出物を処理: サポートされているファイルがある学生はタスクに、ない学生はエラー作品を即座に作成
+    const validTasks: Array<{
       studentName: string;
       studentEmail: string;
       studentId: string;
@@ -290,13 +300,79 @@ export async function initializeImport(
         originalFileUrl: string;
         tempFilePath: string;
       }>;
-    }> = Array.from(submissionsByStudent.values());
+    }> = [];
 
+    const studentsWithUnsupportedFilesOnly: Array<{
+      studentName: string;
+      studentEmail: string;
+      studentId: string;
+      submittedAt: string;
+      isLate: boolean;
+    }> = [];
+
+    for (const submission of submissionsByStudent.values()) {
+      if (submission.files.length > 0) {
+        // サポートされているファイルがある場合はタスクに追加
+        validTasks.push(submission);
+      } else {
+        // サポートされていないファイルのみの場合はリストに追加（後でエラー作品を作成）
+        console.log(`⚠️ Student ${submission.studentName} has only unsupported files`);
+        studentsWithUnsupportedFilesOnly.push({
+          studentName: submission.studentName,
+          studentEmail: submission.studentEmail,
+          studentId: submission.studentId,
+          submittedAt: submission.submittedAt,
+          isLate: submission.isLate,
+        });
+      }
+    }
+
+    // サポートされていないファイルのみの学生に対してエラー作品を作成
+    for (const student of studentsWithUnsupportedFilesOnly) {
+      try {
+        const artworkId = db.collection('artworks').doc().id;
+        await db.collection('artworks').doc(artworkId).set({
+          id: artworkId,
+          title: `${student.studentName}の提出物`,
+          galleryId,
+          status: 'error',
+          errorReason: 'unsupported_format',
+          files: [],
+          images: [],
+          studentName: student.studentName,
+          studentEmail: student.studentEmail,
+          studentId: student.studentId || undefined,
+          submittedAt: new Date(student.submittedAt),
+          isLate: student.isLate,
+          classroomId,
+          assignmentId,
+          likeCount: 0,
+          labels: [],
+          comments: [],
+          createdAt: FieldValue.serverTimestamp(),
+          importedBy: userEmail,
+        });
+
+        console.log(`⚠️ Created error artwork for ${student.studentName} (unsupported_format)`);
+
+        await db.collection('galleries').doc(galleryId).update({
+          artworkCount: FieldValue.increment(1),
+        });
+
+        await importJobRef.update({
+          processedFiles: FieldValue.increment(1),
+        });
+      } catch (error) {
+        console.error(`Failed to create error artwork for ${student.studentName}:`, error);
+      }
+    }
+
+    const tasks = validTasks;
     const totalFileCount = tasks.reduce((sum, task) => sum + task.files.length, 0);
-    const totalSubmissions = tasks.length; // 学生提出数（タスク数）
-    console.log(`📦 Grouped ${totalFileCount} files into ${totalSubmissions} student submissions`);
+    const totalSubmissions = tasks.length + studentsWithUnsupportedFilesOnly.length; // 全学生提出数
+    console.log(`📦 Grouped ${totalFileCount} files into ${tasks.length} valid tasks + ${studentsWithUnsupportedFilesOnly.length} unsupported-only students`);
 
-    // totalFilesは学生提出数（タスク数）をセット
+    // totalFilesは学生提出数（タスク数 + エラー作品数）をセット
     await importJobRef.update({ totalFiles: totalSubmissions, progress: 5 });
 
     const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';

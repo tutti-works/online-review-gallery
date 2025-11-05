@@ -248,6 +248,21 @@ function GalleryPage() {
       const data = await response.json();
       console.log(`Deleted ${data.deletedFiles} files from Storage`);
 
+      // ギャラリーのartworkCountを更新
+      if (currentGalleryId) {
+        try {
+          const { doc, updateDoc, increment } = await import('firebase/firestore');
+          const { db } = await import('@/lib/firebase');
+          const galleryRef = doc(db, 'galleries', currentGalleryId);
+          await updateDoc(galleryRef, {
+            artworkCount: increment(-1),
+          });
+        } catch (updateError) {
+          console.error('Failed to update gallery artworkCount:', updateError);
+          // エラーでも削除処理は継続
+        }
+      }
+
       setArtworks((prev) => prev.filter((artwork) => artwork.id !== artworkId));
       setSelectedArtwork((prev) => (prev && prev.id === artworkId ? null : prev));
 

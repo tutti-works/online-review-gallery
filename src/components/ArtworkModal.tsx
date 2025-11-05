@@ -217,6 +217,15 @@ const ArtworkModal = ({
 
   const handleDelete = async () => {
     if (!onDelete) return;
+
+    const confirmMessage = incomplete
+      ? `${artwork.studentName}の作品を削除してもよろしいですか？\n\nこの操作は取り消せません。`
+      : `${artwork.studentName}の作品「${artwork.title}」を削除してもよろしいですか？\n\nこの操作は取り消せません。`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
     await onDelete(artwork.id);
     onClose();
   };
@@ -249,10 +258,11 @@ const ArtworkModal = ({
           )}
           <div className="flex flex-1 overflow-hidden">
             {incomplete ? (
-              <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 p-8">
+              <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 p-8 relative">
+                {/* 閉じるボタン */}
                 <button
                   onClick={onClose}
-                  className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-gray-800 text-white transition-colors hover:bg-gray-700"
+                  className="absolute left-4 top-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white bg-opacity-90 text-gray-800 shadow-lg transition-all hover:bg-opacity-100 hover:shadow-xl"
                   title="閉じる"
                 >
                   <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -260,26 +270,15 @@ const ArtworkModal = ({
                   </svg>
                 </button>
 
-                {/* 作品間ナビゲーションボタン */}
-                {currentIndex > 0 && (
+                {/* 削除ボタン（管理者のみ） */}
+                {userRole === 'admin' && onDelete && (
                   <button
-                    onClick={() => handleArtworkChange('prev')}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 flex h-12 w-12 items-center justify-center rounded-full bg-gray-800 text-white transition-colors hover:bg-gray-700"
-                    title="前の作品"
+                    onClick={handleDelete}
+                    className="absolute top-4 right-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-all hover:bg-red-700 hover:shadow-xl"
+                    title="この作品を削除"
                   >
                     <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                )}
-                {currentIndex < artworks.length - 1 && (
-                  <button
-                    onClick={() => handleArtworkChange('next')}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 flex h-12 w-12 items-center justify-center rounded-full bg-gray-800 text-white transition-colors hover:bg-gray-700"
-                    title="次の作品"
-                  >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
                 )}
@@ -308,12 +307,6 @@ const ArtworkModal = ({
                         <dt className="text-sm font-medium text-gray-500">メールアドレス</dt>
                         <dd className="text-base text-gray-900">{artwork.studentEmail}</dd>
                       </div>
-                      {artwork.studentId && (
-                        <div>
-                          <dt className="text-sm font-medium text-gray-500">学籍番号</dt>
-                          <dd className="text-base text-gray-900">{artwork.studentId}</dd>
-                        </div>
-                      )}
                       {artwork.status === 'error' && artwork.files && artwork.files.length > 0 && (
                         <div>
                           <dt className="text-sm font-medium text-gray-500">提出ファイル</dt>
@@ -326,6 +319,33 @@ const ArtworkModal = ({
                       )}
                     </dl>
                   </div>
+                </div>
+
+                {/* 下部コントロールバー */}
+                <div className="absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center space-x-4 rounded-full bg-gray-700 bg-opacity-70 px-3 py-1 backdrop-blur-sm transition-all duration-300 ease-in-out">
+                  <button
+                    onClick={() => handleArtworkChange('prev')}
+                    disabled={currentIndex === 0}
+                    className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                    title="前の作品"
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <span className="min-w-[70px] text-center text-xs font-medium text-white">
+                    作品 {currentIndex + 1}/{artworks.length}
+                  </span>
+                  <button
+                    onClick={() => handleArtworkChange('next')}
+                    disabled={currentIndex === artworks.length - 1}
+                    className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                    title="次の作品"
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                    </svg>
+                  </button>
                 </div>
               </div>
             ) : (

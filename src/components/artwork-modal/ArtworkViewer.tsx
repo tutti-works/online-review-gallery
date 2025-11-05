@@ -317,9 +317,10 @@ const ArtworkViewer = ({
     <div className="flex-1 flex flex-col bg-gray-100 relative">
       <button
         onClick={onClose}
-        className="absolute left-4 top-4 z-10 rounded-full bg-white p-2 shadow-lg transition-colors hover:bg-gray-100"
+        className="absolute left-4 top-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white bg-opacity-90 text-gray-800 shadow-lg transition-all hover:bg-opacity-100 hover:shadow-xl"
+        title="閉じる"
       >
-        <svg className="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>

@@ -573,8 +573,43 @@ export async function processMultipleFiles(
       }
     }
 
+    // Firestoreにartworkを保存
+    const artworkId = db.collection('artworks').doc().id;
+
     if (allImages.length === 0) {
-      console.error(`No images processed for ${studentName}`);
+      // 画像が1つも処理できなかった場合、エラー作品として保存
+      console.error(`No images processed for ${studentName} - creating error artwork`);
+
+      const errorArtwork = {
+        id: artworkId,
+        title: `${studentName}の提出物`,
+        galleryId,
+        status: 'error' as const,
+        errorReason: 'unsupported_format' as const,
+        files: submittedFiles,
+        images: [],
+        studentName,
+        studentEmail,
+        studentId: studentId || undefined,
+        submittedAt: new Date(submittedAt),
+        isLate,
+        classroomId,
+        assignmentId,
+        likeCount: 0,
+        labels: [],
+        comments: [],
+        createdAt: new Date(),
+        importedBy: importJobId,
+      };
+
+      await db.collection('artworks').doc(artworkId).set(errorArtwork);
+      console.log(`⚠️ Error artwork created for ${studentName} (unsupported format)`);
+
+      // ギャラリーのカウントを更新
+      await db.collection('galleries').doc(galleryId).update({
+        artworkCount: FieldValue.increment(1),
+      });
+
       await db.collection('importJobs').doc(importJobId).update({
         errorFiles: FieldValue.arrayUnion(...files.map(f => f.name)),
         processedFiles: FieldValue.increment(1),
@@ -582,12 +617,11 @@ export async function processMultipleFiles(
       return;
     }
 
-    // Firestoreにartworkを保存
-    const artworkId = db.collection('artworks').doc().id;
+    // 正常な作品として保存
     const artwork = {
       id: artworkId,
       title: `${studentName}の提出物`,
-      galleryId, // ハイブリッド方式: どのギャラリーに属するか
+      galleryId,
       status: 'submitted' as const,
       files: submittedFiles,
       images: allImages,
@@ -621,10 +655,55 @@ export async function processMultipleFiles(
 
   } catch (error) {
     console.error(`Error processing files for ${studentName}:`, error);
+
+    // エラーが発生した場合もエラー作品として保存
+    try {
+      const artworkId = db.collection('artworks').doc().id;
+      const errorArtwork = {
+        id: artworkId,
+        title: `${studentName}の提出物`,
+        galleryId,
+        status: 'error' as const,
+        errorReason: 'processing_error' as const,
+        files: files.map(f => ({
+          id: f.id,
+          name: f.name,
+          type: f.type,
+          originalFileUrl: f.originalFileUrl,
+          mimeType: f.mimeType,
+        })),
+        images: [],
+        studentName,
+        studentEmail,
+        studentId: studentId || undefined,
+        submittedAt: new Date(submittedAt),
+        isLate,
+        classroomId,
+        assignmentId,
+        likeCount: 0,
+        labels: [],
+        comments: [],
+        createdAt: new Date(),
+        importedBy: importJobId,
+      };
+
+      await db.collection('artworks').doc(artworkId).set(errorArtwork);
+      console.log(`⚠️ Error artwork created for ${studentName} (processing error)`);
+
+      // ギャラリーのカウントを更新
+      await db.collection('galleries').doc(galleryId).update({
+        artworkCount: FieldValue.increment(1),
+      });
+    } catch (saveError) {
+      console.error(`Failed to save error artwork for ${studentName}:`, saveError);
+    }
+
     await db.collection('importJobs').doc(importJobId).update({
       errorFiles: FieldValue.arrayUnion(...files.map(f => f.name)),
       processedFiles: FieldValue.increment(1),
     });
-    throw error;
+
+    // エラーをthrowせずに正常終了（処理は継続）
+    console.log(`Continuing import process after error for ${studentName}`);
   }
 }
