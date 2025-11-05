@@ -283,24 +283,46 @@ function AdminImportPage() {
     ];
 
     try {
-      const { collection, addDoc, doc, setDoc } = await import('firebase/firestore');
+      const { collection, doc, setDoc, query, where, getDocs } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase');
 
       const selectedCourseName = courses.find((c) => c.id === selectedCourse)?.name || 'Unknown Course';
       const selectedAssignmentName = assignments.find((a) => a.id === selectedAssignment)?.title || 'Unknown Assignment';
 
-      const galleryRef = doc(collection(db, 'galleries'));
-      const galleryId = galleryRef.id;
+      // 既存のギャラリーを検索（同じclassroomId + assignmentIdの組み合わせ）
+      const galleriesRef = collection(db, 'galleries');
+      const q = query(
+        galleriesRef,
+        where('classroomId', '==', selectedCourse),
+        where('assignmentId', '==', selectedAssignment)
+      );
+      const existingGalleriesSnapshot = await getDocs(q);
 
-      await setDoc(galleryRef, {
-        id: galleryId,
-        title: `${selectedCourseName} - ${selectedAssignmentName}`,
-        classroomId: selectedCourse,
-        assignmentId: selectedAssignment,
-        createdBy: user.email,
-        createdAt: new Date(),
-        artworks: [],
-      });
+      let galleryId: string;
+      let galleryRef;
+
+      if (!existingGalleriesSnapshot.empty) {
+        // 既存のギャラリーが見つかった場合は再利用
+        const existingGallery = existingGalleriesSnapshot.docs[0];
+        galleryId = existingGallery.id;
+        galleryRef = doc(db, 'galleries', galleryId);
+        console.log(`Using existing gallery: ${galleryId}`);
+      } else {
+        // 新規ギャラリーを作成
+        galleryRef = doc(collection(db, 'galleries'));
+        galleryId = galleryRef.id;
+
+        await setDoc(galleryRef, {
+          id: galleryId,
+          title: `${selectedCourseName} - ${selectedAssignmentName}`,
+          classroomId: selectedCourse,
+          assignmentId: selectedAssignment,
+          createdBy: user.email,
+          createdAt: new Date(),
+          artworks: [],
+        });
+        console.log(`Created new gallery: ${galleryId}`);
+      }
 
       const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL || 'http://localhost:5001';
 

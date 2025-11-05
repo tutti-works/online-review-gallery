@@ -17,6 +17,9 @@ type GalleryHeaderProps = {
   onTotalLabelFilterChange: (value: string) => void;
   sortOption: SortOption;
   onSortOptionChange: (option: SortOption) => void;
+  hideIncomplete: boolean;
+  onHideIncompleteChange: (hide: boolean) => void;
+  incompleteCount: number;
   onLoginClick: () => void;
 };
 
@@ -29,13 +32,16 @@ const GalleryHeader = ({
   onTotalLabelFilterChange,
   sortOption,
   onSortOptionChange,
+  hideIncomplete,
+  onHideIncompleteChange,
+  incompleteCount,
   onLoginClick,
 }: GalleryHeaderProps) => {
   const isAdmin = userRole === 'admin';
   const isGuest = userRole === 'guest';
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
 
-  const activeFilterCount = selectedLabels.length + (isTotalLabelFilterActive ? 1 : 0);
+  const activeFilterCount = selectedLabels.length + (isTotalLabelFilterActive ? 1 : 0) + (hideIncomplete ? 1 : 0);
 
   return (
     <header className="bg-white shadow-sm">
@@ -94,6 +100,17 @@ const GalleryHeader = ({
                     );
                   })}
                 </select>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hideIncomplete}
+                    onChange={(e) => onHideIncompleteChange(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-gray-700">
+                    未提出・エラーを非表示 {hideIncomplete && incompleteCount > 0 && `(${incompleteCount}件)`}
+                  </span>
+                </label>
               </>
             )}
 
@@ -247,6 +264,17 @@ const GalleryHeader = ({
                       );
                     })}
                   </select>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hideIncomplete}
+                      onChange={(e) => onHideIncompleteChange(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-gray-700">
+                      未提出・エラーを非表示 {hideIncomplete && incompleteCount > 0 && `(${incompleteCount}件)`}
+                    </span>
+                  </label>
                 </>
               )}
 
@@ -395,6 +423,20 @@ const GalleryHeader = ({
                                 );
                               })}
                             </select>
+                          </div>
+                          <div>
+                            <h3 className="mb-2 text-sm font-semibold text-gray-900">表示設定</h3>
+                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={hideIncomplete}
+                                onChange={(e) => onHideIncompleteChange(e.target.checked)}
+                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-gray-700">
+                                未提出・エラーを非表示 {hideIncomplete && incompleteCount > 0 && `(${incompleteCount}件)`}
+                              </span>
+                            </label>
                           </div>
                         </div>
                       </div>

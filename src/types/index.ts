@@ -24,11 +24,14 @@ export interface Artwork {
   title: string; // "{studentName}の提出物"
   description?: string;
   galleryId: string; // どのギャラリーに属するか
+  status: 'submitted' | 'not_submitted' | 'error'; // 作品の状態
+  errorReason?: 'unsupported_format' | 'processing_error'; // エラー理由（status='error'の場合）
   files: SubmittedFile[]; // 提出された元ファイル情報（複数対応）
   images: ArtworkImage[]; // Firebase Storage上の変換済み画像配列（全ファイルの全ページ統合）
   studentName: string;
   studentEmail: string;
-  submittedAt: Date | string;
+  studentId?: string; // 学籍番号
+  submittedAt?: Date | string | null; // 提出日時（未提出の場合はnull）
   isLate: boolean; // 提出期限に遅れたかどうか
   classroomId: string;
   assignmentId: string;
@@ -102,6 +105,8 @@ export interface ImportJob {
   totalFiles: number;
   processedFiles: number;
   errorFiles: string[];
+  skippedCount?: number; // 再インポート時にスキップされた学生数
+  notSubmittedCount?: number; // 未提出プレースホルダー数
   createdBy: string;
   createdAt: Date | string;
   completedAt?: Date;

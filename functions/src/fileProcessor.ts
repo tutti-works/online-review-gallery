@@ -481,6 +481,7 @@ export async function processMultipleFiles(
   importJobId: string,
   studentName: string,
   studentEmail: string,
+  studentId: string,
   submittedAt: string,
   isLate: boolean,
   files: Array<{
@@ -587,10 +588,12 @@ export async function processMultipleFiles(
       id: artworkId,
       title: `${studentName}の提出物`,
       galleryId, // ハイブリッド方式: どのギャラリーに属するか
+      status: 'submitted' as const,
       files: submittedFiles,
       images: allImages,
       studentName,
       studentEmail,
+      studentId: studentId || undefined,
       submittedAt: new Date(submittedAt),
       isLate,
       classroomId,

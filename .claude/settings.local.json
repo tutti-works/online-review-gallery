@@ -46,7 +46,9 @@
       "Bash(npm info:*)",
       "Bash(timeout 2 bash:*)",
       "Bash(git checkout:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(/tmp/importController.original.ts)",
+      "Bash(/tmp/fileProcessor.original.ts)"
     ],
     "deny": [],
     "ask": []

@@ -43,6 +43,37 @@ async function listStudentSubmissions(
   return results;
 }
 
+// Google Classroomから割り当て済み学生リストを取得
+async function listAssignedStudents(
+  classroom: classroom_v1.Classroom,
+  courseId: string
+): Promise<classroom_v1.Schema$Student[]> {
+  const results: classroom_v1.Schema$Student[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const response = await classroom.courses.students.list({
+      courseId,
+      pageToken,
+      pageSize: 100,
+    });
+
+    const { data } = response;
+    if (data.students?.length) {
+      results.push(...data.students);
+    }
+
+    pageToken = data.nextPageToken ?? undefined;
+  } while (pageToken);
+
+  return results;
+}
+
+// 学生識別子を正規化（小文字、トリム）
+function normalizeIdentifier(value?: string | null): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
 export async function initializeImport(
   galleryId: string,
   classroomId: string,
@@ -80,6 +111,24 @@ export async function initializeImport(
 
     const classroom = google.classroom({ version: 'v1', auth });
 
+    // 既存作品を取得（再インポートスキップ用）
+    const existingArtworksSnapshot = await db
+      .collection('artworks')
+      .where('galleryId', '==', galleryId)
+      .get();
+
+    const existingStudentEmails = new Set(
+      existingArtworksSnapshot.docs.map(doc => {
+        const email = doc.data().studentEmail;
+        const normalized = normalizeIdentifier(email);
+        console.log(`  Existing: ${email} -> ${normalized}`);
+        return normalized;
+      })
+    );
+
+    console.log(`📋 Existing artworks: ${existingStudentEmails.size} students`);
+    console.log(`📋 Existing emails: ${Array.from(existingStudentEmails).join(', ')}`);
+
     // 課題の提出物を取得（全ステータスを対象にページング取得）
     const submissions = await listStudentSubmissions(classroom, classroomId, assignmentId);
 
@@ -93,10 +142,15 @@ export async function initializeImport(
       console.log('⚠️ No submissions found');
     }
 
+    // 割り当て済み学生リストを取得
+    const assignedStudents = await listAssignedStudents(classroom, classroomId);
+    console.log(`👥 Assigned students: ${assignedStudents.length} students`);
+
     // 学生ごとにファイルをグループ化するためのMap
     const submissionsByStudent = new Map<string, {
       studentName: string;
       studentEmail: string;
+      studentId: string;
       submittedAt: string;
       isLate: boolean;
       files: Array<{
@@ -108,6 +162,8 @@ export async function initializeImport(
         tempFilePath: string;
       }>;
     }>();
+
+    let skippedCount = 0;
 
     // 各提出物からファイル情報を収集
     for (const submission of submissions) {
@@ -121,18 +177,31 @@ export async function initializeImport(
       // 学生情報を取得
       let studentName = 'Unknown Student';
       let studentEmail = '';
+      let studentId = '';
       if (submission.userId) {
         try {
           const userProfile = await classroom.userProfiles.get({ userId: submission.userId });
           if (userProfile.data) {
             studentName = userProfile.data.name?.fullName || submission.userId;
             studentEmail = userProfile.data.emailAddress || '';
+            studentId = userProfile.data.id || submission.userId;
           }
         } catch (error) {
           console.warn(`Failed to fetch user profile for ${submission.userId}:`, error);
           studentName = submission.userId || 'Unknown Student';
+          studentId = submission.userId;
         }
       }
+
+      // 既存作品がある場合はスキップ
+      const normalizedEmail = normalizeIdentifier(studentEmail);
+      console.log(`  Checking: ${studentEmail} -> ${normalizedEmail}`);
+      if (existingStudentEmails.has(normalizedEmail)) {
+        console.log(`⏭️ Skipping ${studentEmail} - already exists`);
+        skippedCount++;
+        continue;
+      }
+      console.log(`  ✅ New student: ${studentEmail}`);
 
       // 提出日時を取得（updateTimeまたはcreationTime）
       const submittedAt = submission.updateTime || submission.creationTime || new Date().toISOString();
@@ -145,6 +214,7 @@ export async function initializeImport(
         submissionsByStudent.set(studentEmail, {
           studentName,
           studentEmail,
+          studentId,
           submittedAt,
           isLate,
           files: [],
@@ -209,6 +279,7 @@ export async function initializeImport(
     const tasks: Array<{
       studentName: string;
       studentEmail: string;
+      studentId: string;
       submittedAt: string;
       isLate: boolean;
       files: Array<{
@@ -238,6 +309,7 @@ export async function initializeImport(
             importJobRef.id,
             task.studentName,
             task.studentEmail,
+            task.studentId,
             task.submittedAt,
             task.isLate,
             task.files,
@@ -264,6 +336,7 @@ export async function initializeImport(
           importJobId: importJobRef.id,
           studentName: task.studentName,
           studentEmail: task.studentEmail,
+          studentId: task.studentId,
           submittedAt: task.submittedAt,
           isLate: task.isLate,
           files: task.files,
@@ -306,7 +379,72 @@ export async function initializeImport(
       console.log(`Created ${tasks.length} processing tasks for import job ${importJobRef.id}`);
     }
 
-    await importJobRef.update({ progress: 10 });
+    // 未提出学生のプレースホルダー作品を作成
+    const submittedEmails = new Set(
+      Array.from(submissionsByStudent.keys()).map(email => normalizeIdentifier(email))
+    );
+
+    console.log(`📊 Submitted students: ${submittedEmails.size}`);
+    console.log(`📊 Submitted emails: ${Array.from(submittedEmails).join(', ')}`);
+
+    const notSubmittedStudents = assignedStudents.filter(student => {
+      const studentEmail = normalizeIdentifier(student.profile?.emailAddress);
+      const isNotSubmitted = studentEmail &&
+             !submittedEmails.has(studentEmail) &&
+             !existingStudentEmails.has(studentEmail);
+
+      if (studentEmail) {
+        console.log(`  Student ${studentEmail}: submitted=${submittedEmails.has(studentEmail)}, existing=${existingStudentEmails.has(studentEmail)}, notSubmitted=${isNotSubmitted}`);
+      }
+
+      return isNotSubmitted;
+    });
+
+    console.log(`📝 Creating ${notSubmittedStudents.length} not-submitted placeholders`);
+    notSubmittedStudents.forEach(student => {
+      console.log(`  - ${student.profile?.name?.fullName} (${student.profile?.emailAddress})`);
+    });
+
+    for (const student of notSubmittedStudents) {
+      try {
+        const docRef = await db.collection('artworks').add({
+          galleryId,
+          classroomId,
+          assignmentId,
+          status: 'not_submitted',
+          studentName: student.profile?.name?.fullName || 'Unknown Student',
+          studentEmail: student.profile?.emailAddress || '',
+          studentId: student.userId || '',
+          title: `${student.profile?.name?.fullName || 'Unknown Student'} - 未提出`,
+          files: [],
+          images: [],
+          submittedAt: null,
+          isLate: false,
+          likeCount: 0,
+          labels: [],
+          comments: [],
+          createdAt: FieldValue.serverTimestamp(),
+          importedBy: userEmail,
+        });
+
+        console.log(`  ✅ Created placeholder ${docRef.id} for ${student.profile?.emailAddress}`);
+
+        // galleryのartworkCountをインクリメント
+        await db.collection('galleries').doc(galleryId).update({
+          artworkCount: FieldValue.increment(1),
+        });
+      } catch (error) {
+        console.error(`  ❌ Failed to create not-submitted placeholder for ${student.profile?.emailAddress}:`, error);
+      }
+    }
+
+    await importJobRef.update({
+      progress: 10,
+      skippedCount,
+      notSubmittedCount: notSubmittedStudents.length,
+    });
+
+    console.log(`✅ Import initialized: ${tasks.length} submissions, ${skippedCount} skipped, ${notSubmittedStudents.length} not-submitted`);
 
   } catch (error) {
     console.error('Import initialization error:', error);
@@ -501,6 +639,7 @@ async function processStudentSubmission(
   importJobId: string,
   studentName: string,
   studentEmail: string,
+  studentId: string,
   submittedAt: string,
   isLate: boolean,
   files: Array<{
@@ -521,6 +660,7 @@ async function processStudentSubmission(
     importJobId,
     studentName,
     studentEmail,
+    studentId,
     submittedAt,
     isLate,
     files,

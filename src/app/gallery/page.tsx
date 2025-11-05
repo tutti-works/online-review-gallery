@@ -16,6 +16,7 @@ import { useGalleryInitialization } from './hooks/useGalleryInitialization';
 import { useImportProgress } from './hooks/useImportProgress';
 import type { SortOption } from './types';
 import { extractLinesFromStageJSON } from '@/utils/annotations';
+import { sortBySubmissionDate, sortByStudentId, isIncomplete, filterCompleteArtworks, getStudentId } from '@/lib/artworkUtils';
 
 const removePageFromMap = <T,>(
   map: Record<string, T> | undefined,
@@ -48,35 +49,38 @@ function GalleryPage() {
   const [sortOption, setSortOption] = useState<SortOption>('submittedAt-asc');
   const [selectedLabels, setSelectedLabels] = useState<LabelType[]>([]);
   const [totalLabelFilter, setTotalLabelFilter] = useState<number | null>(null);
+  const [hideIncomplete, setHideIncomplete] = useState<boolean>(false);
 
   const sortedArtworks = useMemo(() => {
-    const sorted = [...artworks];
-
     switch (sortOption) {
-      case 'submittedAt-desc':
-        return sorted.sort((a, b) => toDate(b.submittedAt).getTime() - toDate(a.submittedAt).getTime());
+      case 'submittedAt-desc': {
+        const sorted = sortBySubmissionDate(artworks);
+        return sorted.reverse();
+      }
       case 'submittedAt-asc':
-        return sorted.sort((a, b) => toDate(a.submittedAt).getTime() - toDate(b.submittedAt).getTime());
+        return sortBySubmissionDate(artworks);
       case 'email-asc':
-        return sorted.sort((a, b) => {
-          const emailA = a.studentEmail.split('@')[0].toLowerCase();
-          const emailB = b.studentEmail.split('@')[0].toLowerCase();
-          return emailA.localeCompare(emailB);
-        });
-      case 'email-desc':
-        return sorted.sort((a, b) => {
-          const emailA = a.studentEmail.split('@')[0].toLowerCase();
-          const emailB = b.studentEmail.split('@')[0].toLowerCase();
-          return emailB.localeCompare(emailA);
-        });
+        return sortByStudentId(artworks);
+      case 'email-desc': {
+        const sorted = sortByStudentId(artworks);
+        return sorted.reverse();
+      }
       default:
-        return sorted;
+        return [...artworks];
     }
   }, [artworks, sortOption]);
 
   const filteredArtworks = useMemo(() => {
+    let result = sortedArtworks;
+
+    // hideIncompleteフィルター
+    if (hideIncomplete) {
+      result = filterCompleteArtworks(result);
+    }
+
+    // 合計ラベルフィルター
     if (totalLabelFilter !== null) {
-      return sortedArtworks.filter((artwork) => {
+      result = result.filter((artwork) => {
         const labels = artwork.labels ?? [];
         const total = labels
           .map((label) => {
@@ -89,15 +93,20 @@ function GalleryPage() {
       });
     }
 
-    if (selectedLabels.length === 0) {
-      return sortedArtworks;
+    // 個別ラベルフィルター
+    if (selectedLabels.length > 0) {
+      result = result.filter((artwork) => {
+        const artworkLabels = artwork.labels || [];
+        return selectedLabels.some((label) => artworkLabels.includes(label));
+      });
     }
 
-    return sortedArtworks.filter((artwork) => {
-      const artworkLabels = artwork.labels || [];
-      return selectedLabels.some((label) => artworkLabels.includes(label));
-    });
-  }, [sortedArtworks, totalLabelFilter, selectedLabels]);
+    return result;
+  }, [sortedArtworks, totalLabelFilter, selectedLabels, hideIncomplete]);
+
+  const incompleteCount = useMemo(() => {
+    return sortedArtworks.filter(isIncomplete).length;
+  }, [sortedArtworks]);
 
   const isTotalLabelFilterActive = totalLabelFilter !== null;
 
@@ -454,6 +463,9 @@ function GalleryPage() {
         onTotalLabelFilterChange={handleTotalLabelFilterChange}
         sortOption={sortOption}
         onSortOptionChange={(option) => setSortOption(option)}
+        hideIncomplete={hideIncomplete}
+        onHideIncompleteChange={setHideIncomplete}
+        incompleteCount={incompleteCount}
         onLoginClick={handleLoginClick}
       />
 

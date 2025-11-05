@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import LabelBadge from '@/components/labels/LabelBadge';
 import type { Artwork } from '@/types';
+import { isIncomplete, getStatusText } from '@/lib/artworkUtils';
 
 type GalleryGridProps = {
   artworks: Artwork[];
@@ -23,8 +24,42 @@ const GalleryGrid = ({ artworks, onSelectArtwork }: GalleryGridProps) => {
   return (
     <GridContainer>
       {artworks.map((artwork) => {
-        if (!artwork.images || artwork.images.length === 0) {
-          return null;
+        const incomplete = isIncomplete(artwork);
+        const hasImages = artwork.images && artwork.images.length > 0;
+
+        // 不完全な作品または画像がない場合はグレーサムネイルを表示
+        if (incomplete || !hasImages) {
+          return (
+            <div key={artwork.id} className="break-inside-avoid">
+              <div
+                className="cursor-pointer overflow-hidden rounded-lg bg-white shadow-sm transition-shadow hover:shadow-md"
+                onClick={() => onSelectArtwork(artwork)}
+              >
+                <div
+                  className="relative w-full bg-gray-200 flex items-center justify-center"
+                  style={{ aspectRatio: '420 / 297' }}
+                >
+                  <p className="text-gray-500 font-medium text-center px-4">
+                    {incomplete ? getStatusText(artwork) : '画像なし'}
+                  </p>
+                </div>
+                <div className="p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="truncate text-sm font-medium text-gray-900">{artwork.studentName}</p>
+                    <div className="ml-2 flex flex-shrink-0 items-center space-x-2 text-xs text-gray-500">
+                      {artwork.labels && artwork.labels.length > 0 && (
+                        <div className="flex items-center space-x-0.5">
+                          {artwork.labels.map((label) => (
+                            <LabelBadge key={label} label={label} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
         }
 
         const coverImage = artwork.images[0];
