@@ -3,7 +3,9 @@
     "origin": [
       "https://online-review-gallery--pr-1-zay8pa1p.web.app",
       "https://*.web.app",
-      "https://*.firebaseapp.com"
+      "https://*.firebaseapp.com",
+      "https://online-review-gallery.vercel.app",
+      "https://*.vercel.app"
     ],
     "method": ["GET", "HEAD"],
     "responseHeader": ["Content-Type"],
