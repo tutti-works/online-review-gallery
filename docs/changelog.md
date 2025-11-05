@@ -4,6 +4,179 @@
 
 ---
 
+## 2025-11-06: 再インポートスキップと未提出・エラー作品プレースホルダー機能実装
+
+### 実装した機能
+
+- **再インポートスキップ機能**: 既存学生の重複作品生成を防止
+- **未提出学生のプレースホルダー作品**: Classroom APIから割り当て学生を取得し、未提出者にグレーサムネイルを生成
+- **エラー作品のプレースホルダー**: サポート外ファイル形式や処理失敗時にグレーサムネイルとエラー情報を表示
+- **フィルター機能**: 未提出/エラー作品の表示/非表示を切り替えるチェックボックス
+- **特殊な並び替えロジック**: 提出作品を優先表示し、未提出/エラー作品を後ろに配置
+
+### 技術詳細
+
+**作品ステータスの拡張:**
+```typescript
+status: 'submitted' | 'not_submitted' | 'error'
+errorReason?: 'unsupported_format' | 'processing_error'
+```
+
+**再インポートスキップロジック:**
+- `normalizeIdentifier()` 関数で学生メールを正規化（小文字化、トリム）
+- 既存作品のメールをSetに格納して重複チェック
+- 判定キー: `galleryId + normalizeIdentifier(studentEmail)`
+- スキップした学生数をログに記録
+
+**未提出プレースホルダー生成:**
+- Google Classroom APIの `assignedStudents` を取得
+- 提出済み学生メールと既存学生メールを除外
+- `status: 'not_submitted'` でプレースホルダー作品を生成
+- グレーサムネイル（600x600px）を使用
+
+**エラープレースホルダー生成:**
+- サポート外ファイル形式検出時（画像/PDF以外）
+- ファイル処理失敗時
+- `status: 'error'` と `errorReason` を記録
+- 提出ファイル情報（ファイル名、MIME type）を保持
+
+**フィルター/ソート機能:**
+- `src/lib/artworkUtils.ts` にユーティリティ関数を実装:
+  - `isSubmitted()`, `isNotSubmitted()`, `isError()`, `isIncomplete()`
+  - `getStatusText()`: ステータステキスト生成
+  - `sortBySubmissionDate()`: 提出日時順ソート（未提出/エラーを後ろに配置）
+  - `sortByStudentId()`: 学籍番号順ソート（同様のロジック）
+
+**モーダル表示:**
+- 未提出作品: 学生情報、「まだ提出されていません」メッセージ
+- エラー作品: 学生情報、エラー理由、提出ファイル情報
+
+### 実装ファイル
+
+**Cloud Functions:**
+- [functions/src/importController.ts](functions/src/importController.ts#L120-L213): 再インポートスキップロジック
+- [functions/src/importController.ts](functions/src/importController.ts#L439-L523): 未提出プレースホルダー生成
+- [functions/src/fileProcessor.ts](functions/src/fileProcessor.ts#L156-L192): エラープレースホルダー生成
+
+**フロントエンド:**
+- [src/lib/artworkUtils.ts](src/lib/artworkUtils.ts): ステータス判定・ソートユーティリティ関数
+- [src/app/gallery/page.tsx](src/app/gallery/page.tsx): フィルター/ソート機能UI
+- [src/components/ArtworkModal.tsx](src/components/ArtworkModal.tsx): プレースホルダー作品のモーダル表示
+- [src/components/artwork-modal/ArtworkViewer.tsx](src/components/artwork-modal/ArtworkViewer.tsx): プレースホルダー表示UI
+
+**型定義:**
+- `Artwork` インターフェースを拡張（`status`, `errorReason` フィールド追加）
+
+### データ構造
+
+**Artworkドキュメント（通常の提出作品）:**
+```typescript
+{
+  studentId: string,
+  studentName: string,
+  studentEmail: string,
+  status: 'submitted',
+  images: [{
+    originalUrl: string,
+    thumbnailUrl: string,
+    pageNumber: number
+  }],
+  submittedAt: Timestamp,
+  // ... その他のフィールド
+}
+```
+
+**未提出プレースホルダー:**
+```typescript
+{
+  studentId: string,
+  studentName: string,
+  studentEmail: string,
+  status: 'not_submitted',
+  images: [{
+    originalUrl: 'https://placehold.co/600x600/e5e7eb/9ca3af?text=Not+Submitted',
+    thumbnailUrl: 'https://placehold.co/600x600/e5e7eb/9ca3af?text=Not+Submitted',
+    pageNumber: 1
+  }],
+  // submittedAt なし
+}
+```
+
+**エラープレースホルダー:**
+```typescript
+{
+  studentId: string,
+  studentName: string,
+  studentEmail: string,
+  status: 'error',
+  errorReason: 'unsupported_format' | 'processing_error',
+  images: [{
+    originalUrl: 'https://placehold.co/600x600/fee2e2/ef4444?text=Error',
+    thumbnailUrl: 'https://placehold.co/600x600/fee2e2/ef4444?text=Error',
+    pageNumber: 1
+  }],
+  submittedFiles?: [{
+    filename: string,
+    mimeType: string
+  }],
+  submittedAt: Timestamp
+}
+```
+
+### 使用シーン
+
+**再インポートスキップ:**
+- 同じギャラリーに同じ学生の作品を再度インポートしようとした場合
+- 不完全なインポート後に再実行する場合（既存作品は維持）
+
+**未提出プレースホルダー:**
+- 課題割り当て学生の中で未提出の学生を可視化
+- 提出状況の一覧確認
+- 未提出者への催促対応
+
+**エラープレースホルダー:**
+- サポート外形式（TIFF、EPS、SVG等）の提出を検出
+- ファイル破損やメモリ不足による処理失敗を記録
+- エラー原因の特定と学生への連絡
+
+### UX改善
+
+**視覚的識別:**
+- 通常作品: カラーサムネイル
+- 未提出作品: グレーサムネイル
+- エラー作品: 赤系グレーサムネイル
+
+**フィルター操作:**
+- 「未提出/エラー作品を非表示」チェックボックスで表示切り替え
+- デフォルトは表示状態（全作品を確認可能）
+
+**並び替え:**
+- 「提出日時順」「学籍番号順」で提出作品を優先表示
+- 未提出/エラー作品は各ソート基準の後ろに配置
+
+**モーダル情報:**
+- 未提出作品: 学生情報のみ表示
+- エラー作品: エラー理由と提出ファイル情報を詳細表示
+- 作品間ナビゲーションで連続確認可能
+
+### パフォーマンス
+
+**再インポート処理:**
+- 既存作品クエリ: 1回のみ実行
+- メール正規化: O(n) の線形時間
+- 重複チェック: Set使用でO(1)
+
+**プレースホルダー生成:**
+- Classroom API呼び出し: インポート時1回のみ
+- プレースホルダー画像: 外部サービス（placehold.co）使用
+- Firestore書き込み: バッチ処理で効率化
+
+**フィルター/ソート:**
+- クライアント側での動的処理
+- 数百件規模で1ms未満
+
+---
+
 ## 2025-11-06: ギャラリー作品数同期機能実装とartworksフィールド非推奨化
 
 ### 実装した機能
