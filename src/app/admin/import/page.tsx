@@ -317,9 +317,9 @@ function AdminImportPage() {
           title: `${selectedCourseName} - ${selectedAssignmentName}`,
           classroomId: selectedCourse,
           assignmentId: selectedAssignment,
+          artworkCount: 0,
           createdBy: user.email,
           createdAt: new Date(),
-          artworks: [],
         });
         console.log(`Created new gallery: ${galleryId}`);
       }

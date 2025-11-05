@@ -579,23 +579,13 @@ export async function checkImportCompletion(importJobId: string): Promise<void> 
 async function finalizeGallery(galleryId: string, importJobId: string): Promise<void> {
   const db = admin.firestore();
   try {
-    const artworksSnapshot = await db.collection('artworks').where('importedBy', '==', importJobId).get();
-    const artworkIds = artworksSnapshot.docs.map(doc => doc.id);
-
-    if (artworkIds.length > 0) {
-      await db.collection('galleries').doc(galleryId).update({
-        artworks: FieldValue.arrayUnion(...artworkIds),
-        updatedAt: FieldValue.serverTimestamp(),
-        lastImportAt: FieldValue.serverTimestamp(),
-      });
-      console.log(`Gallery ${galleryId} finalized with ${artworkIds.length} artworks`);
-    } else {
-      console.log(`Gallery ${galleryId} has no artworks to add (all files failed)`);
-      await db.collection('galleries').doc(galleryId).update({
-        updatedAt: FieldValue.serverTimestamp(),
-        lastImportAt: FieldValue.serverTimestamp(),
-      });
-    }
+    // Note: artworks配列フィールドは非推奨のため更新しない
+    // artworkCountのみが使用される（作品作成時に自動インクリメント）
+    await db.collection('galleries').doc(galleryId).update({
+      updatedAt: FieldValue.serverTimestamp(),
+      lastImportAt: FieldValue.serverTimestamp(),
+    });
+    console.log(`Gallery ${galleryId} finalized for import job ${importJobId}`);
   } catch (error) {
     console.error('Error finalizing gallery:', error);
   }

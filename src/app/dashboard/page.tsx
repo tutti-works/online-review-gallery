@@ -6,10 +6,20 @@ import withAuth from '@/components/withAuth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Gallery } from '@/types';
 
+interface SyncResult {
+  galleryId: string;
+  galleryTitle: string;
+  oldCount: number;
+  newCount: number;
+  oldArtworksArrayLength: number | null;
+}
+
 function DashboardPage() {
   const { user, logout } = useAuth();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeletingGallery, setIsDeletingGallery] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResults, setSyncResults] = useState<SyncResult[] | null>(null);
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<string>('');
   const [selectedGalleryId, setSelectedGalleryId] = useState<string>('');
@@ -71,6 +81,52 @@ function DashboardPage() {
           setIsDeleting(false);
         }
       }
+    }
+  };
+
+  const handleSyncArtworkCount = async () => {
+    if (!confirm('全ギャラリーのartworkCountを実際の作品数で同期します。\n\n実行しますか？')) {
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncResults(null);
+
+    try {
+      if (!user?.email) {
+        throw new Error('ユーザー情報が見つかりません。');
+      }
+
+      const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL;
+      if (!functionsBaseUrl) {
+        throw new Error('Cloud FunctionsのURLが設定されていません。');
+      }
+
+      const response = await fetch(`${functionsBaseUrl}/syncGalleryArtworkCount`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userEmail: user.email }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '同期に失敗しました');
+      }
+
+      const data = await response.json();
+      setSyncResults(data.results);
+      alert(`${data.results.length}件のギャラリーを同期しました`);
+
+      // ギャラリー一覧を再取得
+      window.location.reload();
+    } catch (error) {
+      console.error('Sync error:', error);
+      const message = error instanceof Error ? error.message : '不明なエラーが発生しました。';
+      alert(`同期に失敗しました: ${message}`);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -350,6 +406,61 @@ function DashboardPage() {
                           {isDeleting ? '削除を実行中...' : '全データをリセット'}
                         </button>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* ギャラリー作品数同期機能 */}
+                  <div className="mt-8 border-t border-gray-200 pt-6">
+                    <div className="text-left">
+                      <h5 className="text-sm font-semibold text-gray-800 mb-2">
+                        ギャラリー作品数同期
+                      </h5>
+                      <p className="text-sm text-gray-500 mb-4">
+                        ギャラリードキュメントのartworkCountを実際の作品数で修正します。作品の個別削除後に作品数が不整合になった場合に使用してください。
+                      </p>
+                      <button
+                        onClick={handleSyncArtworkCount}
+                        disabled={isSyncing}
+                        className="w-full inline-flex justify-center items-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
+                      >
+                        {isSyncing ? '同期を実行中...' : '全ギャラリーの作品数を同期'}
+                      </button>
+
+                      {syncResults && syncResults.length > 0 && (
+                        <div className="mt-4 rounded-lg bg-green-50 border border-green-200 p-4">
+                          <p className="text-sm font-semibold text-green-900 mb-2">
+                            ✓ {syncResults.length}件のギャラリーを同期しました
+                          </p>
+                          <div className="max-h-48 overflow-y-auto">
+                            <table className="min-w-full text-xs">
+                              <thead className="bg-green-100">
+                                <tr>
+                                  <th className="px-2 py-1 text-left text-green-900">ギャラリー</th>
+                                  <th className="px-2 py-1 text-left text-green-900">旧</th>
+                                  <th className="px-2 py-1 text-left text-green-900">新</th>
+                                  <th className="px-2 py-1 text-left text-green-900">差分</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-green-200">
+                                {syncResults.map((result) => {
+                                  const diff = result.newCount - result.oldCount;
+                                  const diffColor = diff > 0 ? 'text-green-700' : diff < 0 ? 'text-red-700' : 'text-gray-600';
+                                  return (
+                                    <tr key={result.galleryId}>
+                                      <td className="px-2 py-1 text-green-900">{result.galleryTitle}</td>
+                                      <td className="px-2 py-1 text-green-700">{result.oldCount}</td>
+                                      <td className="px-2 py-1 font-semibold text-green-900">{result.newCount}</td>
+                                      <td className={`px-2 py-1 font-semibold ${diffColor}`}>
+                                        {diff > 0 && '+'}{diff}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

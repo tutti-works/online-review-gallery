@@ -562,6 +562,22 @@ export const deleteArtwork = onRequest(
         const likeDeletions = likesSnapshot.docs.map(doc => doc.ref.delete());
         await Promise.all(likeDeletions);
 
+        // ギャラリードキュメントのartworkCountをデクリメントし、artworks配列から削除
+        const galleryId = artworkData?.galleryId;
+        if (galleryId) {
+          try {
+            const galleryRef = admin.firestore().collection('galleries').doc(galleryId);
+            await galleryRef.update({
+              artworkCount: admin.firestore.FieldValue.increment(-1),
+              artworks: admin.firestore.FieldValue.arrayRemove(artworkId),
+            });
+            console.log(`Updated gallery ${galleryId}: decremented artworkCount and removed from artworks array`);
+          } catch (galleryError) {
+            console.error(`Failed to update gallery ${galleryId}:`, galleryError);
+            // エラーでも作品削除は成功しているので続行
+          }
+        }
+
         console.log(`Successfully deleted artwork ${artworkId} and ${deletePromises.length} files`);
 
       response.status(200).json({
@@ -837,9 +853,160 @@ export const deleteAllData = onRequest(
     } catch (error) {
       console.error('Detailed error in deleteAllData:', error); // より詳細なログを出力
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      response.status(500).json({ 
+      response.status(500).json({
         error: 'Failed to delete all data.',
         details: errorMessage, // エラー詳細をレスポンスに含める
+      });
+    }
+  }
+);
+
+// 【第2世代】Cloud Function: ギャラリーのartworkCountを実際の作品数で同期
+export const syncGalleryArtworkCount = onRequest(
+  {
+    region: 'asia-northeast1',
+    memory: '512MiB',
+    timeoutSeconds: 300,
+    cors: true,
+  },
+  async (request, response) => {
+    response.set('Access-Control-Allow-Origin', '*');
+    response.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (request.method === 'OPTIONS') {
+      response.status(204).send('');
+      return;
+    }
+
+    try {
+      if (request.method !== 'POST') {
+        response.status(405).send('Method Not Allowed');
+        return;
+      }
+
+      const { userEmail, galleryId } = request.body;
+
+      // 管理者チェック
+      if (!userEmail) {
+        response.status(401).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+
+      if (!isEmulator) {
+        // 本番環境のみ厳密な認証チェック
+        try {
+          const userRecord = await admin.auth().getUserByEmail(userEmail);
+          const customClaims = userRecord.customClaims || {};
+
+          if (customClaims.role !== 'admin') {
+            response.status(403).json({ error: 'Admin access required' });
+            return;
+          }
+        } catch (authError) {
+          console.error('Auth error:', authError);
+          response.status(403).json({ error: 'Invalid user or insufficient permissions' });
+          return;
+        }
+      } else {
+        // エミュレーター環境では簡易チェック
+        console.log(`[Emulator] Allowing sync request from ${userEmail}`);
+      }
+
+      const db = admin.firestore();
+      const results: Array<{
+        galleryId: string;
+        galleryTitle: string;
+        oldCount: number;
+        newCount: number;
+        oldArtworksArrayLength: number | null;
+      }> = [];
+
+      // 特定のギャラリーを指定されている場合
+      if (galleryId) {
+        const galleryRef = db.collection('galleries').doc(galleryId);
+        const galleryDoc = await galleryRef.get();
+
+        if (!galleryDoc.exists) {
+          response.status(404).json({ error: 'Gallery not found' });
+          return;
+        }
+
+        const galleryData = galleryDoc.data()!;
+        const oldCount = galleryData.artworkCount || 0;
+        const oldArtworksArray = galleryData.artworks || null;
+        const oldArtworksArrayLength = Array.isArray(oldArtworksArray) ? oldArtworksArray.length : null;
+
+        // 実際の作品数をカウント
+        const artworksSnapshot = await db.collection('artworks')
+          .where('galleryId', '==', galleryId)
+          .get();
+        const actualCount = artworksSnapshot.size;
+
+        // artworkCountを更新（artworks配列は放置）
+        await galleryRef.update({
+          artworkCount: actualCount,
+        });
+
+        results.push({
+          galleryId,
+          galleryTitle: galleryData.title || 'Untitled',
+          oldCount,
+          newCount: actualCount,
+          oldArtworksArrayLength,
+        });
+
+        console.log(`Synced gallery ${galleryId}: ${oldCount} -> ${actualCount}`);
+      } else {
+        // 全ギャラリーを同期
+        const galleriesSnapshot = await db.collection('galleries').get();
+
+        for (const galleryDoc of galleriesSnapshot.docs) {
+          const galleryData = galleryDoc.data();
+          const oldCount = galleryData.artworkCount || 0;
+          const oldArtworksArray = galleryData.artworks || null;
+          const oldArtworksArrayLength = Array.isArray(oldArtworksArray) ? oldArtworksArray.length : null;
+
+          // 実際の作品数をカウント
+          const artworksSnapshot = await db.collection('artworks')
+            .where('galleryId', '==', galleryDoc.id)
+            .get();
+          const actualCount = artworksSnapshot.size;
+
+          // artworkCountを更新（artworks配列は放置）
+          await galleryDoc.ref.update({
+            artworkCount: actualCount,
+          });
+
+          results.push({
+            galleryId: galleryDoc.id,
+            galleryTitle: galleryData.title || 'Untitled',
+            oldCount,
+            newCount: actualCount,
+            oldArtworksArrayLength,
+          });
+
+          console.log(`Synced gallery ${galleryDoc.id}: ${oldCount} -> ${actualCount}`);
+        }
+      }
+
+      const message = galleryId
+        ? `Successfully synced gallery ${galleryId}`
+        : `Successfully synced ${results.length} galleries`;
+
+      response.status(200).json({
+        message,
+        results,
+      });
+
+    } catch (error) {
+      console.error('Error in syncGalleryArtworkCount:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      response.status(500).json({
+        error: 'Failed to sync gallery artwork count',
+        details: errorMessage,
       });
     }
   }
