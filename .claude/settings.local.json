@@ -40,7 +40,13 @@
       "Bash(claude mcp add firebase npx -- -y firebase-tools@latest experimental:mcp)",
       "Bash(claude mcp:*)",
       "Bash(rm:*)",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "Bash(git restore:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm info:*)",
+      "Bash(timeout 2 bash:*)",
+      "Bash(git checkout:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

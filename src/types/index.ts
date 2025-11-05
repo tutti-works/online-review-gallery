@@ -35,6 +35,8 @@ export interface Artwork {
   likeCount: number;
   labels: LabelType[]; // 管理者が設定できるラベル
   comments: Comment[];
+  annotations?: ArtworkAnnotation[]; // 作品への注釈データ
+  annotationsMap?: Record<string, ArtworkAnnotationPage>; // 新スキーマ: ページごとの注釈データ
   createdAt: Date | string;
   importedBy: string; // インポート実行者
 }
@@ -120,4 +122,31 @@ export interface CourseAssignment {
   description?: string;
   dueDate?: Date | string;
   maxPoints?: number;
+}
+
+export interface ArtworkAnnotation {
+  pageNumber: number; // 作品内のページ番号（1から開始）
+  data: string; // Fabric.jsのJSONデータ（文字列化）
+  width: number; // 注釈作成時のキャンバス幅
+  height: number; // 注釈作成時のキャンバス高さ
+  updatedAt: Date | string; // 更新日時
+  updatedBy?: string; // 更新者のメールアドレス
+}
+
+export interface ArtworkAnnotationLine {
+  id: string;
+  tool: 'draw' | 'erase';
+  points: number[];
+  stroke: string;
+  strokeWidth: number;
+  x?: number;
+  y?: number;
+}
+
+export interface ArtworkAnnotationPage {
+  lines: ArtworkAnnotationLine[];
+  width: number;
+  height: number;
+  updatedAt: Date | string;
+  updatedBy?: string;
 }
