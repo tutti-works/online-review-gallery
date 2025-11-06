@@ -4,6 +4,73 @@
 
 ---
 
+## 2025-11-06 (更新3): 同一学生の重複インポートバグを修正
+
+### 修正した問題
+
+**同一学生が一回のインポートで重複して作成される**
+- **問題**: 一回のインポートで同じ学生が2回重複してインポートされる。片方の作品には2ファイル、もう片方には1ファイルという症状が発生
+- **原因**: Google Classroom APIが同じ学生のメールアドレスを大文字小文字違いで返した場合（例: `John@example.com` と `john@example.com`）、既存チェックは正規化後の値でパスするが、`submissionsByStudent` Mapのキーは正規化前の値を使用していたため、別エントリとして登録されていた
+- **修正**: Mapのキーとして正規化後のメールアドレスを使用するように変更
+
+### 技術詳細
+
+**問題のあったコード:**
+```typescript
+// functions/src/importController.ts:232, 243
+const normalizedEmail = normalizeIdentifier(studentEmail);
+if (existingStudentEmails.has(normalizedEmail)) { // 正規化版で既存チェック
+  continue;
+}
+
+// バグ: Mapのキーは正規化前を使用
+if (!submissionsByStudent.has(studentEmail)) {
+  submissionsByStudent.set(studentEmail, { ... });
+}
+const studentSubmission = submissionsByStudent.get(studentEmail)!;
+```
+
+**修正後:**
+```typescript
+// functions/src/importController.ts:232, 243
+const normalizedEmail = normalizeIdentifier(studentEmail);
+if (existingStudentEmails.has(normalizedEmail)) {
+  continue;
+}
+
+// 修正: Mapのキーも正規化版を使用
+if (!submissionsByStudent.has(normalizedEmail)) {
+  submissionsByStudent.set(normalizedEmail, {
+    ...
+    studentEmail: normalizedEmail, // 正規化版を保存
+  });
+}
+const studentSubmission = submissionsByStudent.get(normalizedEmail)!;
+```
+
+### 実装ファイル
+
+- `functions/src/importController.ts:232-243` - Mapキーを正規化版に変更
+
+### 影響範囲
+
+- 新規インポートから、大文字小文字違いのメールアドレスによる重複が発生しなくなる
+- 既存の重複データには影響なし（手動対応済み）
+- 既存の正常なデータにも影響なし
+
+### 発生条件
+
+- Google Classroom APIが同じ学生のメールアドレスを大文字小文字違いで複数回返す
+- 各submissionで添付ファイル数が異なる場合、作品ごとに異なるファイル数が記録される
+
+### 備考
+
+- この問題は再インポート時の重複ではなく、**一回のインポート内での重複**
+- 既存チェックのロジックは正常に機能していたが、Mapのキーが正規化されていなかったことが原因
+- 今後同様の問題が発生した場合は、Google Classroom APIから返される重複submissionの除外も検討
+
+---
+
 ## 2025-11-06 (更新2): 学籍番号順ソートとインポート完了判定の不具合修正
 
 ### 修正した問題

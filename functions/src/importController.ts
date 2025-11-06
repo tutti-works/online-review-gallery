@@ -228,11 +228,11 @@ export async function initializeImport(
       // 遅延提出かどうかを取得
       const isLate = submission.late || false;
 
-      // 学生ごとにグループ化
-      if (!submissionsByStudent.has(studentEmail)) {
-        submissionsByStudent.set(studentEmail, {
+      // 学生ごとにグループ化（正規化したメールアドレスをキーに使用して重複を防止）
+      if (!submissionsByStudent.has(normalizedEmail)) {
+        submissionsByStudent.set(normalizedEmail, {
           studentName,
-          studentEmail,
+          studentEmail: normalizedEmail, // 正規化版を保存
           studentId,
           submittedAt,
           isLate,
@@ -240,7 +240,7 @@ export async function initializeImport(
         });
       }
 
-      const studentSubmission = submissionsByStudent.get(studentEmail)!;
+      const studentSubmission = submissionsByStudent.get(normalizedEmail)!;
 
       // 各添付ファイルをダウンロードしてStorageに保存
       for (const attachment of submission.assignmentSubmission.attachments) {
