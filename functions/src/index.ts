@@ -894,14 +894,21 @@ export const syncGalleryArtworkCount = onRequest(
       }
 
       const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+      const db = admin.firestore();
 
       if (!isEmulator) {
         // 本番環境のみ厳密な認証チェック
         try {
-          const userRecord = await admin.auth().getUserByEmail(userEmail);
-          const customClaims = userRecord.customClaims || {};
+          // userRolesコレクションから役割を確認
+          const roleDoc = await db.collection('userRoles').doc(userEmail).get();
 
-          if (customClaims.role !== 'admin') {
+          if (!roleDoc.exists) {
+            response.status(403).json({ error: 'Admin access required' });
+            return;
+          }
+
+          const userData = roleDoc.data();
+          if (userData?.role !== 'admin') {
             response.status(403).json({ error: 'Admin access required' });
             return;
           }
@@ -914,8 +921,6 @@ export const syncGalleryArtworkCount = onRequest(
         // エミュレーター環境では簡易チェック
         console.log(`[Emulator] Allowing sync request from ${userEmail}`);
       }
-
-      const db = admin.firestore();
       const results: Array<{
         galleryId: string;
         galleryTitle: string;

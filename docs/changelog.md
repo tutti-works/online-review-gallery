@@ -4,6 +4,63 @@
 
 ---
 
+## 2025-11-06 (更新2): 学籍番号順ソートとインポート完了判定の不具合修正
+
+### 修正した問題
+
+**1. 学籍番号順ソートの不具合**
+- **問題**: 未提出者の`studentId`にGoogle ClassroomのユーザーID（数値）が保存されていたため、学籍番号順で並び替えた際に未提出者が先頭に表示される
+- **原因**: `studentId: student.userId`でGoogle ClassroomのユーザーIDをそのまま保存
+- **修正**: メールアドレスから学籍番号を抽出する`extractStudentIdFromEmail()`関数を実装
+
+**2. 再インポート時のインポートジョブ完了判定の不具合**
+- **問題**: 既存の画像提出者がスキップされ、新しくサポート外ファイルのみの提出者を追加した場合、`importJob.status`が`completed`にならない
+- **原因**: エラー作品を即座に作成した後、`validTasks.length === 0`のため`checkImportCompletion()`が呼ばれていなかった
+- **修正**: `validTasks.length === 0`かつ`studentsWithUnsupportedFilesOnly.length > 0`の場合に、完了チェックを明示的に実行
+
+### 技術詳細
+
+**学籍番号抽出関数の追加:**
+```typescript
+// functions/src/importController.ts:78-84
+function extractStudentIdFromEmail(email?: string | null): string {
+  if (!email || typeof email !== 'string') {
+    return '';
+  }
+  const match = email.match(/^([^@]+)/);
+  return match ? match[1] : email;
+}
+```
+
+**適用箇所:**
+- 提出済み作品: `functions/src/importController.ts:197`
+- 未提出プレースホルダー: `functions/src/importController.ts:487`
+- エラー作品: 提出済み作品と同じロジックを使用
+
+**インポート完了チェックの追加:**
+```typescript
+// functions/src/importController.ts:548-552
+if (tasks.length === 0 && studentsWithUnsupportedFilesOnly.length > 0) {
+  console.log('📝 Only unsupported-file students processed, checking completion');
+  await checkImportCompletion(importJobRef.id);
+}
+```
+
+### 実装ファイル
+
+- `functions/src/importController.ts:78-84` - 学籍番号抽出関数
+- `functions/src/importController.ts:197` - 提出済み作品に適用
+- `functions/src/importController.ts:487` - 未提出プレースホルダーに適用
+- `functions/src/importController.ts:548-552` - インポート完了チェック追加
+
+### 影響範囲
+
+- 既存の提出済み作品は`studentId`フィールドがないため、フロントエンドの`getStudentId()`関数がメールアドレスから自動抽出（互換性維持）
+- 新規インポートから、すべての作品で正しい学籍番号が`studentId`に保存される
+- 再インポート時にサポート外ファイルのみの提出者を追加しても、正常にインポートジョブが完了する
+
+---
+
 ## 2025-11-06: 再インポートスキップと未提出・エラー作品プレースホルダー機能実装
 
 ### 実装した機能

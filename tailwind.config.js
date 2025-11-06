@@ -9,8 +9,8 @@ module.exports = {
   theme: {
     extend: {
       screens: {
-        'layout-lg': '1131px',
-        'layout-2xl': '1651px',
+        'layout-lg': '1318px',
+        'layout-2xl': '1888px',
       },
       colors: {
         primary: {

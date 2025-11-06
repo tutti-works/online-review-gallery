@@ -1538,7 +1538,26 @@ interface ErrorArtwork {
 ✅ **フィルタリング**: 未提出/エラーを非表示にできる
 ✅ **モーダル表示**: 未提出・エラー作品の詳細情報が表示される
 
-### 12.5. 既知の制約事項
+### 12.5. 既知の制約事項と修正履歴
+
+#### 修正済み（2025-11-06）
+
+✅ **学籍番号順ソートの不具合を修正**
+- **問題**: 未提出者の`studentId`にGoogle ClassroomのユーザーID（数値）が保存されていたため、学籍番号順で並び替えた際に未提出者が先頭に表示される
+- **原因**: `studentId: student.userId`でGoogle ClassroomのユーザーIDをそのまま保存していた
+- **修正**: メールアドレスから学籍番号を抽出する`extractStudentIdFromEmail()`関数を実装し、提出済み・未提出・エラー作品すべてでメールアドレスの`@`より前の部分を`studentId`として保存
+- **実装箇所**:
+  - `functions/src/importController.ts:78-84` (新規関数)
+  - `functions/src/importController.ts:197` (提出済み作品)
+  - `functions/src/importController.ts:487` (未提出プレースホルダー)
+
+✅ **再インポート時のサポート外ファイルのみ追加でインポートジョブが完了しない不具合を修正**
+- **問題**: 既存の画像提出者がスキップされ、新しくサポート外ファイルのみの提出者を追加した場合、`importJob.status`が`completed`にならない
+- **原因**: エラー作品を即座に作成した後、`validTasks.length === 0`のため`checkImportCompletion()`が呼ばれていなかった
+- **修正**: `validTasks.length === 0`かつ`studentsWithUnsupportedFilesOnly.length > 0`の場合に、完了チェックを明示的に実行
+- **実装箇所**: `functions/src/importController.ts:548-552`
+
+#### 既知の制約事項
 
 - 未提出学生が後から提出しても、プレースホルダーは自動削除されない（再インポートでスキップされる）
   - 回避策: 管理者が手動で未提出プレースホルダーを削除してから再インポート

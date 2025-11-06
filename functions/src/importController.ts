@@ -74,6 +74,15 @@ function normalizeIdentifier(value?: string | null): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
+// メールアドレスから学籍番号を抽出（@より前の部分）
+function extractStudentIdFromEmail(email?: string | null): string {
+  if (!email || typeof email !== 'string') {
+    return '';
+  }
+  const match = email.match(/^([^@]+)/);
+  return match ? match[1] : email;
+}
+
 export async function initializeImport(
   galleryId: string,
   classroomId: string,
@@ -194,7 +203,7 @@ export async function initializeImport(
           if (userProfile.data) {
             studentName = userProfile.data.name?.fullName || submission.userId;
             studentEmail = userProfile.data.emailAddress || '';
-            studentId = userProfile.data.id || submission.userId;
+            studentId = extractStudentIdFromEmail(studentEmail);
           }
         } catch (error) {
           console.warn(`Failed to fetch user profile for ${submission.userId}:`, error);
@@ -483,14 +492,17 @@ export async function initializeImport(
 
     for (const student of notSubmittedStudents) {
       try {
+        const studentEmail = student.profile?.emailAddress || '';
+        const studentId = extractStudentIdFromEmail(studentEmail);
+
         const docRef = await db.collection('artworks').add({
           galleryId,
           classroomId,
           assignmentId,
           status: 'not_submitted',
           studentName: student.profile?.name?.fullName || 'Unknown Student',
-          studentEmail: student.profile?.emailAddress || '',
-          studentId: student.userId || '',
+          studentEmail,
+          studentId,
           title: `${student.profile?.name?.fullName || 'Unknown Student'} - 未提出`,
           files: [],
           images: [],
@@ -521,6 +533,23 @@ export async function initializeImport(
     });
 
     console.log(`✅ Import initialized: ${tasks.length} submissions, ${skippedCount} skipped, ${notSubmittedStudents.length} not-submitted`);
+
+    // totalFilesが0の場合（全員スキップ + 未提出プレースホルダーのみ）は即座に完了
+    if (totalSubmissions === 0) {
+      console.log('📝 No new submissions to process (all skipped or placeholders only), marking as completed');
+      await importJobRef.update({
+        status: 'completed',
+        progress: 100,
+        completedAt: FieldValue.serverTimestamp(),
+      });
+      await finalizeGallery(galleryId, importJobRef.id);
+    }
+
+    // validTasksが0だがstudentsWithUnsupportedFilesOnlyがある場合（エラー作品のみ）も完了チェック
+    if (tasks.length === 0 && studentsWithUnsupportedFilesOnly.length > 0) {
+      console.log('📝 Only unsupported-file students processed, checking completion');
+      await checkImportCompletion(importJobRef.id);
+    }
 
   } catch (error) {
     console.error('Import initialization error:', error);
