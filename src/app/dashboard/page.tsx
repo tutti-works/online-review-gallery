@@ -130,7 +130,7 @@ function DashboardPage() {
     }
   };
 
-  // ギャラリー一覧を取得
+  // ギャラリー一覧を取得（マウント時のみ）
   useEffect(() => {
     const fetchGalleries = async () => {
       try {

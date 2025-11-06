@@ -15,7 +15,7 @@ export default function GallerySwitcher() {
   // URLパラメータからgalleryIdを取得
   const currentGalleryId = searchParams.get('galleryId') || '';
 
-  // galleriesコレクションからデータを取得
+  // galleriesコレクションからデータを取得（マウント時のみ）
   useEffect(() => {
     const fetchGalleries = async () => {
       try {
@@ -63,7 +63,7 @@ export default function GallerySwitcher() {
     };
 
     fetchGalleries();
-  }, [currentGalleryId]);
+  }, []);
 
   // 授業名の一覧（重複を除く）
   const courses = Array.from(new Set(galleries.map(g => g.courseName)));

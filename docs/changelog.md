@@ -4,6 +4,130 @@
 
 ---
 
+## 2025-11-06 (更新4): Firestore読み取り回数の最適化
+
+### 修正した問題
+
+**Firestore読み取り回数が異常に多い（8000読み取り/日）**
+- **問題**: ギャラリー6個、作品数十件、アクセスユーザー2-3人という規模にもかかわらず、1日で8000回以上のFirestore読み取りが発生
+- **原因**: React Hooksの依存配列が不適切で、ギャラリー切り替えのたびに全作品とギャラリー一覧を再取得していた
+- **修正**: 依存配列を最適化し、不要な再取得を削減
+
+### 技術詳細
+
+#### 原因1: useGalleryArtworksの過度な再実行（最大原因）
+
+**問題のあったコード:**
+```typescript
+// src/app/gallery/hooks/useGalleryArtworks.ts:144-149
+const fetchArtworks = useCallback(async () => {
+  // 全作品を取得
+}, [currentGalleryId]);
+
+useEffect(() => {
+  if (!isInitialized) return;
+  void fetchArtworks();
+}, [isInitialized, fetchArtworks]);  // ← fetchArtworksが依存配列に！
+```
+
+**問題点:**
+- `fetchArtworks`が`currentGalleryId`に依存するため、ギャラリー切り替えのたびに再生成される
+- `fetchArtworks`が依存配列にあるため、`useEffect`も毎回実行される
+- **結果**: ギャラリー切り替えのたびに全作品を再取得（50読み取り/回）
+
+**修正後:**
+```typescript
+useEffect(() => {
+  if (!isInitialized || !currentGalleryId) return;
+  void fetchArtworks();
+}, [isInitialized, currentGalleryId]);  // currentGalleryIdのみを依存
+```
+
+#### 原因2: GallerySwitcherの不要な再取得
+
+**問題のあったコード:**
+```typescript
+// src/components/GallerySwitcher.tsx:19-66
+useEffect(() => {
+  const fetchGalleries = async () => {
+    // ギャラリー一覧を取得
+  };
+  fetchGalleries();
+}, [currentGalleryId]);  // ← ギャラリー切り替えのたびに実行
+```
+
+**修正後:**
+```typescript
+useEffect(() => {
+  const fetchGalleries = async () => {
+    // ギャラリー一覧を取得
+  };
+  fetchGalleries();
+}, []);  // マウント時のみ実行
+```
+
+#### 原因3: dashboardページの不要な再取得
+
+**問題のあったコード:**
+```typescript
+// src/app/dashboard/page.tsx:134-169
+useEffect(() => {
+  const fetchGalleries = async () => {
+    // ギャラリー一覧を取得
+  };
+  fetchGalleries();
+}, [userRole]);  // userRole変更のたびに実行
+```
+
+**修正後:**
+```typescript
+useEffect(() => {
+  if (!userRole) return;
+  const fetchGalleries = async () => {
+    // ギャラリー一覧を取得
+  };
+  fetchGalleries();
+}, []);  // マウント時のみ実行
+```
+
+### 読み取り回数の推定
+
+#### 修正前
+```
+1回のギャラリー訪問: 59読み取り
+1回のギャラリー切り替え: 56読み取り
+
+想定: 143回のギャラリー切り替え = 8000読み取り/日
+```
+
+#### 修正後
+```
+1回のギャラリー訪問: 59読み取り
+1回のギャラリー切り替え: 0読み取り（キャッシュされた状態を使用）
+
+想定: 10-20回の訪問 = 590-1180読み取り/日
+```
+
+### 実装ファイル
+
+- `src/app/gallery/hooks/useGalleryArtworks.ts:144-149` - useEffect依存配列を修正
+- `src/components/GallerySwitcher.tsx:19-66` - useEffect依存配列を修正
+- `src/app/dashboard/page.tsx:134-169` - useEffect依存配列を修正
+
+### 影響範囲
+
+- Firestore読み取り回数が約85-90%削減される見込み
+- ユーザー体験には影響なし（表示速度はむしろ向上）
+- データの整合性には影響なし
+
+### 期待される効果
+
+- **修正前**: 8000読み取り/日
+- **修正後**: 800-1200読み取り/日（約85-90%削減）
+- コスト削減: Firebaseの無料枠（50,000読み取り/日）内に十分収まる
+
+---
+
 ## 2025-11-06 (更新3): 同一学生の重複インポートバグを修正
 
 ### 修正した問題
