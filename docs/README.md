@@ -4,28 +4,28 @@
 
 ## 📋 目次
 
-### 要件定義・仕様
-- [requirements.md](requirements.md) - システム要件定義書（機能要件・非機能要件・データ構造）
+### コアドキュメント
+- [requirements.md](requirements.md) - システム要件定義書
+- [changelog.md](changelog.md) - 開発履歴と変更ログ
+- [GLOSSARY.md](GLOSSARY.md) - 用語集・命名規則
+- [TESTING.md](TESTING.md) - テストシナリオ
 
 ### 機能仕様
-- [ANNOTATION_FEATURE.md](ANNOTATION_FEATURE.md) - アノテーション機能の詳細仕様
-- [import-skip-and-placeholders.md](import-skip-and-placeholders.md) - 再インポート・未提出・エラー作品機能
-- [BACKGROUND_IMPORT.md](BACKGROUND_IMPORT.md) - 背景インポート機能の処理フロー
+- [ANNOTATION_FEATURE.md](ANNOTATION_FEATURE.md) - アノテーション機能
+- [import-skip-and-placeholders.md](import-skip-and-placeholders.md) - 再インポート・プレースホルダー機能
+- [BACKGROUND_IMPORT.md](BACKGROUND_IMPORT.md) - 背景インポート処理フロー
 
 ### 技術分析
-- [COST_AND_PERFORMANCE.md](COST_AND_PERFORMANCE.md) - コストとパフォーマンス分析
+- [COST_AND_PERFORMANCE.md](COST_AND_PERFORMANCE.md) - コスト・パフォーマンス分析
 - [PDF_PROCESSING_GUIDE.md](PDF_PROCESSING_GUIDE.md) - PDF処理最適化ガイド
 
 ### セットアップガイド
-- [setup/local-development.md](setup/local-development.md) - ローカル開発環境のセットアップ
-- [setup/cloud-run-deployment.md](setup/cloud-run-deployment.md) - Cloud Run（PDF処理）のデプロイ手順
-- [setup/production-deployment.md](setup/production-deployment.md) - 本番環境デプロイガイド
+- [setup/local-development.md](setup/local-development.md) - ローカル開発環境
+- [setup/cloud-run-deployment.md](setup/cloud-run-deployment.md) - Cloud Runデプロイ
+- [setup/production-deployment.md](setup/production-deployment.md) - 本番環境デプロイ
 
-### テストとトラブルシューティング
-- [TESTING.md](TESTING.md) - 主要機能のテストシナリオ
-
-### 変更履歴
-- [changelog.md](changelog.md) - 詳細な開発履歴と変更ログ
+### アーカイブ
+- [archive/](archive/) - 履歴ドキュメント・参考資料
 
 ## 🚀 クイックスタート
 
