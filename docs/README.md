@@ -11,13 +11,18 @@
 - [TESTING.md](TESTING.md) - テストシナリオ
 
 ### 機能仕様
-- [ANNOTATION_FEATURE.md](ANNOTATION_FEATURE.md) - アノテーション機能
-- [import-skip-and-placeholders.md](import-skip-and-placeholders.md) - 再インポート・プレースホルダー機能
-- [BACKGROUND_IMPORT.md](BACKGROUND_IMPORT.md) - 背景インポート処理フロー
+- [features/import-feature.md](features/import-feature.md) - インポート機能（F-02-07, 08, 09）
+- [features/gallery-and-feedback.md](features/gallery-and-feedback.md) - ギャラリー・フィードバック（F-03, 04, 05）
+- [features/ANNOTATION_FEATURE.md](features/ANNOTATION_FEATURE.md) - アノテーション機能（F-06）
+- [features/BACKGROUND_IMPORT.md](features/BACKGROUND_IMPORT.md) - 背景インポート処理フロー
 
 ### 技術分析
 - [COST_AND_PERFORMANCE.md](COST_AND_PERFORMANCE.md) - コスト・パフォーマンス分析
 - [PDF_PROCESSING_GUIDE.md](PDF_PROCESSING_GUIDE.md) - PDF処理最適化ガイド
+
+### 実装詳細
+- [implementation/import-implementation.md](implementation/import-implementation.md) - インポート実装
+- [implementation/data-migration.md](implementation/data-migration.md) - データマイグレーション
 
 ### セットアップガイド
 - [setup/local-development.md](setup/local-development.md) - ローカル開発環境
