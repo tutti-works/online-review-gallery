@@ -106,6 +106,7 @@ export interface ImportJob {
   processedFiles: number;
   errorFiles: string[];
   skippedCount?: number; // 再インポート時にスキップされた学生数
+  overwrittenCount?: number; // 既存未提出/エラー作品を上書きした数
   notSubmittedCount?: number; // 未提出プレースホルダー数
   createdBy: string;
   createdAt: Date | string;

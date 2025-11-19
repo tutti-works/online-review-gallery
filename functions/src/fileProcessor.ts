@@ -494,13 +494,21 @@ export async function processMultipleFiles(
   }>,
   galleryId: string,
   classroomId: string,
-  assignmentId: string
+  assignmentId: string,
+  existingArtworkId?: string
 ): Promise<void> {
   const db = admin.firestore();
   const storage = admin.storage();
   const bucket = storage.bucket();
 
   console.log(`Processing ${files.length} files for ${studentName}...`);
+
+  const artworksCollection = db.collection('artworks');
+  const isOverwrite = Boolean(existingArtworkId);
+  const artworkRef = existingArtworkId
+    ? artworksCollection.doc(existingArtworkId)
+    : artworksCollection.doc();
+  const artworkId = artworkRef.id;
 
   try {
     const allImages: any[] = [];
@@ -573,9 +581,6 @@ export async function processMultipleFiles(
       }
     }
 
-    // Firestoreにartworkを保存
-    const artworkId = db.collection('artworks').doc().id;
-
     if (allImages.length === 0) {
       // 画像が1つも処理できなかった場合、エラー作品として保存
       console.error(`No images processed for ${studentName} - creating error artwork`);
@@ -602,13 +607,19 @@ export async function processMultipleFiles(
         importedBy: importJobId,
       };
 
-      await db.collection('artworks').doc(artworkId).set(errorArtwork);
-      console.log(`⚠️ Error artwork created for ${studentName} (unsupported format)`);
+      await artworkRef.set(errorArtwork);
+      console.log(
+        `⚠️ ${isOverwrite ? 'Updated existing error artwork' : 'Error artwork created'} for ${studentName} (unsupported format)`
+      );
 
       // ギャラリーのカウントを更新
-      await db.collection('galleries').doc(galleryId).update({
-        artworkCount: FieldValue.increment(1),
-      });
+      const galleryUpdate: Record<string, unknown> = {
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      if (!isOverwrite) {
+        galleryUpdate.artworkCount = FieldValue.increment(1);
+      }
+      await db.collection('galleries').doc(galleryId).update(galleryUpdate);
 
       await db.collection('importJobs').doc(importJobId).update({
         errorFiles: FieldValue.arrayUnion(...files.map(f => f.name)),
@@ -639,14 +650,19 @@ export async function processMultipleFiles(
       importedBy: importJobId,
     };
 
-    await db.collection('artworks').doc(artworkId).set(artwork);
-    console.log(`✅ Artwork created for ${studentName} with ${allImages.length} images from ${files.length} files`);
+    await artworkRef.set(artwork);
+    console.log(
+      `${isOverwrite ? '🔄 Updated artwork for' : '✅ Artwork created for'} ${studentName} with ${allImages.length} images from ${files.length} files`
+    );
 
-    // galleryのartworkCountをインクリメント
-    await db.collection('galleries').doc(galleryId).update({
-      artworkCount: FieldValue.increment(1),
+    // galleryのartworkCountをインクリメント（再利用時はカウント維持）
+    const galleryUpdate: Record<string, unknown> = {
       updatedAt: FieldValue.serverTimestamp(),
-    });
+    };
+    if (!isOverwrite) {
+      galleryUpdate.artworkCount = FieldValue.increment(1);
+    }
+    await db.collection('galleries').doc(galleryId).update(galleryUpdate);
 
     // 処理完了をカウント
     await db.collection('importJobs').doc(importJobId).update({
@@ -658,9 +674,8 @@ export async function processMultipleFiles(
 
     // エラーが発生した場合もエラー作品として保存
     try {
-      const artworkId = db.collection('artworks').doc().id;
       const errorArtwork = {
-        id: artworkId,
+        id: artworkRef.id,
         title: `${studentName}の提出物`,
         galleryId,
         status: 'error' as const,
@@ -687,13 +702,19 @@ export async function processMultipleFiles(
         importedBy: importJobId,
       };
 
-      await db.collection('artworks').doc(artworkId).set(errorArtwork);
-      console.log(`⚠️ Error artwork created for ${studentName} (processing error)`);
+      await artworkRef.set(errorArtwork);
+      console.log(
+        `⚠️ ${isOverwrite ? 'Updated existing error artwork' : 'Error artwork created'} for ${studentName} (processing error)`
+      );
 
       // ギャラリーのカウントを更新
-      await db.collection('galleries').doc(galleryId).update({
-        artworkCount: FieldValue.increment(1),
-      });
+      const galleryUpdate: Record<string, unknown> = {
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      if (!isOverwrite) {
+        galleryUpdate.artworkCount = FieldValue.increment(1);
+      }
+      await db.collection('galleries').doc(galleryId).update(galleryUpdate);
     } catch (saveError) {
       console.error(`Failed to save error artwork for ${studentName}:`, saveError);
     }

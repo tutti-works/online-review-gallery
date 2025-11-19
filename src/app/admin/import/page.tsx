@@ -248,7 +248,7 @@ function AdminImportPage() {
     } finally {
       setIsRequestingScopes(false);
     }
-  }, [ensureClassroomScopes, fetchCourses, getCurrentAccessToken]);
+  }, [ensureClassroomScopes, getCurrentAccessToken]);
 
   const handleImport = async () => {
     if (!hasRequiredScopes) {

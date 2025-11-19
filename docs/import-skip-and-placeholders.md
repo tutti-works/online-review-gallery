@@ -37,54 +37,107 @@
 
 ## 2. 機能仕様
 
-### 2.1. 再インポートスキップ機能 (F-02-07)
+### 2.1. 再インポートスキップと上書き機能 (F-02-07)
+
+✅ **2025-11-20更新**: `status` に基づく上書きロジックを実装
 
 #### 2.1.1. 判定キー
 
 - **`galleryId + studentEmail`** の組み合わせで既存作品を判定する
 - `submissionId` は含めない（同じ学生の再提出も既存作品として扱う）
 
-#### 2.1.2. スキップ対象
+#### 2.1.2. 再インポート時の処理フロー
 
-以下の条件を満たす学生の処理をスキップする：
+既存作品の `status` に基づいて、スキップまたは上書きを判定する：
 
 ```typescript
-const existingArtworks = await db
-  .collection('artworks')
-  .where('galleryId', '==', galleryId)
-  .get();
+// 既存作品を Map で管理（status情報も含む）
+const existingArtworksByEmail = new Map<string, ExistingArtworkInfo>();
+existingArtworksSnapshot.docs.forEach(doc => {
+  const data = doc.data();
+  const normalized = normalizeIdentifier(data.studentEmail);
+  existingArtworksByEmail.set(normalized, {
+    id: doc.id,
+    status: data.status || 'submitted',
+    studentEmail: data.studentEmail,
+  });
+});
 
-const existingStudentEmails = new Set(
-  existingArtworks.docs.map(doc => doc.data().studentEmail)
-);
-
-// スキップ判定
-if (existingStudentEmails.has(studentEmail)) {
-  console.log(`Skipping ${studentEmail} - already exists`);
-  skippedCount++;
-  continue;
+// 各提出物に対して処理を判定
+const existingArtwork = existingArtworksByEmail.get(normalizedEmail);
+if (existingArtwork) {
+  if (existingArtwork.status === 'submitted') {
+    // ✅ 正常提出済み → スキップ
+    console.log(`⏭️ Skipping ${studentEmail} - already submitted`);
+    skippedCount++;
+    continue;
+  } else {
+    // 🔄 未提出・エラー → 上書き
+    console.log(`🔄 Overwriting ${studentEmail} (current status: ${existingArtwork.status})`);
+    overwriteCount++;
+  }
 }
 ```
 
-#### 2.1.3. スキップ対象外（再処理される）
+#### 2.1.3. スキップ・上書き判定ロジック
 
-以下のケースは再処理される：
+| 既存作品の状態 | Classroomの提出状態 | 処理 | 理由 |
+|---|---|---|---|
+| `submitted` | 正常提出 | **スキップ** | 正常提出済みは保護 |
+| `submitted` | 未提出/エラー | **スキップ** | ありえないケース |
+| `not_submitted` | 正常提出 | **上書き** ✅ | 後日提出した学生を反映 |
+| `not_submitted` | 未提出 | **上書き** | 最新状態を維持 |
+| `not_submitted` | エラー提出 | **上書き** | サポート外形式提出を記録 |
+| `error` | 正常提出 | **上書き** ✅ | ファイル修正後の再提出を反映 |
+| `error` | 未提出 | **上書き** | 提出取り消しを反映 |
+| `error` | エラー提出 | **上書き** | エラー状態を維持 |
 
-- 前回のインポートで処理エラー（メモリ不足、タイムアウト等）が発生した学生
-- ギャラリー自体が削除されて再度インポートされた場合
+**設計思想**:
+- ✅ **`submitted` 作品は絶対にスキップ**（正常提出を保護）
+- 🔄 **`not_submitted` / `error` 作品は常に上書き**（最新状態を反映）
 
-#### 2.1.4. インポート完了時の表示
+#### 2.1.4. 上書き時のドキュメント処理
+
+上書き時は、既存ドキュメントIDを再利用して `set({ merge: true })` で更新：
+
+```typescript
+// 既存作品IDを保持
+const artworkRef = existingArtworkId
+  ? db.collection('artworks').doc(existingArtworkId)
+  : db.collection('artworks').doc(); // 新規作品
+
+// 上書き時は artworkCount を増やさない
+await artworkRef.set(artworkData, { merge: true });
+
+if (!existingArtworkId) {
+  // 新規作品のみカウント増加
+  await db.collection('galleries').doc(galleryId).update({
+    artworkCount: FieldValue.increment(1),
+  });
+}
+```
+
+#### 2.1.5. インポート完了時の表示
 
 ```typescript
 console.log(`
 インポート完了:
 - 新規処理: ${newStudentCount}件
+- 上書き: ${overwriteCount}件  // ✅ 2025-11-20追加
 - スキップ: ${skippedCount}件
 - エラー: ${errorCount}件
 `);
 ```
 
-フロントエンドのインポート完了画面にもスキップ数を表示する。
+フロントエンドのインポート完了画面にも上書き数を表示する。
+
+**ImportJob データ構造の拡張**:
+```typescript
+interface ImportJob {
+  // ... 既存フィールド
+  overwrittenCount?: number;  // ✅ 2025-11-20追加
+}
+```
 
 ---
 
@@ -1631,7 +1684,7 @@ A: フロントエンド・バックエンドともに、`status ?? 'submitted'`
 
 ### Q2: 未提出の学生が後から提出した場合、どうなりますか？
 
-A: 再インポート時に、その学生の `studentEmail` が既に存在するため、処理がスキップされます。プレースホルダーは残り続けます。手動で削除するか、将来的な拡張で上書き更新機能を実装する必要があります。
+A: ✅ **2025-11-20実装**: 再インポート時に、`not_submitted` 作品は自動的に上書きされます。Classroomで正常に提出されていれば、プレースホルダーが正常な作品（`status: 'submitted'`）に更新されます。手動削除は不要です。
 
 ### Q3: エラー作品に対して、いいねやコメントはできますか？
 
@@ -1647,7 +1700,7 @@ A: 現在の `studentsubmissions.students.readonly` スコープで、割り当�
 
 ---
 
-**ドキュメントバージョン**: 2.0（実装完了版）
-**最終更新日**: 2025-11-06
+**ドキュメントバージョン**: 2.1（上書きロジック実装版）
+**最終更新日**: 2025-11-20
 **作成者**: Claude Code
 **ステータス**: ✅ 実装完了・本番環境デプロイ済み

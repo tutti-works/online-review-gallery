@@ -142,11 +142,11 @@ export const useGalleryArtworks = (
   }, [currentGalleryId]);
 
   useEffect(() => {
-    if (!isInitialized || !currentGalleryId) {
+    if (!isInitialized) {
       return;
     }
     void fetchArtworks();
-  }, [isInitialized, currentGalleryId]);
+  }, [isInitialized, fetchArtworks]);
 
   return {
     artworks,

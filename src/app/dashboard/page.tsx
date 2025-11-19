@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import withAuth from '@/components/withAuth';
@@ -252,10 +253,12 @@ function DashboardPage() {
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
                 {user?.photoURL && (
-                  <img
+                  <Image
                     src={user.photoURL}
-                    alt={user.displayName}
-                    className="h-8 w-8 rounded-full"
+                    alt={user.displayName || 'User avatar'}
+                    width={32}
+                    height={32}
+                    className="h-8 w-8 rounded-full object-cover"
                   />
                 )}
                 <div className="text-sm">

@@ -4,6 +4,14 @@ import { CloudTasksClient } from '@google-cloud/tasks';
 import { FieldValue } from 'firebase-admin/firestore';
 import { processMultipleFiles } from './fileProcessor';
 
+type ArtworkStatus = 'submitted' | 'not_submitted' | 'error';
+
+interface ExistingArtworkInfo {
+  id: string;
+  status: ArtworkStatus;
+  studentEmail: string;
+}
+
 const STUDENT_SUBMISSION_STATES = [
   'RETURNED',
   'TURNED_IN',
@@ -126,17 +134,31 @@ export async function initializeImport(
       .where('galleryId', '==', galleryId)
       .get();
 
-    const existingStudentEmails = new Set(
-      existingArtworksSnapshot.docs.map(doc => {
-        const email = doc.data().studentEmail;
-        const normalized = normalizeIdentifier(email);
-        console.log(`  Existing: ${email} -> ${normalized}`);
-        return normalized;
-      })
-    );
+    const existingArtworksByEmail = new Map<string, ExistingArtworkInfo>();
+    existingArtworksSnapshot.docs.forEach(doc => {
+      const data = doc.data() || {};
+      const email = typeof data.studentEmail === 'string' ? data.studentEmail : '';
+      const normalized = normalizeIdentifier(email);
+      const status: ArtworkStatus =
+        data.status === 'not_submitted' || data.status === 'error' ? data.status : 'submitted';
 
-    console.log(`📋 Existing artworks: ${existingStudentEmails.size} students`);
-    console.log(`📋 Existing emails: ${Array.from(existingStudentEmails).join(', ')}`);
+      if (normalized) {
+        existingArtworksByEmail.set(normalized, {
+          id: doc.id,
+          status,
+          studentEmail: email || normalized,
+        });
+      }
+
+      console.log(`  Existing: ${email} -> ${normalized} (${status})`);
+    });
+
+    console.log(`📋 Existing artworks: ${existingArtworksByEmail.size} students`);
+    console.log(
+      `📋 Existing emails: ${Array.from(existingArtworksByEmail.entries())
+        .map(([email, info]) => `${email}:${info.status}`)
+        .join(', ')}`
+    );
 
     // 課題の提出物を取得（全ステータスを対象にページング取得）
     const submissions = await listStudentSubmissions(classroom, classroomId, assignmentId);
@@ -162,6 +184,8 @@ export async function initializeImport(
       studentId: string;
       submittedAt: string;
       isLate: boolean;
+      existingArtworkId?: string;
+      existingStatus?: ArtworkStatus;
       files: Array<{
         id: string;
         name: string;
@@ -173,6 +197,7 @@ export async function initializeImport(
     }>();
 
     let skippedCount = 0;
+    let overwriteCount = 0;
 
     // 各提出物からファイル情報を収集
     for (const submission of submissions) {
@@ -212,30 +237,37 @@ export async function initializeImport(
         }
       }
 
-      // 既存作品がある場合はスキップ
+      // 既存作品の状態に応じて処理を分岐
       const normalizedEmail = normalizeIdentifier(studentEmail);
-      console.log(`  Checking: ${studentEmail} -> ${normalizedEmail}`);
-      if (existingStudentEmails.has(normalizedEmail)) {
-        console.log(`⏭️ Skipping ${studentEmail} - already exists`);
-        skippedCount++;
-        continue;
-      }
-      console.log(`  ✅ New student: ${studentEmail}`);
-
-      // 提出日時を取得（updateTimeまたはcreationTime）
       const submittedAt = submission.updateTime || submission.creationTime || new Date().toISOString();
-
-      // 遅延提出かどうかを取得
       const isLate = submission.late || false;
+      const existingArtwork = existingArtworksByEmail.get(normalizedEmail);
+      console.log(`  Checking: ${studentEmail} -> ${normalizedEmail}`);
+      if (existingArtwork) {
+        if (existingArtwork.status === 'submitted') {
+          console.log(`⏭️ Skipping ${studentEmail} - already submitted`);
+          skippedCount++;
+          continue;
+        }
+        if (!submissionsByStudent.has(normalizedEmail)) {
+          overwriteCount++;
+          console.log(`  🔄 Overwriting ${studentEmail} (current status: ${existingArtwork.status})`);
+        }
+      } else {
+        console.log(`  ✅ New student: ${studentEmail}`);
+      }
 
-      // 学生ごとにグループ化（正規化したメールアドレスをキーに使用して重複を防止）
+      // 学生ごとにグループ化（正規化したメールアドレスをキーに使用して重複防止）
       if (!submissionsByStudent.has(normalizedEmail)) {
+        const resolvedStudentEmail = studentEmail || existingArtwork?.studentEmail || normalizedEmail;
         submissionsByStudent.set(normalizedEmail, {
           studentName,
-          studentEmail: normalizedEmail, // 正規化版を保存
+          studentEmail: resolvedStudentEmail,
           studentId,
           submittedAt,
           isLate,
+          existingArtworkId: existingArtwork?.id,
+          existingStatus: existingArtwork?.status,
           files: [],
         });
       }
@@ -301,6 +333,8 @@ export async function initializeImport(
       studentId: string;
       submittedAt: string;
       isLate: boolean;
+      existingArtworkId?: string;
+      existingStatus?: ArtworkStatus;
       files: Array<{
         id: string;
         name: string;
@@ -317,6 +351,8 @@ export async function initializeImport(
       studentId: string;
       submittedAt: string;
       isLate: boolean;
+      existingArtworkId?: string;
+      existingStatus?: ArtworkStatus;
     }> = [];
 
     for (const submission of submissionsByStudent.values()) {
@@ -332,6 +368,8 @@ export async function initializeImport(
           studentId: submission.studentId,
           submittedAt: submission.submittedAt,
           isLate: submission.isLate,
+          existingArtworkId: submission.existingArtworkId,
+          existingStatus: submission.existingStatus,
         });
       }
     }
@@ -339,8 +377,13 @@ export async function initializeImport(
     // サポートされていないファイルのみの学生に対してエラー作品を作成
     for (const student of studentsWithUnsupportedFilesOnly) {
       try {
-        const artworkId = db.collection('artworks').doc().id;
-        await db.collection('artworks').doc(artworkId).set({
+        const isOverwrite = Boolean(student.existingArtworkId);
+        const artworksCollection = db.collection('artworks');
+        const artworkRef = student.existingArtworkId
+          ? artworksCollection.doc(student.existingArtworkId)
+          : artworksCollection.doc();
+        const artworkId = artworkRef.id;
+        const errorArtworkData: Record<string, unknown> = {
           id: artworkId,
           title: `${student.studentName}の提出物`,
           galleryId,
@@ -358,19 +401,28 @@ export async function initializeImport(
           likeCount: 0,
           labels: [],
           comments: [],
-          createdAt: FieldValue.serverTimestamp(),
           importedBy: userEmail,
-        });
+        };
 
-        console.log(`⚠️ Created error artwork for ${student.studentName} (unsupported_format)`);
+        if (!isOverwrite) {
+          errorArtworkData.createdAt = FieldValue.serverTimestamp();
+        }
 
-        await db.collection('galleries').doc(galleryId).update({
-          artworkCount: FieldValue.increment(1),
-        });
+        await artworkRef.set(errorArtworkData, { merge: isOverwrite });
+
+        if (!isOverwrite) {
+          await db.collection('galleries').doc(galleryId).update({
+            artworkCount: FieldValue.increment(1),
+          });
+        }
 
         await importJobRef.update({
           processedFiles: FieldValue.increment(1),
         });
+
+        console.log(
+          `⚠️ ${isOverwrite ? 'Updated existing error artwork' : 'Created error artwork'} for ${student.studentName} (unsupported_format)`
+        );
       } catch (error) {
         console.error(`Failed to create error artwork for ${student.studentName}:`, error);
       }
@@ -400,7 +452,8 @@ export async function initializeImport(
             task.files,
             galleryId,
             classroomId,
-            assignmentId
+            assignmentId,
+            task.existingArtworkId
           );
         } catch (error) {
           console.error(`❌ Failed to process submission for ${task.studentName}:`, error);
@@ -428,6 +481,8 @@ export async function initializeImport(
           galleryId,
           classroomId,
           assignmentId,
+          existingArtworkId: task.existingArtworkId,
+
         };
 
         const serviceAccountEmail = '816131605069-compute@developer.gserviceaccount.com';
@@ -472,17 +527,36 @@ export async function initializeImport(
     console.log(`📊 Submitted students: ${submittedEmails.size}`);
     console.log(`📊 Submitted emails: ${Array.from(submittedEmails).join(', ')}`);
 
-    const notSubmittedStudents = assignedStudents.filter(student => {
-      const studentEmail = normalizeIdentifier(student.profile?.emailAddress);
-      const isNotSubmitted = studentEmail &&
-             !submittedEmails.has(studentEmail) &&
-             !existingStudentEmails.has(studentEmail);
+    const studentsToMarkNotSubmitted: Array<{
+      artworkId: string;
+      studentName: string;
+      studentEmail: string;
+      studentId: string;
+    }> = [];
 
-      if (studentEmail) {
-        console.log(`  Student ${studentEmail}: submitted=${submittedEmails.has(studentEmail)}, existing=${existingStudentEmails.has(studentEmail)}, notSubmitted=${isNotSubmitted}`);
+    const notSubmittedStudents = assignedStudents.filter(student => {
+      const normalizedEmail = normalizeIdentifier(student.profile?.emailAddress);
+      const hasSubmission = normalizedEmail ? submittedEmails.has(normalizedEmail) : false;
+      const existingArtwork = normalizedEmail ? existingArtworksByEmail.get(normalizedEmail) : undefined;
+      const shouldCreatePlaceholder = Boolean(normalizedEmail && !hasSubmission && !existingArtwork);
+
+      if (!hasSubmission && existingArtwork && existingArtwork.status === 'error' && normalizedEmail) {
+        const fallbackEmail = student.profile?.emailAddress || existingArtwork.studentEmail || normalizedEmail;
+        studentsToMarkNotSubmitted.push({
+          artworkId: existingArtwork.id,
+          studentName: student.profile?.name?.fullName || 'Unknown Student',
+          studentEmail: fallbackEmail,
+          studentId: extractStudentIdFromEmail(fallbackEmail),
+        });
       }
 
-      return isNotSubmitted;
+      if (normalizedEmail) {
+        console.log(
+          `  Student ${normalizedEmail}: submitted=${hasSubmission}, existingStatus=${existingArtwork?.status ?? 'none'}, placeholder=${shouldCreatePlaceholder}`
+        );
+      }
+
+      return shouldCreatePlaceholder;
     });
 
     console.log(`📝 Creating ${notSubmittedStudents.length} not-submitted placeholders`);
@@ -526,13 +600,50 @@ export async function initializeImport(
       }
     }
 
+    if (studentsToMarkNotSubmitted.length > 0) {
+      console.log(`🔄 Updating ${studentsToMarkNotSubmitted.length} error artworks back to not_submitted`);
+    }
+
+    for (const student of studentsToMarkNotSubmitted) {
+      try {
+        const artworkRef = db.collection('artworks').doc(student.artworkId);
+        await artworkRef.set({
+          id: student.artworkId,
+          galleryId,
+          classroomId,
+          assignmentId,
+          status: 'not_submitted',
+          studentName: student.studentName || 'Unknown Student',
+          studentEmail: student.studentEmail,
+          studentId: student.studentId,
+          title: `${student.studentName || 'Unknown Student'} - 未提出`,
+          files: [],
+          images: [],
+          submittedAt: null,
+          isLate: false,
+          likeCount: 0,
+          labels: [],
+          comments: [],
+          importedBy: userEmail,
+          errorReason: FieldValue.delete(),
+        }, { merge: true });
+
+        console.log(`  🔄 Updated artwork ${student.artworkId} (${student.studentEmail}) to not_submitted`);
+      } catch (error) {
+        console.error(`  ⚠️ Failed to revert ${student.studentEmail} to not_submitted:`, error);
+      }
+    }
+
     await importJobRef.update({
       progress: 10,
       skippedCount,
+      overwrittenCount: overwriteCount,
       notSubmittedCount: notSubmittedStudents.length,
     });
 
-    console.log(`✅ Import initialized: ${tasks.length} submissions, ${skippedCount} skipped, ${notSubmittedStudents.length} not-submitted`);
+    console.log(
+      `✅ Import initialized: ${tasks.length} submissions, ${skippedCount} skipped, ${overwriteCount} overwrites, ${notSubmittedStudents.length} not-submitted placeholders, ${studentsToMarkNotSubmitted.length} reverted to not_submitted`
+    );
 
     // totalFilesが0の場合（全員スキップ + 未提出プレースホルダーのみ）は即座に完了
     if (totalSubmissions === 0) {
@@ -747,7 +858,8 @@ async function processStudentSubmission(
   }>,
   galleryId: string,
   classroomId: string,
-  assignmentId: string
+  assignmentId: string,
+  existingArtworkId?: string
 ): Promise<void> {
   console.log(`Processing submission for ${studentName} with ${files.length} files`);
 
@@ -761,6 +873,7 @@ async function processStudentSubmission(
     files,
     galleryId,
     classroomId,
-    assignmentId
+    assignmentId,
+    existingArtworkId
   );
 }

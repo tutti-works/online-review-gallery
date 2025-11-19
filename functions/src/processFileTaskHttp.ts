@@ -17,6 +17,7 @@ export async function processFileTaskHttp(req: Request, res: Response): Promise<
       galleryId,
       classroomId,
       assignmentId,
+      existingArtworkId,
     } = req.body;
 
     console.log(`Processing submission for ${studentName} with ${files?.length || 0} files`);
@@ -32,7 +33,8 @@ export async function processFileTaskHttp(req: Request, res: Response): Promise<
         files,
         galleryId,
         classroomId,
-        assignmentId
+        assignmentId,
+        existingArtworkId
       );
 
       console.log(`Submission processed successfully for ${studentName}`);

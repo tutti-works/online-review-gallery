@@ -33,7 +33,7 @@ const withAuth = <P extends object>(
         console.warn('User does not have permission to access this page.');
         router.replace('/');
       }
-    }, [user, loading, requiredRole, router]);
+    }, [user, loading, router]);
 
     if (loading) {
       return (

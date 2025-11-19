@@ -4,6 +4,175 @@
 
 ---
 
+## 2025-11-20: 再インポート時の上書き機能実装
+
+### 実装した機能
+
+**未提出・エラー作品の自動上書き機能**
+- **目的**: 再インポート時に、未提出→提出、エラー→正常提出という状態変化を自動反映
+- **動機**: 従来は全作品をスキップしていたため、後日提出した学生やファイル修正後の再提出が反映されなかった
+
+### 技術詳細
+
+#### 上書き判定ロジック
+
+**変更前（全作品スキップ）:**
+```typescript
+// functions/src/importController.ts（旧仕様）
+const existingStudentEmails = new Set(
+  existingArtworks.docs.map(doc => doc.data().studentEmail)
+);
+
+if (existingStudentEmails.has(studentEmail)) {
+  skippedCount++;
+  continue; // 全作品をスキップ
+}
+```
+
+**変更後（status基準の判定）:**
+```typescript
+// functions/src/importController.ts（新仕様）
+const existingArtworksByEmail = new Map<string, ExistingArtworkInfo>();
+existingArtworks.docs.forEach(doc => {
+  const data = doc.data();
+  existingArtworksByEmail.set(normalizeIdentifier(data.studentEmail), {
+    id: doc.id,
+    status: data.status || 'submitted',
+    studentEmail: data.studentEmail,
+  });
+});
+
+const existingArtwork = existingArtworksByEmail.get(normalizedEmail);
+if (existingArtwork?.status === 'submitted') {
+  // ✅ 正常提出済み → スキップ（従来通り）
+  skippedCount++;
+  continue;
+} else if (existingArtwork) {
+  // 🔄 未提出・エラー → 上書き（新機能）
+  overwriteCount++;
+  // 既存ドキュメントIDを保持して処理続行
+}
+```
+
+#### 上書き処理の実装
+
+**1. 既存ドキュメントIDの伝達**
+```typescript
+// タスクペイロードに追加
+{
+  studentName,
+  studentEmail,
+  existingArtworkId: existingArtwork?.id,        // ✅ 追加
+  existingStatus: existingArtwork?.status,       // ✅ 追加
+  files: [...],
+}
+```
+
+**2. ドキュメント上書き処理**
+```typescript
+// functions/src/fileProcessor.ts
+const artworkRef = existingArtworkId
+  ? db.collection('artworks').doc(existingArtworkId)  // 既存ID再利用
+  : db.collection('artworks').doc();                  // 新規ID生成
+
+await artworkRef.set(artworkData, { merge: true });
+
+// 新規作品のみカウント増加
+if (!existingArtworkId) {
+  await db.collection('galleries').doc(galleryId).update({
+    artworkCount: FieldValue.increment(1),
+  });
+}
+```
+
+**3. サポート外形式・未提出復帰の処理**
+```typescript
+// 未提出に戻った学生、サポート外形式提出も同様に上書き
+for (const student of studentsWithUnsupportedFilesOnly) {
+  const artworkRef = student.existingArtworkId
+    ? artworksCollection.doc(student.existingArtworkId)
+    : artworksCollection.doc();
+
+  await artworkRef.set(errorArtworkData, { merge: true });
+}
+```
+
+#### スキップ・上書き判定マトリックス
+
+| 既存作品の状態 | Classroomの提出状態 | 処理 |
+|---|---|---|
+| `submitted` | 任意 | **スキップ** |
+| `not_submitted` | 正常提出 | **上書き** ✅ |
+| `not_submitted` | 未提出 | **上書き** |
+| `not_submitted` | エラー提出 | **上書き** |
+| `error` | 正常提出 | **上書き** ✅ |
+| `error` | 未提出 | **上書き** |
+| `error` | エラー提出 | **上書き** |
+
+**設計原則**:
+- ✅ `submitted` 作品は絶対保護（上書きなし）
+- 🔄 `not_submitted` / `error` 作品は常に最新状態を反映
+
+### データモデルの変更
+
+**ImportJob型の拡張:**
+```typescript
+// src/types/index.ts
+interface ImportJob {
+  // ... 既存フィールド
+  overwrittenCount?: number;  // ✅ 追加
+}
+```
+
+### その他の改善
+
+**React Hooks依存配列の最適化**
+- `src/app/admin/import/page.tsx`: 未使用依存を除去
+- `src/app/gallery/hooks/useGalleryArtworks.ts`: ギャラリー未選択時のloading状態修正
+- `src/components/GallerySwitcher.tsx`: 依存配列の最適化
+- `src/components/withAuth.tsx`: 安定値依存を除去
+
+**Next.js Image最適化**
+- `src/app/dashboard/page.tsx`: `<img>` → `<Image>` に置換
+
+### 影響範囲
+
+**バックエンド:**
+- `functions/src/importController.ts`: スキップ判定ロジック変更
+- `functions/src/fileProcessor.ts`: 上書き処理実装
+- `functions/src/processFileTaskHttp.ts`: ペイロード拡張
+
+**フロントエンド:**
+- `src/types/index.ts`: ImportJob型拡張
+- 各種コンポーネント: Lint警告解消
+
+**ドキュメント:**
+- `docs/import-skip-and-placeholders.md`: セクション2.1とFAQ Q2を更新
+
+### ユーザー体験の変化
+
+**変更前:**
+- 未提出学生が後日提出 → 再インポートしても反映されない（手動削除が必要）
+- エラー作品のファイル修正後 → 再インポートしても反映されない（手動削除が必要）
+
+**変更後:**
+- 未提出学生が後日提出 → 再インポートで自動的に正常作品に更新 ✅
+- エラー作品のファイル修正後 → 再インポートで自動的に正常作品に更新 ✅
+
+### 修正ファイル
+
+- `functions/src/importController.ts` (+110行)
+- `functions/src/fileProcessor.ts` (+20行)
+- `functions/src/processFileTaskHttp.ts` (+2行)
+- `src/types/index.ts` (+1行)
+- `src/app/admin/import/page.tsx` (lint修正)
+- `src/app/dashboard/page.tsx` (Image最適化)
+- `src/app/gallery/hooks/useGalleryArtworks.ts` (依存配列修正)
+- `src/components/GallerySwitcher.tsx` (依存配列修正)
+- `src/components/withAuth.tsx` (依存配列修正)
+
+---
+
 ## 2025-11-06 (更新4): Firestore読み取り回数の最適化
 
 ### 修正した問題

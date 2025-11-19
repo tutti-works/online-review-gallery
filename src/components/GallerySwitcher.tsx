@@ -19,13 +19,11 @@ export default function GallerySwitcher() {
   useEffect(() => {
     const fetchGalleries = async () => {
       try {
+        setLoading(true);
         const { collection, getDocs, orderBy, query } = await import('firebase/firestore');
         const { db } = await import('@/lib/firebase');
 
-        const galleriesQuery = query(
-          collection(db, 'galleries'),
-          orderBy('createdAt', 'desc')
-        );
+        const galleriesQuery = query(collection(db, 'galleries'), orderBy('createdAt', 'desc'));
 
         const querySnapshot = await getDocs(galleriesQuery);
         const fetchedGalleries: Gallery[] = querySnapshot.docs.map(doc => {
@@ -46,15 +44,19 @@ export default function GallerySwitcher() {
 
         setGalleries(fetchedGalleries);
 
-        // 現在のgalleryIdに対応する授業と課題を選択状態にする
         if (currentGalleryId) {
           const currentGallery = fetchedGalleries.find(g => g.id === currentGalleryId);
           if (currentGallery) {
             setSelectedCourse(currentGallery.courseName);
             setSelectedGalleryId(currentGalleryId);
+          } else {
+            setSelectedCourse('');
+            setSelectedGalleryId('');
           }
+        } else {
+          setSelectedCourse('');
+          setSelectedGalleryId('');
         }
-        // currentGalleryIdがない場合は何も選択しない（初期状態のまま）
       } catch (err) {
         console.error('Failed to fetch galleries:', err);
       } finally {
@@ -62,8 +64,8 @@ export default function GallerySwitcher() {
       }
     };
 
-    fetchGalleries();
-  }, []);
+    void fetchGalleries();
+  }, [currentGalleryId]);
 
   // 授業名の一覧（重複を除く）
   const courses = Array.from(new Set(galleries.map(g => g.courseName)));
