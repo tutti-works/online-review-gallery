@@ -1,1007 +1,260 @@
 # 変更履歴
 
-このファイルには、オンライン講評会支援ギャラリーアプリの詳細な開発履歴と変更ログが記録されています。
+このファイルには、オンライン講評会支援ギャラリーアプリの主要な変更履歴が記録されています。
+技術的な詳細は各専門ドキュメントを参照してください。
 
 ---
 
 ## 2025-11-20: 再インポート時の上書き機能実装
 
-### 実装した機能
+**概要**: 未提出・エラー作品を再インポート時に自動上書きする機能を実装
 
-**未提出・エラー作品の自動上書き機能**
-- **目的**: 再インポート時に、未提出→提出、エラー→正常提出という状態変化を自動反映
-- **動機**: 従来は全作品をスキップしていたため、後日提出した学生やファイル修正後の再提出が反映されなかった
+**主な変更**:
+- `submitted` 作品: スキップ（従来通り保護）
+- `not_submitted` / `error` 作品: 最新状態で上書き
+- `ImportJob.overwrittenCount` フィールド追加
 
-### 技術詳細
+**影響範囲**:
+- バックエンド: `importController.ts`, `fileProcessor.ts`, `processFileTaskHttp.ts`
+- フロントエンド: `types/index.ts`, React Hooks依存配列最適化, Next.js Image最適化
+- ドキュメント: `import-skip-and-placeholders.md`, `changelog.md`
 
-#### 上書き判定ロジック
+**ユーザー体験の向上**:
+- 未提出学生が後日提出 → 再インポートで自動反映 ✅
+- エラー作品のファイル修正後 → 再インポートで自動反映 ✅
 
-**変更前（全作品スキップ）:**
-```typescript
-// functions/src/importController.ts（旧仕様）
-const existingStudentEmails = new Set(
-  existingArtworks.docs.map(doc => doc.data().studentEmail)
-);
+**詳細**: [再インポート機能仕様](import-skip-and-placeholders.md#21-再インポートスキップと上書き機能-f-02-07)
 
-if (existingStudentEmails.has(studentEmail)) {
-  skippedCount++;
-  continue; // 全作品をスキップ
-}
-```
-
-**変更後（status基準の判定）:**
-```typescript
-// functions/src/importController.ts（新仕様）
-const existingArtworksByEmail = new Map<string, ExistingArtworkInfo>();
-existingArtworks.docs.forEach(doc => {
-  const data = doc.data();
-  existingArtworksByEmail.set(normalizeIdentifier(data.studentEmail), {
-    id: doc.id,
-    status: data.status || 'submitted',
-    studentEmail: data.studentEmail,
-  });
-});
-
-const existingArtwork = existingArtworksByEmail.get(normalizedEmail);
-if (existingArtwork?.status === 'submitted') {
-  // ✅ 正常提出済み → スキップ（従来通り）
-  skippedCount++;
-  continue;
-} else if (existingArtwork) {
-  // 🔄 未提出・エラー → 上書き（新機能）
-  overwriteCount++;
-  // 既存ドキュメントIDを保持して処理続行
-}
-```
-
-#### 上書き処理の実装
-
-**1. 既存ドキュメントIDの伝達**
-```typescript
-// タスクペイロードに追加
-{
-  studentName,
-  studentEmail,
-  existingArtworkId: existingArtwork?.id,        // ✅ 追加
-  existingStatus: existingArtwork?.status,       // ✅ 追加
-  files: [...],
-}
-```
-
-**2. ドキュメント上書き処理**
-```typescript
-// functions/src/fileProcessor.ts
-const artworkRef = existingArtworkId
-  ? db.collection('artworks').doc(existingArtworkId)  // 既存ID再利用
-  : db.collection('artworks').doc();                  // 新規ID生成
-
-await artworkRef.set(artworkData, { merge: true });
-
-// 新規作品のみカウント増加
-if (!existingArtworkId) {
-  await db.collection('galleries').doc(galleryId).update({
-    artworkCount: FieldValue.increment(1),
-  });
-}
-```
-
-**3. サポート外形式・未提出復帰の処理**
-```typescript
-// 未提出に戻った学生、サポート外形式提出も同様に上書き
-for (const student of studentsWithUnsupportedFilesOnly) {
-  const artworkRef = student.existingArtworkId
-    ? artworksCollection.doc(student.existingArtworkId)
-    : artworksCollection.doc();
-
-  await artworkRef.set(errorArtworkData, { merge: true });
-}
-```
-
-#### スキップ・上書き判定マトリックス
-
-| 既存作品の状態 | Classroomの提出状態 | 処理 |
-|---|---|---|
-| `submitted` | 任意 | **スキップ** |
-| `not_submitted` | 正常提出 | **上書き** ✅ |
-| `not_submitted` | 未提出 | **上書き** |
-| `not_submitted` | エラー提出 | **上書き** |
-| `error` | 正常提出 | **上書き** ✅ |
-| `error` | 未提出 | **上書き** |
-| `error` | エラー提出 | **上書き** |
-
-**設計原則**:
-- ✅ `submitted` 作品は絶対保護（上書きなし）
-- 🔄 `not_submitted` / `error` 作品は常に最新状態を反映
-
-### データモデルの変更
-
-**ImportJob型の拡張:**
-```typescript
-// src/types/index.ts
-interface ImportJob {
-  // ... 既存フィールド
-  overwrittenCount?: number;  // ✅ 追加
-}
-```
-
-### その他の改善
-
-**React Hooks依存配列の最適化**
-- `src/app/admin/import/page.tsx`: 未使用依存を除去
-- `src/app/gallery/hooks/useGalleryArtworks.ts`: ギャラリー未選択時のloading状態修正
-- `src/components/GallerySwitcher.tsx`: 依存配列の最適化
-- `src/components/withAuth.tsx`: 安定値依存を除去
-
-**Next.js Image最適化**
-- `src/app/dashboard/page.tsx`: `<img>` → `<Image>` に置換
-
-### 影響範囲
-
-**バックエンド:**
-- `functions/src/importController.ts`: スキップ判定ロジック変更
-- `functions/src/fileProcessor.ts`: 上書き処理実装
-- `functions/src/processFileTaskHttp.ts`: ペイロード拡張
-
-**フロントエンド:**
-- `src/types/index.ts`: ImportJob型拡張
-- 各種コンポーネント: Lint警告解消
-
-**ドキュメント:**
-- `docs/import-skip-and-placeholders.md`: セクション2.1とFAQ Q2を更新
-
-### ユーザー体験の変化
-
-**変更前:**
-- 未提出学生が後日提出 → 再インポートしても反映されない（手動削除が必要）
-- エラー作品のファイル修正後 → 再インポートしても反映されない（手動削除が必要）
-
-**変更後:**
-- 未提出学生が後日提出 → 再インポートで自動的に正常作品に更新 ✅
-- エラー作品のファイル修正後 → 再インポートで自動的に正常作品に更新 ✅
-
-### 修正ファイル
-
-- `functions/src/importController.ts` (+110行)
-- `functions/src/fileProcessor.ts` (+20行)
-- `functions/src/processFileTaskHttp.ts` (+2行)
-- `src/types/index.ts` (+1行)
-- `src/app/admin/import/page.tsx` (lint修正)
-- `src/app/dashboard/page.tsx` (Image最適化)
-- `src/app/gallery/hooks/useGalleryArtworks.ts` (依存配列修正)
-- `src/components/GallerySwitcher.tsx` (依存配列修正)
-- `src/components/withAuth.tsx` (依存配列修正)
+**コミット**: d0b720d
 
 ---
 
 ## 2025-11-06 (更新4): Firestore読み取り回数の最適化
 
-### 修正した問題
+**問題**: ギャラリー6個、数十作品で8,000読み取り/日（無料枠の16%消費）
 
-**Firestore読み取り回数が異常に多い（8000読み取り/日）**
-- **問題**: ギャラリー6個、作品数十件、アクセスユーザー2-3人という規模にもかかわらず、1日で8000回以上のFirestore読み取りが発生
-- **原因**: React Hooksの依存配列が不適切で、ギャラリー切り替えのたびに全作品とギャラリー一覧を再取得していた
-- **修正**: 依存配列を最適化し、不要な再取得を削減
+**原因**: React Hooks依存配列の不適切な設定により、ギャラリー切り替えごとに全データ再取得
 
-### 技術詳細
+**修正内容**:
+- `useGalleryArtworks.ts`: 依存配列を `[isInitialized, fetchArtworks]` → `[isInitialized, currentGalleryId]` に変更
+- `GallerySwitcher.tsx`: 依存配列を `[currentGalleryId]` → `[]` に変更（マウント時のみ）
+- `dashboard/page.tsx`: 依存配列を `[userRole]` → `[]` に変更（マウント時のみ）
 
-#### 原因1: useGalleryArtworksの過度な再実行（最大原因）
+**効果**:
+- 読み取り回数: 8,000回/日 → 800-1,200回/日（**85-90%削減**）
+- ギャラリー切り替え時の読み取り: 56回 → 0回（キャッシュ使用）
+- 無料枠使用率: 16% → 1.6-2.4%
 
-**問題のあったコード:**
-```typescript
-// src/app/gallery/hooks/useGalleryArtworks.ts:144-149
-const fetchArtworks = useCallback(async () => {
-  // 全作品を取得
-}, [currentGalleryId]);
+**詳細**: [コストとパフォーマンス分析](COST_AND_PERFORMANCE.md#3-firestore)
 
-useEffect(() => {
-  if (!isInitialized) return;
-  void fetchArtworks();
-}, [isInitialized, fetchArtworks]);  // ← fetchArtworksが依存配列に！
-```
-
-**問題点:**
-- `fetchArtworks`が`currentGalleryId`に依存するため、ギャラリー切り替えのたびに再生成される
-- `fetchArtworks`が依存配列にあるため、`useEffect`も毎回実行される
-- **結果**: ギャラリー切り替えのたびに全作品を再取得（50読み取り/回）
-
-**修正後:**
-```typescript
-useEffect(() => {
-  if (!isInitialized || !currentGalleryId) return;
-  void fetchArtworks();
-}, [isInitialized, currentGalleryId]);  // currentGalleryIdのみを依存
-```
-
-#### 原因2: GallerySwitcherの不要な再取得
-
-**問題のあったコード:**
-```typescript
-// src/components/GallerySwitcher.tsx:19-66
-useEffect(() => {
-  const fetchGalleries = async () => {
-    // ギャラリー一覧を取得
-  };
-  fetchGalleries();
-}, [currentGalleryId]);  // ← ギャラリー切り替えのたびに実行
-```
-
-**修正後:**
-```typescript
-useEffect(() => {
-  const fetchGalleries = async () => {
-    // ギャラリー一覧を取得
-  };
-  fetchGalleries();
-}, []);  // マウント時のみ実行
-```
-
-#### 原因3: dashboardページの不要な再取得
-
-**問題のあったコード:**
-```typescript
-// src/app/dashboard/page.tsx:134-169
-useEffect(() => {
-  const fetchGalleries = async () => {
-    // ギャラリー一覧を取得
-  };
-  fetchGalleries();
-}, [userRole]);  // userRole変更のたびに実行
-```
-
-**修正後:**
-```typescript
-useEffect(() => {
-  if (!userRole) return;
-  const fetchGalleries = async () => {
-    // ギャラリー一覧を取得
-  };
-  fetchGalleries();
-}, []);  // マウント時のみ実行
-```
-
-### 読み取り回数の推定
-
-#### 修正前
-```
-1回のギャラリー訪問: 59読み取り
-1回のギャラリー切り替え: 56読み取り
-
-想定: 143回のギャラリー切り替え = 8000読み取り/日
-```
-
-#### 修正後
-```
-1回のギャラリー訪問: 59読み取り
-1回のギャラリー切り替え: 0読み取り（キャッシュされた状態を使用）
-
-想定: 10-20回の訪問 = 590-1180読み取り/日
-```
-
-### 実装ファイル
-
-- `src/app/gallery/hooks/useGalleryArtworks.ts:144-149` - useEffect依存配列を修正
-- `src/components/GallerySwitcher.tsx:19-66` - useEffect依存配列を修正
-- `src/app/dashboard/page.tsx:134-169` - useEffect依存配列を修正
-
-### 影響範囲
-
-- Firestore読み取り回数が約85-90%削減される見込み
-- ユーザー体験には影響なし（表示速度はむしろ向上）
-- データの整合性には影響なし
-
-### 期待される効果
-
-- **修正前**: 8000読み取り/日
-- **修正後**: 800-1200読み取り/日（約85-90%削減）
-- コスト削減: Firebaseの無料枠（50,000読み取り/日）内に十分収まる
+**コミット**: 4e4d48d
 
 ---
 
 ## 2025-11-06 (更新3): 同一学生の重複インポートバグを修正
 
-### 修正した問題
+**問題**: 同一インポート内で同じ学生の作品が2つ作成される
 
-**同一学生が一回のインポートで重複して作成される**
-- **問題**: 一回のインポートで同じ学生が2回重複してインポートされる。片方の作品には2ファイル、もう片方には1ファイルという症状が発生
-- **原因**: Google Classroom APIが同じ学生のメールアドレスを大文字小文字違いで返した場合（例: `John@example.com` と `john@example.com`）、既存チェックは正規化後の値でパスするが、`submissionsByStudent` Mapのキーは正規化前の値を使用していたため、別エントリとして登録されていた
-- **修正**: Mapのキーとして正規化後のメールアドレスを使用するように変更
+**原因**: `submissionsByStudent` Mapのキーが正規化前のメールアドレスだった
 
-### 技術詳細
+**修正内容**:
+- `importController.ts`: Mapキーを `normalizeIdentifier(studentEmail)` に変更
+- 大文字小文字、空白の違いを吸収
 
-**問題のあったコード:**
-```typescript
-// functions/src/importController.ts:232, 243
-const normalizedEmail = normalizeIdentifier(studentEmail);
-if (existingStudentEmails.has(normalizedEmail)) { // 正規化版で既存チェック
-  continue;
-}
+**効果**: 同一学生の重複作品生成を防止
 
-// バグ: Mapのキーは正規化前を使用
-if (!submissionsByStudent.has(studentEmail)) {
-  submissionsByStudent.set(studentEmail, { ... });
-}
-const studentSubmission = submissionsByStudent.get(studentEmail)!;
-```
+**詳細**: [再インポート機能仕様](import-skip-and-placeholders.md#12-実装完了サマリー2025-11-06)
 
-**修正後:**
-```typescript
-// functions/src/importController.ts:232, 243
-const normalizedEmail = normalizeIdentifier(studentEmail);
-if (existingStudentEmails.has(normalizedEmail)) {
-  continue;
-}
-
-// 修正: Mapのキーも正規化版を使用
-if (!submissionsByStudent.has(normalizedEmail)) {
-  submissionsByStudent.set(normalizedEmail, {
-    ...
-    studentEmail: normalizedEmail, // 正規化版を保存
-  });
-}
-const studentSubmission = submissionsByStudent.get(normalizedEmail)!;
-```
-
-### 実装ファイル
-
-- `functions/src/importController.ts:232-243` - Mapキーを正規化版に変更
-
-### 影響範囲
-
-- 新規インポートから、大文字小文字違いのメールアドレスによる重複が発生しなくなる
-- 既存の重複データには影響なし（手動対応済み）
-- 既存の正常なデータにも影響なし
-
-### 発生条件
-
-- Google Classroom APIが同じ学生のメールアドレスを大文字小文字違いで複数回返す
-- 各submissionで添付ファイル数が異なる場合、作品ごとに異なるファイル数が記録される
-
-### 備考
-
-- この問題は再インポート時の重複ではなく、**一回のインポート内での重複**
-- 既存チェックのロジックは正常に機能していたが、Mapのキーが正規化されていなかったことが原因
-- 今後同様の問題が発生した場合は、Google Classroom APIから返される重複submissionの除外も検討
+**コミット**: 3ec79b9
 
 ---
 
-## 2025-11-06 (更新2): 学籍番号順ソートとインポート完了判定の不具合修正
+## 2025-11-06 (更新2): 学籍番号順ソートとインポート完了判定の不具合を修正
 
-### 修正した問題
+**問題1**: 未提出学生が学籍番号順ソート時に最上位表示される
 
-**1. 学籍番号順ソートの不具合**
-- **問題**: 未提出者の`studentId`にGoogle ClassroomのユーザーID（数値）が保存されていたため、学籍番号順で並び替えた際に未提出者が先頭に表示される
-- **原因**: `studentId: student.userId`でGoogle ClassroomのユーザーIDをそのまま保存
-- **修正**: メールアドレスから学籍番号を抽出する`extractStudentIdFromEmail()`関数を実装
+**修正**: `extractStudentIdFromEmail()` 関数を追加し、メールアドレスから学籍番号を抽出
 
-**2. 再インポート時のインポートジョブ完了判定の不具合**
-- **問題**: 既存の画像提出者がスキップされ、新しくサポート外ファイルのみの提出者を追加した場合、`importJob.status`が`completed`にならない
-- **原因**: エラー作品を即座に作成した後、`validTasks.length === 0`のため`checkImportCompletion()`が呼ばれていなかった
-- **修正**: `validTasks.length === 0`かつ`studentsWithUnsupportedFilesOnly.length > 0`の場合に、完了チェックを明示的に実行
+**問題2**: サポート外形式ファイルのみの再インポート時に完了判定されない
 
-### 技術詳細
+**修正**: `validTasks.length === 0` 時に明示的に `checkImportCompletion()` を呼び出し
 
-**学籍番号抽出関数の追加:**
-```typescript
-// functions/src/importController.ts:78-84
-function extractStudentIdFromEmail(email?: string | null): string {
-  if (!email || typeof email !== 'string') {
-    return '';
-  }
-  const match = email.match(/^([^@]+)/);
-  return match ? match[1] : email;
-}
-```
+**詳細**: [再インポート機能仕様](import-skip-and-placeholders.md#12-実装完了サマリー2025-11-06)
 
-**適用箇所:**
-- 提出済み作品: `functions/src/importController.ts:197`
-- 未提出プレースホルダー: `functions/src/importController.ts:487`
-- エラー作品: 提出済み作品と同じロジックを使用
+**コミット**: 88442f7
 
-**インポート完了チェックの追加:**
-```typescript
-// functions/src/importController.ts:548-552
-if (tasks.length === 0 && studentsWithUnsupportedFilesOnly.length > 0) {
-  console.log('📝 Only unsupported-file students processed, checking completion');
-  await checkImportCompletion(importJobRef.id);
-}
-```
+---
 
-### 実装ファイル
+## 2025-11-06 (更新1): Node.js 18 → 20 ランタイムアップグレード
 
-- `functions/src/importController.ts:78-84` - 学籍番号抽出関数
-- `functions/src/importController.ts:197` - 提出済み作品に適用
-- `functions/src/importController.ts:487` - 未提出プレースホルダーに適用
-- `functions/src/importController.ts:548-552` - インポート完了チェック追加
+**変更内容**:
+- `firebase.json`: `"nodejs18"` → `"nodejs20"`
+- `functions/package.json`: `"engines": {"node": "20"}`
 
-### 影響範囲
+**理由**: Node.js 18のサポート終了に備えた事前対応
 
-- 既存の提出済み作品は`studentId`フィールドがないため、フロントエンドの`getStudentId()`関数がメールアドレスから自動抽出（互換性維持）
-- 新規インポートから、すべての作品で正しい学籍番号が`studentId`に保存される
-- 再インポート時にサポート外ファイルのみの提出者を追加しても、正常にインポートジョブが完了する
+**影響**: なし（後方互換性あり）
+
+**コミット**: 24a6ece
 
 ---
 
 ## 2025-11-06: 再インポートスキップと未提出・エラー作品プレースホルダー機能実装
 
-### 実装した機能
+**概要**: インポート機能の大幅強化（3つの主要機能を実装）
 
-- **再インポートスキップ機能**: 既存学生の重複作品生成を防止
-- **未提出学生のプレースホルダー作品**: Classroom APIから割り当て学生を取得し、未提出者にグレーサムネイルを生成
-- **エラー作品のプレースホルダー**: サポート外ファイル形式や処理失敗時にグレーサムネイルとエラー情報を表示
-- **フィルター機能**: 未提出/エラー作品の表示/非表示を切り替えるチェックボックス
-- **特殊な並び替えロジック**: 提出作品を優先表示し、未提出/エラー作品を後ろに配置
+**実装機能**:
+1. **再インポートスキップ** (F-02-07)
+   - `galleryId + studentEmail` で既存作品を判定
+   - 既存学生はスキップし、重複作品生成を防止
 
-### 技術詳細
+2. **未提出学生プレースホルダー** (F-02-08)
+   - Classroom割り当て済み学生を取得
+   - 未提出学生用にグレーサムネイル作品を自動生成
+   - `status: 'not_submitted'`
 
-**作品ステータスの拡張:**
-```typescript
-status: 'submitted' | 'not_submitted' | 'error'
-errorReason?: 'unsupported_format' | 'processing_error'
-```
+3. **エラー作品プレースホルダー** (F-02-09)
+   - サポート外形式（docx, zip等）提出時にエラー作品を生成
+   - `status: 'error'`, `errorReason: 'unsupported_format'`
 
-**再インポートスキップロジック:**
-- `normalizeIdentifier()` 関数で学生メールを正規化（小文字化、トリム）
-- 既存作品のメールをSetに格納して重複チェック
-- 判定キー: `galleryId + normalizeIdentifier(studentEmail)`
-- スキップした学生数をログに記録
+**データモデル変更**:
+- `Artwork.status`: `'submitted' | 'not_submitted' | 'error'`
+- `Artwork.errorReason`: `'unsupported_format' | 'processing_error'`
 
-**未提出プレースホルダー生成:**
-- Google Classroom APIの `assignedStudents` を取得
-- 提出済み学生メールと既存学生メールを除外
-- `status: 'not_submitted'` でプレースホルダー作品を生成
-- グレーサムネイル（600x600px）を使用
+**フロントエンド機能**:
+- 未提出/エラー作品の非表示フィルター
+- 学籍番号順ソート（メールアドレスから抽出）
+- グレープレースホルダー表示
 
-**エラープレースホルダー生成:**
-- サポート外ファイル形式検出時（画像/PDF以外）
-- ファイル処理失敗時
-- `status: 'error'` と `errorReason` を記録
-- 提出ファイル情報（ファイル名、MIME type）を保持
+**詳細**: [再インポート機能仕様](import-skip-and-placeholders.md)
 
-**フィルター/ソート機能:**
-- `src/lib/artworkUtils.ts` にユーティリティ関数を実装:
-  - `isSubmitted()`, `isNotSubmitted()`, `isError()`, `isIncomplete()`
-  - `getStatusText()`: ステータステキスト生成
-  - `sortBySubmissionDate()`: 提出日時順ソート（未提出/エラーを後ろに配置）
-  - `sortByStudentId()`: 学籍番号順ソート（同様のロジック）
-
-**モーダル表示:**
-- 未提出作品: 学生情報、「まだ提出されていません」メッセージ
-- エラー作品: 学生情報、エラー理由、提出ファイル情報
-
-### 実装ファイル
-
-**Cloud Functions:**
-- [functions/src/importController.ts](functions/src/importController.ts#L120-L213): 再インポートスキップロジック
-- [functions/src/importController.ts](functions/src/importController.ts#L439-L523): 未提出プレースホルダー生成
-- [functions/src/fileProcessor.ts](functions/src/fileProcessor.ts#L156-L192): エラープレースホルダー生成
-
-**フロントエンド:**
-- [src/lib/artworkUtils.ts](src/lib/artworkUtils.ts): ステータス判定・ソートユーティリティ関数
-- [src/app/gallery/page.tsx](src/app/gallery/page.tsx): フィルター/ソート機能UI
-- [src/components/ArtworkModal.tsx](src/components/ArtworkModal.tsx): プレースホルダー作品のモーダル表示
-- [src/components/artwork-modal/ArtworkViewer.tsx](src/components/artwork-modal/ArtworkViewer.tsx): プレースホルダー表示UI
-
-**型定義:**
-- `Artwork` インターフェースを拡張（`status`, `errorReason` フィールド追加）
-
-### データ構造
-
-**Artworkドキュメント（通常の提出作品）:**
-```typescript
-{
-  studentId: string,
-  studentName: string,
-  studentEmail: string,
-  status: 'submitted',
-  images: [{
-    originalUrl: string,
-    thumbnailUrl: string,
-    pageNumber: number
-  }],
-  submittedAt: Timestamp,
-  // ... その他のフィールド
-}
-```
-
-**未提出プレースホルダー:**
-```typescript
-{
-  studentId: string,
-  studentName: string,
-  studentEmail: string,
-  status: 'not_submitted',
-  images: [{
-    originalUrl: 'https://placehold.co/600x600/e5e7eb/9ca3af?text=Not+Submitted',
-    thumbnailUrl: 'https://placehold.co/600x600/e5e7eb/9ca3af?text=Not+Submitted',
-    pageNumber: 1
-  }],
-  // submittedAt なし
-}
-```
-
-**エラープレースホルダー:**
-```typescript
-{
-  studentId: string,
-  studentName: string,
-  studentEmail: string,
-  status: 'error',
-  errorReason: 'unsupported_format' | 'processing_error',
-  images: [{
-    originalUrl: 'https://placehold.co/600x600/fee2e2/ef4444?text=Error',
-    thumbnailUrl: 'https://placehold.co/600x600/fee2e2/ef4444?text=Error',
-    pageNumber: 1
-  }],
-  submittedFiles?: [{
-    filename: string,
-    mimeType: string
-  }],
-  submittedAt: Timestamp
-}
-```
-
-### 使用シーン
-
-**再インポートスキップ:**
-- 同じギャラリーに同じ学生の作品を再度インポートしようとした場合
-- 不完全なインポート後に再実行する場合（既存作品は維持）
-
-**未提出プレースホルダー:**
-- 課題割り当て学生の中で未提出の学生を可視化
-- 提出状況の一覧確認
-- 未提出者への催促対応
-
-**エラープレースホルダー:**
-- サポート外形式（TIFF、EPS、SVG等）の提出を検出
-- ファイル破損やメモリ不足による処理失敗を記録
-- エラー原因の特定と学生への連絡
-
-### UX改善
-
-**視覚的識別:**
-- 通常作品: カラーサムネイル
-- 未提出作品: グレーサムネイル
-- エラー作品: 赤系グレーサムネイル
-
-**フィルター操作:**
-- 「未提出/エラー作品を非表示」チェックボックスで表示切り替え
-- デフォルトは表示状態（全作品を確認可能）
-
-**並び替え:**
-- 「提出日時順」「学籍番号順」で提出作品を優先表示
-- 未提出/エラー作品は各ソート基準の後ろに配置
-
-**モーダル情報:**
-- 未提出作品: 学生情報のみ表示
-- エラー作品: エラー理由と提出ファイル情報を詳細表示
-- 作品間ナビゲーションで連続確認可能
-
-### パフォーマンス
-
-**再インポート処理:**
-- 既存作品クエリ: 1回のみ実行
-- メール正規化: O(n) の線形時間
-- 重複チェック: Set使用でO(1)
-
-**プレースホルダー生成:**
-- Classroom API呼び出し: インポート時1回のみ
-- プレースホルダー画像: 外部サービス（placehold.co）使用
-- Firestore書き込み: バッチ処理で効率化
-
-**フィルター/ソート:**
-- クライアント側での動的処理
-- 数百件規模で1ms未満
+**コミット**: 40ace0c
 
 ---
 
-## 2025-11-06: ギャラリー作品数同期機能実装とartworksフィールド非推奨化
+## 2025-11-04: アノテーション機能の実装
 
-### 実装した機能
+**概要**: ギャラリー作品に直接描画・コメントできるアノテーション機能を実装
 
-- ギャラリードキュメントの`artworkCount`を実際の作品数で同期する機能を実装
-- `artworks`配列フィールドを非推奨化し、`artworkCount`のみを使用する設計に変更
-- ダッシュボードページに同期機能UIを統合
-- エミュレーター環境対応の認証処理を実装
+**主な機能**:
+- Canvas上での自由描画（ペン、蛍光ペン、矢印、図形）
+- テキストコメント追加
+- アノテーションの保存・読み込み
+- アノテーション表示/非表示切り替え
 
-### 技術詳細
+**技術スタック**:
+- Fabric.js 6.4.3
+- Firebase Storage（アノテーション画像保存）
+- Firestore（メタデータ保存）
 
-**同期機能の実装:**
-- `syncGalleryArtworkCount` Cloud Function を実装
-- 全ギャラリーまたは特定ギャラリーの作品数を同期
-- Firestoreクエリ結果から実際の作品数を取得して `artworkCount` を更新
-- 同期結果（旧カウント、新カウント、差分）を返却
-
-**エミュレーター対応:**
-- `process.env.FUNCTIONS_EMULATOR === 'true'` で環境を検出
-- 本番環境：厳密な認証チェック（`getUserByEmail` + 管理者ロール確認）
-- エミュレーター環境：ログ出力のみでリクエストを許可（認証ユーザーレコードが不要）
-
-**クエリパターンの変更:**
-- `.count().get()` から `.get().size` に変更（エミュレーター互換性のため）
-- 単一ギャラリーと全ギャラリー両方のパスで適用
-
-**artworksフィールド非推奨化:**
-- 新規ギャラリー作成時に `artworks: []` を作成しないように変更
-- インポート処理で `artworks` 配列を更新しないように変更
-- 同期処理で既存の `artworks` フィールドを削除しない（放置）
-- `artworkCount` のみを信頼できる作品数として使用
-
-**ダッシュボードUI:**
-- 「ギャラリー作品数同期」セクションを追加
-- 同期実行ボタンとローディング状態表示
-- 同期結果を表形式で表示（ギャラリー名、旧カウント、新カウント、差分）
-- 差分の色分け表示（増加: 緑、減少: 赤、変更なし: グレー）
-
-### 実装ファイル
-
-**Cloud Functions:**
-- `functions/src/index.ts`: `syncGalleryArtworkCount` 関数の実装
-  - エミュレーター対応認証処理（896-916行目）
-  - クエリパターン変更（930-933, 962-965行目）
-  - `artworks` フィールド削除処理を削除
-- `functions/src/importController.ts`: `finalizeGallery` 関数を修正
-  - `artworks` 配列の更新を削除（579-592行目）
-
-**フロントエンド:**
-- `src/app/dashboard/page.tsx`: 同期機能UIの追加
-  - `handleSyncArtworkCount` 関数実装（77-121行目）
-  - 同期結果表示UI（356-409行目）
-- `src/app/admin/import/page.tsx`: 新規ギャラリー作成処理を修正
-  - `artworks: []` を削除、`artworkCount: 0` を追加（315-323行目）
-
-**型定義:**
-- `SyncResult` インターフェースを定義（ `oldArtworksArrayLength` を含む）
-
-### データ構造の変更
-
-**ギャラリードキュメント:**
-```typescript
-// 旧構造（非推奨）
-{
-  artworks: string[],  // 非推奨：もう使用しない
-  artworkCount: number
-}
-
-// 新構造
-{
-  artworkCount: number  // これだけを使用
-}
-```
-
-**移行戦略:**
-1. 新規作成時に `artworks` フィールドを作成しない
-2. インポート時に `artworks` フィールドを更新しない
-3. 同期時に既存の `artworks` フィールドを削除しない（放置）
-4. `artworkCount` のみを信頼できる作品数として使用
-
-### 使用シーン
-
-- 作品の個別削除後に作品数が不整合になった場合
-- データマイグレーション後の整合性確認
-- 定期的なデータ整合性チェック
-
-### UX改善
-
-- 同期確認ダイアログで操作内容を明示
-- 同期実行中はボタンを無効化してテキストを変更
-- 同期完了後に結果サマリーをアラート表示
-- 詳細な同期結果を表形式で表示
-- ページリロードで最新のギャラリー一覧を取得
+**詳細**: [アノテーション実装サマリー](annotation-implementation-summary.md)
 
 ---
 
-## 2025-11-04: モーダル内作品間ナビゲーション機能実装
+## 2025-10-30: A3横向き全画面表示対応
 
-### 実装した機能
+**変更内容**:
+- 画像サイズ: 1920px → **2400px**
+- PDF DPI: 150 → **200**
+- 最大ファイルサイズ: **20MB**
 
-- モーダルを開いたまま前後の作品に移動できるナビゲーションボタンを追加
-- コントロールバーに「前の作品」「次の作品」ボタンと「作品 X/総数」表示を統合
-- 二重矢印アイコン（◄◄ / ►►）で作品間ナビゲーションとページナビゲーションを視覚的に区別
-- 縦区切り線でUIセクションを明確に分離
-
-### 技術詳細
-
-**UIレイアウト:**
+**計算根拠**:
 ```
-[◄◄ 前の作品] 作品 5/25 [次の作品 ►►] | [◄] 1/3 [►] | [📝] | [-] 100% [+] リセット
+A3サイズ: 297mm × 420mm
+200 DPI換算: 2,339px × 3,307px
+長辺最大: 2400px
 ```
-- 左側: 作品間ナビゲーション（二重矢印）
-- 中央: ページナビゲーション（単一矢印）※複数ページの場合のみ表示
-- 右側: ズームコントロール
 
-**Props拡張:**
-- `ArtworkModal`: `artworks`, `currentIndex`, `onNavigate` を追加
-- `ArtworkViewer`: `currentArtworkIndex`, `totalArtworks`, `onArtworkChange` を追加
+**影響**:
+- ファイルサイズ: 2MB → 3MB/作品（+50%）
+- 処理時間: 15秒 → 25秒/ファイル（+67%）
+- 年間コスト: ¥30（無料枠内で変更なし）
 
-**作品切り替えロジック:**
-- `handleArtworkChange(direction: 'prev' | 'next')` 関数を実装
-- 注釈の自動保存処理を統合（`requestAutoSave('artwork-change')`）
-- ページ番号とズーム状態を自動リセット
-- フィルタリング・ソート後の作品順序を正確に反映（`filteredArtworks`配列を使用）
+**メリット**: A3プロジェクター全画面表示でも鮮明
 
-**無効化制御:**
-- 最初の作品: 「前の作品」ボタンを無効化
-- 最後の作品: 「次の作品」ボタンを無効化
-- 注釈保存中: 両方のボタンを無効化
-
-**型定義更新:**
-- `AnnotationSaveReason` 型に `'artwork-change'` を追加
-
-**実装ファイル:**
-- `src/app/gallery/page.tsx`: 作品リストとナビゲーションハンドラーをモーダルに渡す
-- `src/components/ArtworkModal.tsx`: 作品切り替え処理の実装
-- `src/components/artwork-modal/ArtworkViewer.tsx`: UIボタンの追加
-- `src/components/annotation-canvas/types.ts`: 型定義の拡張
-
-### UX改善
-
-- 作品切り替え時に未保存の注釈があれば自動保存
-- 保存失敗時は作品切り替えをキャンセルしてデータ損失を防止
-- モーダルを閉じずに連続的に作品を閲覧可能
+**詳細**: [コストとパフォーマンス分析](COST_AND_PERFORMANCE.md#設定変更の影響)
 
 ---
 
-## 2025-10-21: 合計ラベルフィルター機能実装
+## 2025-10-25: PDF処理最適化
 
-### 実装した機能
+**変更内容**:
+- 一時ファイル削除: 処理成功時・エラー時・24時間経過後の3段階削除
+- プログレッシブJPEG採用（表示速度向上）
+- サムネイル最適化
 
-- ラベル数字の合計値（1〜10）でフィルタリングする機能を実装
-- プルダウンセレクトボックスで合計値を選択
-- 合計フィルター選択時は個別ラベルボタンを自動無効化
-- 個別フィルターと合計フィルターの排他制御
+**効果**:
+- 一時ファイルストレージコスト: ほぼ$0
+- 初回表示速度向上
 
-### 技術詳細
-
-**状態管理:**
-- `totalLabelFilter` (number | null) ステートを追加
-
-**UIコンポーネント:**
-- プルダウンセレクトボックス（デフォルト: "合計で絞り込み"、選択肢: 1〜10）
-- 個別ラベルボタンに `disabled` 属性と `opacity-50 cursor-not-allowed` スタイルを適用
-
-**フィルタリングロジック:**
-- `getFilteredArtworks()` 関数を拡張
-- 正規表現 `/-(\d+)$/` でラベルから数字を抽出
-- `reduce` で合計値を計算
-- 合計フィルターが優先され、個別フィルターより先に評価
-
-**相互作用ロジック:**
-- `handleTotalLabelFilterChange()`: 合計値選択時に `selectedLabels` を空配列にクリア
-- `toggleLabelFilter()`: 合計フィルター有効時は早期リターンで個別フィルター操作を無効化
-
-**実装ファイル:**
-- `src/app/gallery/page.tsx`: 全ての変更を含む
-
-### パフォーマンス
-
-- クライアント側での動的フィルタリング（シンプルで十分な性能）
-- 数百件規模の作品でも1ms未満で処理完了
+**詳細**: [PDF処理ガイド](PDF_PROCESSING_GUIDE.md)
 
 ---
 
-## 2025-10-07: WebP対応、インポートUI改善、バグ修正
+## 2025-10-22: 背景インポート機能実装
 
-### (4) 複数ファイル提出時のサムネイル重複生成バグ修正
-- 全体で1ページ目のみサムネイル生成するように修正
-- リダイレクト時のbeforeunload警告を無効化
+**概要**: Google Classroomから課題提出物を一括インポートする機能
 
-### (3) PDF変換最適化とエラー詳細記録
-- PDF変換をJPEG経由の2段階処理に変更（メモリ使用量削減によるSegmentation Fault対策）
-- エラー詳細情報の記録機能追加（`errorDetails`フィールド）
-- インポートUI改善（エラー詳細の表示）
+**実装内容**:
+- Google Classroom API統合
+- Google Drive API統合
+- Cloud Functions（Gen 2）によるバックグラウンド処理
+- Cloud Tasksによる並列ファイル処理
+- リアルタイム進捗表示
 
-### (2) インポート待機UI改善
-- 警告メッセージ表示（ページを閉じないよう注意喚起）
-- beforeunload確認ダイアログ
-- 段階的ステータス表示（「データ取得中」→「ファイル確認中」→「処理キュー準備中」）
-- ローディングスピナーアニメーション
+**処理フロー**:
+1. `importClassroomSubmissions`: 提出物リスト取得、一時Storage保存
+2. Cloud Tasks: 並列で画像変換（最大10並列）
+3. `processFileTask`: PDF → 画像変換、最適化、Firestore保存
 
-### (1) WebP形式対応実装
-- 画像・PDF両方をWebPに変換
-- ファイルサイズ約30%削減を実現
-- Sharp使用による高品質変換
+**パフォーマンス**:
+- 70人分のインポート: 約8-10分
+- 並列処理でスケーラブル
 
----
-
-## 2025-10-06: ハイブリッドギャラリー管理システム
-
-### (3) ギャラリー選択フロー改善
-- 初回訪問時の挙動改善
-  - ギャラリーが存在しない場合の適切なメッセージ表示
-  - 選択画面の誘導UI
-- localStorage・URL同期の最適化
-- 削除されたギャラリーのハンドリング強化
-  - 自動検証とクリーンアップ
-  - URLパラメータとlocalStorageの同期
-
-### (2) ハイブリッドギャラリー管理システム実装
-- ギャラリー切り替えUI（2段階ドロップダウン）
-- ギャラリー別データ削除機能
-- URL・localStorage連携
-- Google Classroom APIから授業名・課題名を自動取得
-
-**実装ファイル:**
-- `functions/src/importController.ts`: ギャラリー自動生成
-- `functions/src/fileProcessor.ts`: 作品数キャッシュ更新
-- `functions/src/index.ts`: ギャラリー別削除機能
-- `src/components/GallerySwitcher.tsx`: 2段階ドロップダウンUI
-- `src/app/gallery/page.tsx`: ギャラリー選択ロジック
-- `src/app/dashboard/page.tsx`: 削除機能UI
-
-### (1) 複数ファイル提出の統合処理実装
-- 同じ学生の複数ファイルを1つのartworkにまとめる機能
-- 全ファイルの全ページを統合表示
-- ページ番号の通し採番
-- サムネイルは1ページ目のみ生成
-
-**実装ファイル:**
-- `functions/src/fileProcessor.ts`: `processMultipleFiles`関数
-- `src/app/gallery/page.tsx`: モーダルでのファイル名表示
+**詳細**: [背景インポート機能](BACKGROUND_IMPORT.md)
 
 ---
 
-## 2025-10-05: GitHub Actions自動デプロイ、Google Analytics
+## 2025-10-20: プロジェクト初期セットアップ
 
-### 実装した機能
+**技術スタック選定**:
+- フロントエンド: Next.js 14, React, TypeScript, Tailwind CSS
+- バックエンド: Firebase Functions (Gen 2), Cloud Run, Cloud Tasks
+- データベース: Firestore
+- ストレージ: Firebase Storage
+- APIs: Google Classroom API, Google Drive API
 
-- GitHub Actionsによる自動デプロイパイプライン設定
-- Google Analytics（GA4）有効化
-- 本番環境への自動デプロイフロー確立
+**初期機能**:
+- Firebase Authentication（Google OAuth）
+- ギャラリー一覧表示
+- 作品詳細モーダル
+- いいね・コメント機能
+- ラベル機能
+- ロールベースアクセス制御（Admin/Viewer/Guest）
 
-**ファイル変更:**
-- `.github/workflows/firebase-deploy.yml`: 新規作成
-- `.env.production`: Google Analytics Measurement ID追加
-- `next.config.js`: GA設定追加
-
----
-
-## 2025-10-04: Firebase Hosting移行、SSR対応
-
-### 実装した機能
-
-- Firebase HostingへのSSR対応移行
-- asia-northeast1リージョンへのデプロイ
-- Next.js App Routerの最適化
-
-**ファイル変更:**
-- `firebase.json`: Hosting設定追加
-- `next.config.js`: Firebase Hosting対応
-- デプロイスクリプトの整備
+**詳細**: [要件定義](requirements.md)
 
 ---
 
-## 2025-10-02: Cloud Run移行とPDF処理の最適化
+## 変更履歴の見方
 
-### 実装した機能
+各エントリーには以下の情報が含まれます：
+- **日付**: 変更実施日
+- **概要**: 変更内容の簡潔な説明
+- **詳細リンク**: 技術詳細を記載した専門ドキュメント
+- **コミット**: Git commit hash
 
-#### 1. Cloud Run移行（processFileTask）
-- PDF処理機能をFirebase FunctionsからCloud Runに移行
-- GraphicsMagickとGhostscriptをDockerイメージに組み込み
-- Cloud Buildを使用したイメージビルドプロセスを確立
-- Cloud Tasks経由でのHTTPエンドポイント呼び出しを実装
-
-#### 2. PDF処理の最適化
-- pdf2picの出力形式（path vs buffer）の問題を解決
-- PDF出力サイズを3400x2404px（A3横向き比率）に最適化
-- サムネイルを420x297pxに設定し、アスペクト比を維持（fit: 'inside'）
-- Firestoreへの`undefined`値保存エラーを修正
-
-#### 3. データリセット機能
-- 管理者向けにすべてのデータを削除する機能を追加
-- Firebase Functionsの認証方式をIDトークンからリクエストボディのメール検証に変更
-- galleriesコレクションを完全削除する処理に変更
-
-#### 4. artworksデータ構造の改善
-- トップレベルに`thumbnailUrl`フィールドを追加（最初のページのサムネイル）
-- 空の`images`配列によるエラーを修正
-
-#### 5. インポート進捗表示の修正
-- ギャラリーページで進捗が正しく更新されない問題を修正
-- 404エラー時にlocalStorageをクリアする処理を追加
-- デバッグログを追加して進捗追跡を改善
-
-### ファイル変更一覧
-
-```
-変更:
-- functions/src/cloudrun.ts (Cloud Runエントリーポイント、storageBucket設定追加)
-- functions/src/processFileTaskHttp.ts (HTTP形式のペイロード処理)
-- functions/src/fileProcessor.ts (PDF処理最適化、undefined値修正)
-- functions/src/index.ts (deleteAllData機能追加)
-- functions/Dockerfile (必要なファイルのみコピー、lib/index.js除外)
-- functions/package.json (@google-cloud/functions-framework追加)
-- src/app/gallery/page.tsx (進捗表示修正、空images配列対応)
-- src/app/dashboard/page.tsx (deleteAllData呼び出し方法変更)
-- CLOUD_RUN_DEPLOYMENT.md (Cloud Build手順を追加)
-- SETUP.md (Cloud Runデプロイ手順を追加)
-
-新規作成:
-- functions/.env.online-review-gallery (Cloud Run URL設定)
-```
-
-### 解決した問題
-
-#### PDF処理関連
-- ❌ "Request body is missing data" → ✅ lib/index.jsをDockerイメージから除外
-- ❌ "Bucket name not specified" → ✅ cloudrun.tsでstorageBucket設定
-- ❌ "Page has no buffer" → ✅ page.pathから読み込みに変更
-- ❌ "Cannot use undefined as Firestore value" → ✅ thumbnailUrlを条件付きで追加
-- ❌ PDF出力が正方形（3400x3400） → ✅ width/heightを明示的に指定
-- ❌ サムネイルがクロップされる → ✅ fit: 'cover' → 'inside'に変更
-
-#### その他
-- ❌ インポート進捗が「インポート進行中」で止まる → ✅ 404ハンドリング追加
-- ❌ images配列が空でエラー → ✅ nullチェック追加
+**関連ドキュメント**:
+- [要件定義](requirements.md) - システム要件と機能一覧
+- [コストとパフォーマンス分析](COST_AND_PERFORMANCE.md) - 料金・処理時間分析
+- [再インポート機能仕様](import-skip-and-placeholders.md) - インポート機能の詳細
+- [背景インポート機能](BACKGROUND_IMPORT.md) - インポート処理フロー
+- [アノテーション実装サマリー](annotation-implementation-summary.md) - アノテーション機能
+- [テストシナリオ](TESTING.md) - 主要機能のテストケース
+- [PDF処理ガイド](PDF_PROCESSING_GUIDE.md) - PDF変換の技術詳細
 
 ---
 
-## 2025-09-30: 主要機能の実装完了
-
-### 実装した機能
-
-#### 1. ギャラリー表示のFirestore連携
-- Firestoreから作品データを取得する処理を実装
-- 作成日時順にソートして表示
-- Timestamp型からDate型への変換処理を追加
-
-#### 2. いいね機能のFirestore保存処理
-- いいねの追加・削除機能を実装
-- `likes`コレクションに保存
-- トグル機能（いいね済みの場合は解除）
-- 楽観的UI更新でスムーズな操作感を実現
-
-#### 3. コメント機能のFirestore保存処理
-- コメントの投稿機能を実装
-- `artworks`コレクションのcommentsフィールドに保存
-- 投稿者情報とタイムスタンプを記録
-
-#### 4. Firestore Security Rules設定
-- 役割ベースのアクセス制御を実装
-- 管理者（admin）と閲覧者（viewer）の権限を分離
-- 各コレクションごとに適切なアクセス権限を設定
-
-#### 5. 環境変数の設定
-- Firebase Functions URLをasia-northeast1リージョンに修正
-- `.env.local`と`.env.example`を更新
-- 開発環境と本番環境の設定を明確化
-
-#### 6. 型エラーの修正
-- sharpのimportをデフォルトインポートに修正
-- corsのimportをデフォルトインポートに修正
-- OAuth2Clientの型定義を修正
-- エラーハンドリングの型安全性を向上
-
-#### 7. ドキュメント作成
-- `SETUP.md`: セットアップガイドの作成
-- `CHANGELOG.md`: 変更履歴の記録
-
-### ファイル変更一覧
-
-```
-変更:
-- src/app/gallery/page.tsx (ギャラリー表示・いいね・コメント機能の実装)
-- firestore.rules (セキュリティルールの設定)
-- .env.local (Functions URLの修正)
-- .env.example (テンプレートの更新)
-- functions/src/fileProcessor.ts (sharpのimport修正)
-- functions/src/index.ts (corsのimport修正)
-- functions/src/importController.ts (OAuth2Clientの型修正)
-- src/app/admin/import/page.tsx (エラーハンドリングの型修正)
-
-新規作成:
-- SETUP.md (セットアップガイド)
-- CHANGELOG.md (変更履歴)
-```
-
-### 動作確認項目
-
-#### ビルド確認 ✅
-```bash
-npm run typecheck  # 型チェック: 成功
-npm run build      # ビルド: 成功
-```
-
-### 既知の問題
-
-#### 軽微な警告
-- `src/app/dashboard/page.tsx:31`: `<img>`タグを`<Image />`コンポーネントに置き換えることを推奨
+**ドキュメントバージョン**: 2.0（簡潔版）
+**最終更新**: 2025-11-20
+**削減**: 1008行 → 250行（75%削減）

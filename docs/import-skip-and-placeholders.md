@@ -351,12 +351,24 @@ if (allImages.length === 0) {
 
 ---
 
-## 3. フロントエンド実装
+## 3. 実装概要
 
-### 3.1. 型定義の更新
+### 3.1. 主要な実装ファイル
 
-#### 3.1.1. src/types/index.ts
+**バックエンド**:
+- `functions/src/importController.ts`: 再インポートスキップ判定、上書き処理
+- `functions/src/fileProcessor.ts`: ドキュメント上書き処理
+- `functions/src/processFileTaskHttp.ts`: タスクペイロード拡張
 
+**フロントエンド**:
+- `src/types/index.ts`: `Artwork.status`, `Artwork.errorReason`, `ImportJob.overwrittenCount`追加
+- `src/lib/artworkUtils.ts`: `isSubmitted()`, `isNotSubmitted()`, `isError()`ユーティリティ関数
+- `src/app/gallery/[id]/page.tsx`: 未提出/エラーフィルター、学籍番号順ソート
+- `src/components/ArtworkModal.tsx`: 未提出/エラー表示
+
+### 3.2. データモデル
+
+**Artwork型の拡張**:
 ```typescript
 export interface Artwork {
   id: string;
@@ -390,51 +402,132 @@ export interface Artwork {
 }
 ```
 
-#### 3.1.2. デフォルト値の設定
-
-既存の作品（statusフィールドがない）との互換性を保つため、型ガードを実装：
-
+**ImportJob型の拡張**:
 ```typescript
-// src/lib/artworkUtils.ts
-export function getArtworkStatus(artwork: Artwork): 'submitted' | 'not_submitted' | 'error' {
-  return artwork.status ?? 'submitted';
+export interface ImportJob {
+  // 既存フィールド...
+  overwrittenCount?: number; // ✅ 2025-11-20追加
 }
+```
 
-export function isSubmitted(artwork: Artwork): boolean {
-  return getArtworkStatus(artwork) === 'submitted';
-}
+### 3.3. フロントエンド主要機能
 
-export function isNotSubmitted(artwork: Artwork): boolean {
-  return getArtworkStatus(artwork) === 'not_submitted';
-}
+**1. ユーティリティ関数（src/lib/artworkUtils.ts）**:
+- `isSubmitted()`, `isNotSubmitted()`, `isError()`: status判定
+- `extractStudentIdFromEmail()`: メールアドレスから学籍番号抽出
+- `sortBySubmissionDate()`: 提出日時ソート（未提出は末尾）
 
-export function isError(artwork: Artwork): boolean {
-  return getArtworkStatus(artwork) === 'error';
-}
+**2. グレープレースホルダー表示**:
+- 未提出: グレー背景 + "未提出"テキスト
+- エラー: グレー背景 + "エラー"テキスト
+- いいね・コメント機能は非表示
 
-export function isIncomplete(artwork: Artwork): boolean {
-  const status = getArtworkStatus(artwork);
-  return status === 'not_submitted' || status === 'error';
+**3. ソートロジック**:
+- 提出日時順: submitted作品のみソート、not_submitted/error作品は末尾に学籍番号順
+- 学籍番号順: 全作品を学籍番号で混在ソート
+
+**4. フィルタリング**:
+- 「未提出/エラーを非表示」チェックボックス
+- 非表示件数の表示
+
+**5. モーダル表示**:
+- 未提出: 学生情報のみ表示、フィードバック機能なし
+- エラー: エラー理由、提出ファイル一覧、対応形式説明
+
+---
+
+## 4. バックエンド実装概要
+
+### 4.1. 再インポートスキップ・上書きロジック
+
+**実装ファイル**: `functions/src/importController.ts`
+
+**処理フロー**:
+1. 既存作品を `Map<normalizedEmail, ExistingArtworkInfo>` で管理
+2. 各提出物について:
+   - `status === 'submitted'` → スキップ
+   - `status === 'not_submitted' || 'error'` → 既存IDを保持して上書き
+   - 既存作品なし → 新規作成
+
+**重要な変更**:
+- `existingArtworkId` をタスクペイロードに追加
+- `overwriteCount` を `ImportJob` に記録
+
+### 4.2. 未提出学生プレースホルダー生成
+
+**実装ファイル**: `functions/src/importController.ts`
+
+**処理フロー**:
+1. Google Classroom APIから割り当て済み学生を取得
+2. 提出済み学生リストと比較
+3. 差分（未提出学生）にプレースホルダー作品を生成:
+   - `status: 'not_submitted'`
+   - `images: []`, `files: []`
+   - `submittedAt: null`
+
+### 4.3. エラー作品生成
+
+**実装ファイル**: `functions/src/importController.ts`
+
+**処理フロー**:
+1. 提出ファイルが全てサポート外形式の場合:
+   - `status: 'error'`
+   - `errorReason: 'unsupported_format'`
+   - エラー作品を生成
+
+2. 処理エラー（メモリ不足等）の場合:
+   - エラー作品は生成しない
+   - 再インポートで再試行可能
+
+### 4.4. ドキュメント上書き処理
+
+**実装ファイル**: `functions/src/fileProcessor.ts`
+
+**処理フロー**:
+1. `existingArtworkId` があれば既存ドキュメント参照を取得
+2. `set({ merge: true })` で上書き
+3. 新規作品の場合のみ `artworkCount` を増加
+
+**重要な実装**:
+```typescript
+const artworkRef = existingArtworkId
+  ? db.collection('artworks').doc(existingArtworkId)
+  : db.collection('artworks').doc();
+
+await artworkRef.set(artworkData, { merge: true });
+
+if (!existingArtworkId) {
+  await db.collection('galleries').doc(galleryId).update({
+    artworkCount: FieldValue.increment(1),
+  });
 }
 ```
 
 ---
 
-### 3.2. グレーサムネイルの表示
+## 5. マイグレーション
 
-#### 3.2.1. src/components/GalleryGrid.tsx
+既存作品に `status` フィールドがない場合のマイグレーションスクリプト:
 
-```tsx
-interface ArtworkCardProps {
-  artwork: Artwork;
-  onClick: () => void;
-}
+**実装ファイル**: 専用スクリプト（一度のみ実行）
 
-export function ArtworkCard({ artwork, onClick }: ArtworkCardProps) {
-  const status = getArtworkStatus(artwork);
+**処理内容**:
+- 全既存作品に `status: 'submitted'` を設定
+- バッチ処理で500件ずつコミット
 
-  return (
-    <div
+**実行タイミング**: 本番環境への初回デプロイ後
+
+---
+
+## 6. テストシナリオ
+
+詳細なテストシナリオは [TESTING.md](TESTING.md) を参照してください。
+
+---
+
+## 7. パフォーマンス考慮事項
+
+### 7.1. Firestore クエリの最適化
       onClick={onClick}
       className="group cursor-pointer bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-shadow"
     >
@@ -1033,151 +1126,7 @@ migrateArtworkStatus().catch(console.error);
 
 ## 6. テストシナリオ
 
-### 6.1. 再インポートスキップ機能のテスト
-
-#### 6.1.1. ケース1: 初回インポート
-
-**手順**:
-1. 新しい課題を選択
-2. インポートを実行
-
-**期待結果**:
-- 全ての提出済み学生の作品が生成される
-- 未提出学生のプレースホルダーが生成される
-- スキップ数は0
-
-#### 6.1.2. ケース2: 完全に同じ課題の再インポート
-
-**手順**:
-1. 既にインポート済みの課題を再度インポート
-2. インポートを実行
-
-**期待結果**:
-- 全ての学生がスキップされる
-- 新しい作品は生成されない
-- スキップ数 = 既存作品数
-
-#### 6.1.3. ケース3: 新規提出者がいる場合の再インポート
-
-**手順**:
-1. 初回インポート後、学生Aが課題を新たに提出
-2. 再度インポートを実行
-
-**期待結果**:
-- 既存の学生はスキップされる
-- 学生Aの作品のみ新規生成される
-- 学生Aのプレースホルダーは削除されない（既に存在するため）
-
-#### 6.1.4. ケース4: 処理エラー後の再インポート
-
-**手順**:
-1. 初回インポート時、学生Bの作品でメモリエラーが発生（作品未生成）
-2. 再度インポートを実行
-
-**期待結果**:
-- 学生Bの作品が再処理される（既存作品がないため）
-- 他の学生はスキップされる
-
----
-
-### 6.2. 未提出プレースホルダーのテスト
-
-#### 6.2.1. ケース5: 未提出学生の表示
-
-**手順**:
-1. Google Classroomで10人に課題を割り当て
-2. 7人が提出
-3. インポートを実行
-4. ギャラリーを表示
-
-**期待結果**:
-- 7件の通常作品が表示される
-- 3件のグレーサムネイル（未提出）が表示される
-- 未提出作品には「未提出」テキストが中央表示される
-
-#### 6.2.2. ケース6: 未提出作品のモーダル表示
-
-**手順**:
-1. 未提出のグレーサムネイルをクリック
-
-**期待結果**:
-- モーダルが開く
-- 学生名、メールアドレス、学籍番号が表示される
-- 「この課題は未提出です」というメッセージが表示される
-- いいね・コメント・ラベル機能は表示されない
-
----
-
-### 6.3. エラー作品のテスト
-
-#### 6.3.1. ケース7: サポートされていないファイル形式
-
-**手順**:
-1. 学生Cが.docxファイルを提出
-2. インポートを実行
-3. ギャラリーを表示
-
-**期待結果**:
-- 学生Cの作品がグレーサムネイル（エラー）で表示される
-- サムネイルに「エラー」テキストが中央表示される
-
-#### 6.3.2. ケース8: エラー作品のモーダル表示
-
-**手順**:
-1. エラー作品のグレーサムネイルをクリック
-
-**期待結果**:
-- モーダルが開く
-- エラーメッセージ「サポートされていないファイル形式」が表示される
-- 提出されたファイル一覧が表示される
-- 対応形式の説明が表示される
-
----
-
-### 6.4. 並び替えのテスト
-
-#### 6.4.1. ケース9: 提出日時順（早い順）
-
-**手順**:
-1. ギャラリーを表示
-2. 「提出日時（早い順）」を選択
-
-**期待結果**:
-- 提出済み作品が提出日時の早い順に表示される
-- 未提出・エラー作品が末尾に学籍番号順で表示される
-
-#### 6.4.2. ケース10: 学籍番号順
-
-**手順**:
-1. ギャラリーを表示
-2. 「学籍番号（A→Z）」を選択
-
-**期待結果**:
-- 全作品（提出済み、未提出、エラー）が学籍番号順に混在表示される
-
----
-
-### 6.5. フィルタリングのテスト
-
-#### 6.5.1. ケース11: 未提出/エラーを非表示
-
-**手順**:
-1. ギャラリーを表示（提出済み7件、未提出2件、エラー1件）
-2. 「未提出/エラーを非表示」にチェックを入れる
-
-**期待結果**:
-- 提出済み作品7件のみ表示される
-- 「(3件 非表示中)」というメッセージが表示される
-
-#### 6.5.2. ケース12: ラベルフィルターと併用
-
-**手順**:
-1. 「赤-5」ラベルでフィルター
-2. 「未提出/エラーを非表示」にチェックを入れる
-
-**期待結果**:
-- 「赤-5」ラベルがついた提出済み作品のみ表示される
-- 未提出・エラー作品は表示されない
+詳細なテストシナリオは [TESTING.md](TESTING.md) を参照してください。
 
 ---
 
