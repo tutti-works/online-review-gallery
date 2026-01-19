@@ -52,6 +52,7 @@ const ShowcaseGalleryPage = () => {
   const [uploadingOverview, setUploadingOverview] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [overviewModalOpen, setOverviewModalOpen] = useState(false);
+  const [reuploadConfirmOpen, setReuploadConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const sortedArtworks = useMemo(() => sortByStudentId(artworks), [artworks]);
@@ -322,23 +323,43 @@ const ShowcaseGalleryPage = () => {
           ) : (
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {showcase?.overviewImageUrl && (
-                <button
-                  type="button"
-                  onClick={() => setOverviewModalOpen(true)}
-                  className="group col-span-1 overflow-hidden rounded-lg border border-gray-200 bg-white text-left shadow-sm transition hover:shadow-md"
-                >
-                  <div className="relative w-full bg-gray-100" style={{ aspectRatio: '420 / 297' }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={showcase.overviewImageUrl}
-                      alt={`${displayTitle} 概要`}
-                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                    />
-                  </div>
-                  <div className="p-4">
-                    <span className="text-sm font-semibold text-gray-800">課題概要</span>
-                  </div>
-                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setOverviewModalOpen(true)}
+                    className="group block w-full overflow-hidden rounded-lg border border-gray-200 bg-white p-0 text-left leading-none shadow-sm transition hover:shadow-md"
+                  >
+                    <div className="relative w-full bg-gray-100" style={{ aspectRatio: '420 / 297' }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={showcase.overviewImageUrl}
+                        alt={`${displayTitle} 概要`}
+                        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                      />
+                    </div>
+                    <div className={canManage ? 'flex min-h-[52px] items-center px-4 py-2' : 'p-4'}>
+                      <span className="text-sm font-semibold text-gray-800">課題概要</span>
+                    </div>
+                  </button>
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => setReuploadConfirmOpen(true)}
+                      disabled={uploadingOverview}
+                      className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow-md transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      title="課題概要を再アップロード"
+                    >
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.6}
+                          d="M4 12a8 8 0 0 1 13.657-5.657L20 8M20 8V4m0 4h-4M20 12a8 8 0 0 1-13.657 5.657L4 16m0 0v4m0-4h4"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               )}
 
               {canManage && !showcase?.overviewImageUrl && (
@@ -362,7 +383,11 @@ const ShowcaseGalleryPage = () => {
                     key={artwork.id}
                     className="group overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition hover:shadow-md"
                   >
-                    <button type="button" onClick={() => setSelectedIndex(index)} className="w-full text-left">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIndex(index)}
+                      className="block w-full p-0 text-left leading-none"
+                    >
                       <div className="relative w-full bg-gray-100" style={{ aspectRatio: '420 / 297' }}>
                         {coverImage ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -381,19 +406,17 @@ const ShowcaseGalleryPage = () => {
                         )}
                       </div>
                     </button>
-                    <div className="p-4">
-                      <div className="flex items-center justify-between gap-3">
+                    <div className={canManage ? 'flex min-h-[52px] items-center justify-between gap-3 px-4 py-2' : 'p-4'}>
                       <p className="text-sm font-semibold text-gray-900">{artwork.studentName}</p>
                       {canManage && (
                         <button
                           type="button"
                           onClick={() => void handleSelectFeatured(artwork.id)}
-                            className="shrink-0 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
-                          >
-                            最優秀に指定
-                          </button>
-                        )}
-                      </div>
+                          className="shrink-0 rounded-md border border-gray-300 px-3 py-1 text-[11px] font-semibold text-gray-700 transition hover:bg-gray-50"
+                        >
+                          最優秀に指定
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -437,6 +460,36 @@ const ShowcaseGalleryPage = () => {
               alt={`${displayTitle} 概要`}
               className="max-h-full max-w-full rounded-lg object-contain"
             />
+          </div>
+        )}
+
+        {reuploadConfirmOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+              <h2 className="text-lg font-semibold text-gray-900">課題概要を再アップロードしますか？</h2>
+              <p className="mt-2 text-sm text-gray-600">
+                既存の課題概要画像は削除されます。よろしいですか？
+              </p>
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setReuploadConfirmOpen(false)}
+                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReuploadConfirmOpen(false);
+                    fileInputRef.current?.click();
+                  }}
+                  className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                >
+                  再アップロード
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>

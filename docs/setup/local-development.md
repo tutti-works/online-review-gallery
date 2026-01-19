@@ -25,6 +25,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
 # Firebase Functions Base URL
 # Development: Firebase Emulator
 NEXT_PUBLIC_FUNCTIONS_BASE_URL=http://127.0.0.1:5001/your-project-id/asia-northeast1
+
+# Emulator switches
+NEXT_PUBLIC_USE_AUTH_EMULATOR=true
+NEXT_PUBLIC_USE_FIRESTORE_EMULATOR=true
 ```
 
 ## 2. 依存関係のインストール
@@ -48,8 +52,10 @@ cd ..
 開発環境では、Firebase Emulatorを使用します。
 
 ```bash
-firebase emulators:start
+npm run emulators
 ```
+
+`firebase.emulators.json` を使用し、Firestore には開発用ルール（`firestore.rules.dev`）を適用します。
 
 以下のサービスが起動します：
 - **Authentication**: `http://localhost:9099`
