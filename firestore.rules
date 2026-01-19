@@ -46,7 +46,7 @@ service cloud.firestore {
     match /likes/{likeId} {
       allow read: if isAuthenticated();
       allow create: if isAdmin();
-      allow delete: if isAdmin() && likeId.matches('.*_' + request.auth.token.email.replace('.', '_').replace('@', '_'));
+      allow delete: if isAdmin() && resource.data.userEmail == request.auth.token.email;
     }
 
     // showcaseGalleries: 専用ギャラリーの設定/同期データ
