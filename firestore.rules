@@ -14,6 +14,13 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // 専用ギャラリー用: 許可ドメインのチェック
+    function isShowcaseDomainAllowed() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.matches('.*@([A-Za-z0-9-]+\\.)*musashino-u\\.ac\\.jp$');
+    }
+
     // userRoles コレクション: 管理者のみ書き込み可能、認証済みユーザーは自分のロールを読み取り可能
     match /userRoles/{email} {
       allow read: if isAuthenticated() && request.auth.token.email == email;
@@ -40,6 +47,12 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAdmin();
       allow delete: if isAdmin() && likeId.matches('.*_' + request.auth.token.email.replace('.', '_').replace('@', '_'));
+    }
+
+    // showcaseGalleries: 専用ギャラリーの設定/同期データ
+    match /showcaseGalleries/{galleryId} {
+      allow read: if isAuthenticated() && isShowcaseDomainAllowed();
+      allow write: if isAdmin() && isShowcaseDomainAllowed();
     }
 
     // importJobs コレクション: 管理者のみアクセス可能

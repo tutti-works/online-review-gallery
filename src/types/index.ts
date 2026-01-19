@@ -95,6 +95,17 @@ export interface Gallery {
   artworks?: Artwork[]; // 旧形式との互換性のため残す（使用しない）
 }
 
+export interface ShowcaseGallery {
+  id: string;
+  displayTitle?: string;
+  featuredArtworkId?: string | null;
+  curatedArtworkIds?: string[];
+  overviewImageUrl?: string;
+  overviewImagePath?: string;
+  syncedAt?: Date | string;
+  updatedBy?: string;
+}
+
 export interface ImportJob {
   id: string;
   galleryId: string;
