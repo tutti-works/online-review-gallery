@@ -8,6 +8,9 @@ import { isIncomplete, getStatusText } from '@/lib/artworkUtils';
 type GalleryGridProps = {
   artworks: Artwork[];
   onSelectArtwork: (artwork: Artwork) => void;
+  likedArtworkIds: Set<string>;
+  canLike: boolean;
+  onLike?: (artworkId: string) => void;
 };
 
 const GridContainer = ({ children }: { children: React.ReactNode }) => (
@@ -16,7 +19,7 @@ const GridContainer = ({ children }: { children: React.ReactNode }) => (
   </div>
 );
 
-const GalleryGrid = ({ artworks, onSelectArtwork }: GalleryGridProps) => {
+const GalleryGrid = ({ artworks, onSelectArtwork, likedArtworkIds, canLike, onLike }: GalleryGridProps) => {
   if (artworks.length === 0) {
     return null;
   }
@@ -26,6 +29,14 @@ const GalleryGrid = ({ artworks, onSelectArtwork }: GalleryGridProps) => {
       {artworks.map((artwork) => {
         const incomplete = isIncomplete(artwork);
         const hasImages = artwork.images && artwork.images.length > 0;
+        const isLiked = likedArtworkIds.has(artwork.id);
+        const handleLikeClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+          event.stopPropagation();
+          if (!canLike || !onLike) {
+            return;
+          }
+          onLike(artwork.id);
+        };
 
         // 不完全な作品または画像がない場合はグレーサムネイルを表示
         if (incomplete || !hasImages) {
@@ -96,17 +107,47 @@ const GalleryGrid = ({ artworks, onSelectArtwork }: GalleryGridProps) => {
                         ⚠️
                       </span>
                     )}
-                    <span className="flex items-center">
-                      <svg className="mr-0.5 h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                        />
-                      </svg>
-                      {artwork.likeCount}
-                    </span>
+                    {canLike ? (
+                      <button
+                        type="button"
+                        onClick={handleLikeClick}
+                        className="flex items-center"
+                        aria-pressed={isLiked}
+                        aria-label={isLiked ? 'いいねを取り消す' : 'いいねする'}
+                      >
+                        <svg
+                          className={`mr-0.5 h-3 w-3 ${isLiked ? 'text-red-500' : 'text-gray-400'}`}
+                          fill={isLiked ? 'currentColor' : 'none'}
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                          />
+                        </svg>
+                        {artwork.likeCount}
+                      </button>
+                    ) : (
+                      <span className="flex items-center">
+                        <svg
+                          className={`mr-0.5 h-3 w-3 ${isLiked ? 'text-red-500' : 'text-gray-400'}`}
+                          fill={isLiked ? 'currentColor' : 'none'}
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                          />
+                        </svg>
+                        {artwork.likeCount}
+                      </span>
+                    )}
                     <span className="flex items-center">
                       <svg className="mr-0.5 h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path

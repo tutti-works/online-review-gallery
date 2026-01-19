@@ -25,6 +25,7 @@ type ArtworkSidebarProps = {
   onDelete?: () => Promise<void>;
   onToggleLabel?: (label: LabelType) => void;
   onComment?: (comment: string) => Promise<void>;
+  isLiked?: boolean;
 };
 
 const ArtworkSidebar = ({
@@ -42,6 +43,7 @@ const ArtworkSidebar = ({
   onDelete,
   onToggleLabel,
   onComment,
+  isLiked,
 }: ArtworkSidebarProps) => {
   const [commentText, setCommentText] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
@@ -49,6 +51,7 @@ const ArtworkSidebar = ({
 
   const isAdmin = userRole === 'admin';
   const isViewer = userRole === 'viewer';
+  const liked = Boolean(isLiked);
 
   const handleLike = () => {
     if (!isAdmin || !onLike) return;
@@ -141,7 +144,12 @@ const ArtworkSidebar = ({
                   onClick={handleLike}
                   className="flex flex-1 items-center justify-center space-x-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                 >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    className={`h-5 w-5 ${liked ? 'text-red-500' : 'text-gray-600'}`}
+                    fill={liked ? 'currentColor' : 'none'}
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -163,7 +171,12 @@ const ArtworkSidebar = ({
 
             {isViewer && (
               <div className="flex items-center space-x-2 rounded-md bg-gray-50 p-3 text-gray-600">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg
+                  className={`h-5 w-5 ${liked ? 'text-red-500' : 'text-gray-500'}`}
+                  fill={liked ? 'currentColor' : 'none'}
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"

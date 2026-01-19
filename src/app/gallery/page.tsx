@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import ArtworkModal from '@/components/ArtworkModal';
 import withAuth from '@/components/withAuth';
 import { useAuth } from '@/context/AuthContext';
@@ -50,6 +50,39 @@ function GalleryPage() {
   const [selectedLabels, setSelectedLabels] = useState<LabelType[]>([]);
   const [totalLabelFilter, setTotalLabelFilter] = useState<number | null>(null);
   const [hideIncomplete, setHideIncomplete] = useState<boolean>(false);
+  const [likedArtworkIds, setLikedArtworkIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!isInitialized || user?.role !== 'admin' || !user?.email) {
+      setLikedArtworkIds(new Set());
+      return;
+    }
+
+    let isActive = true;
+    const fetchLikedArtworks = async () => {
+      try {
+        const { collection, query, where, getDocs } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+
+        const likesQuery = query(collection(db, 'likes'), where('userEmail', '==', user.email));
+        const querySnapshot = await getDocs(likesQuery);
+        const likedIds = querySnapshot.docs
+          .map((doc) => doc.data().artworkId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+        if (isActive) {
+          setLikedArtworkIds(new Set(likedIds));
+        }
+      } catch (error) {
+        console.error('[Gallery] Fetch likes error:', error);
+      }
+    };
+
+    void fetchLikedArtworks();
+    return () => {
+      isActive = false;
+    };
+  }, [isInitialized, user?.email, user?.role]);
 
   const sortedArtworks = useMemo(() => {
     switch (sortOption) {
@@ -141,8 +174,9 @@ function GalleryPage() {
       const likeId = `${artworkId}_${user.email.replace(/[.@]/g, '_')}`;
       const likeRef = doc(db, 'likes', likeId);
       const likeDoc = await getDoc(likeRef);
+      const alreadyLiked = likeDoc.exists();
 
-      if (likeDoc.exists()) {
+      if (alreadyLiked) {
         await deleteDoc(likeRef);
         const artworkRef = doc(db, 'artworks', artworkId);
         await updateDoc(artworkRef, {
@@ -183,6 +217,16 @@ function GalleryPage() {
           setSelectedArtwork((prev) => (prev ? { ...prev, likeCount: prev.likeCount + 1 } : null));
         }
       }
+
+      setLikedArtworkIds((prev) => {
+        const next = new Set(prev);
+        if (alreadyLiked) {
+          next.delete(artworkId);
+        } else {
+          next.add(artworkId);
+        }
+        return next;
+      });
     } catch (error) {
       console.error('Like error:', error);
       alert('いいねの処理に失敗しました');
@@ -487,7 +531,13 @@ function GalleryPage() {
             userRole={user?.role}
           />
         ) : (
-          <GalleryGrid artworks={filteredArtworks} onSelectArtwork={setSelectedArtwork} />
+          <GalleryGrid
+            artworks={filteredArtworks}
+            onSelectArtwork={setSelectedArtwork}
+            likedArtworkIds={likedArtworkIds}
+            canLike={user?.role === 'admin'}
+            onLike={handleLike}
+          />
         )}
       </main>
 
@@ -505,6 +555,7 @@ function GalleryPage() {
           onToggleLabel={handleToggleLabel}
           onSaveAnnotation={handleSaveAnnotation}
           userRole={user?.role || 'viewer'}
+          isLiked={likedArtworkIds.has(selectedArtwork.id)}
         />
       )}
     </div>

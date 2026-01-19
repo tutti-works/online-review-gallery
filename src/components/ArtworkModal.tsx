@@ -26,6 +26,7 @@ interface ArtworkModalProps {
   onToggleLabel?: (artworkId: string, label: LabelType) => void;
   onSaveAnnotation?: (artworkId: string, pageNumber: number, annotation: AnnotationSavePayload | null) => Promise<void>;
   userRole: string;
+  isLiked?: boolean;
 }
 
 const ArtworkModal = ({
@@ -41,6 +42,7 @@ const ArtworkModal = ({
   onToggleLabel,
   onSaveAnnotation,
   userRole,
+  isLiked,
 }: ArtworkModalProps) => {
   const [currentPage, setCurrentPage] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -386,6 +388,7 @@ const ArtworkModal = ({
                   onDelete={handleDelete}
                   onToggleLabel={handleToggleLabel}
                   onComment={handleComment}
+                  isLiked={isLiked}
                 />
               </>
             )}
