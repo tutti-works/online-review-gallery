@@ -27,7 +27,7 @@
 ```bash
 cd functions
 gcloud builds submit --tag gcr.io/online-review-gallery/processfiletask
-gcloud run deploy processfiletask --image gcr.io/online-review-gallery/processfiletask --project=online-review-gallery --region=asia-northeast1 --platform=managed --no-allow-unauthenticated --memory=2Gi --timeout=1800 --min-instances=0 --max-instances=20 --cpu=1 --service-account=816131605069-compute@developer.gserviceaccount.com --set-env-vars=FUNCTION_TARGET=processFileTask,GCLOUD_PROJECT=online-review-gallery
+gcloud run deploy processfiletask --image gcr.io/<PROJECT_ID>/processfiletask --project=<PROJECT_ID> --region=asia-northeast1 --platform=managed --no-allow-unauthenticated --memory=2Gi --timeout=1800 --min-instances=0 --max-instances=20 --cpu=1 --service-account=<PROJECT_NUMBER>-compute@developer.gserviceaccount.com --set-env-vars=FUNCTION_TARGET=processFileTask,GCLOUD_PROJECT=<PROJECT_ID>
 ```
 
 ## 2. Firebase Functionsのデプロイ
@@ -120,44 +120,27 @@ NEXT_PUBLIC_FUNCTIONS_BASE_URL=https://asia-northeast1-online-review-gallery.clo
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
 ```
 
-## GitHub Actionsによる自動デプロイ
+## GitHub Actionsによるデプロイ
 
-本プロジェクトでは、GitHub Actionsを使用した自動デプロイが設定されています。
+本番の自動デプロイは無効化し、PRのプレビューのみGitHub Actionsで実行します。  
+本番デプロイは手動で実行してください。
 
 ### ワークフロー
 
-`.github/workflows/firebase-deploy.yml`
+- `.github/workflows/firebase-hosting-pull-request.yml`  
+  PRごとにPreviewチャネル（`pr-<番号>`）へデプロイ。
+- `.github/workflows/firebase-hosting-deploy.yml`  
+  手動実行（`workflow_dispatch`）で本番（live）へデプロイ。
 
-```yaml
-name: Deploy to Firebase
+### 手動デプロイの実行手順
 
-on:
-  push:
-    branches:
-      - main
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-      - run: npm ci
-      - run: npm run build
-      - uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
-          channelId: live
-          projectId: online-review-gallery
-```
+GitHub の Actions タブから `Deploy to Firebase Hosting (manual)` を選び、`Run workflow` を実行します。
 
 ### 必要なシークレット
 
 GitHub リポジトリの Settings > Secrets and variables > Actions に以下を設定：
 
-- `FIREBASE_SERVICE_ACCOUNT`: Firebase サービスアカウントのJSON
-- `GITHUB_TOKEN`: 自動生成（設定不要）
+- `FIREBASE_TOKEN`: Firebase CLIトークン（`firebase login:ci`で発行）
 
 ## デプロイ後の確認事項
 
