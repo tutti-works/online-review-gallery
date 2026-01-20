@@ -244,180 +244,176 @@ const ShowcaseGalleryPage = () => {
 
   return (
     <ShowcaseAccessGate>
-      <main className="min-h-screen bg-gray-50">
-        <div className="mx-auto w-full max-w-6xl px-6 py-10">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-2">
+      <main className="min-h-screen text-white pb-32">
+        <div className="mx-auto w-full max-w-[1400px] px-6 py-12">
+            {/* Header / Nav */}
+            <div className="mb-12 flex flex-col gap-4">
               <Link
                 href="/showcase"
-                className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900"
+                className="inline-flex items-center gap-2 text-xs font-light tracking-widest text-gray-400 hover:text-white mb-2 transition-colors uppercase"
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
                 </svg>
-                課題一覧へ戻る
+                Back to Collection
               </Link>
-              <h1 className="text-2xl font-semibold text-gray-900">{displayTitle}</h1>
+              
+              {canManage ? (
+                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <input
+                      value={titleInput}
+                      onChange={(event) => setTitleInput(event.target.value)}
+                      placeholder="課題名を入力"
+                      className="flex-1 bg-transparent text-3xl font-serif text-white placeholder-gray-600 focus:outline-none focus:border-b focus:border-white/30 transition-colors"
+                      style={{ fontFamily: 'var(--font-serif)' }}
+                    />
+                    <button
+                        type="button"
+                        onClick={handleSaveTitle}
+                        disabled={savingTitle}
+                        className="text-xs text-gray-400 hover:text-white whitespace-nowrap"
+                    >
+                        {savingTitle ? '保存中...' : 'タイトルを保存'}
+                    </button>
+                    {/* Hidden sync button here for admin convenience? No, keep it in floating bar */}
+                 </div>
+              ) : (
+                <h1 className="font-serif text-3xl md:text-4xl text-white font-light" style={{ fontFamily: 'var(--font-serif)' }}>
+                  {displayTitle}
+                </h1>
+              )}
             </div>
-            {isAdmin && (
-              <div className="flex flex-wrap items-center gap-3">
-                {canManage && (
-                  <button
-                    type="button"
-                    onClick={handleSyncGallery}
-                    disabled={syncing}
-                    className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    この課題を更新
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setViewerMode((prev) => !prev)}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                >
-                  閲覧モード: {viewerMode ? 'ON' : 'OFF'}
-                </button>
-              </div>
-            )}
-          </div>
 
           {error && (
-            <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+            <div className="mb-8 rounded border border-red-500/30 bg-red-900/20 px-4 py-3 text-sm text-red-200 backdrop-blur-sm">
               {error}
             </div>
           )}
 
-          {canManage && (
-            <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="text-sm font-medium text-gray-700">課題名</label>
-                <input
-                  value={titleInput}
-                  onChange={(event) => setTitleInput(event.target.value)}
-                  placeholder={gallery?.assignmentName || '課題名を入力'}
-                  className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveTitle}
-                  disabled={savingTitle}
-                  className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  課題名を保存
-                </button>
-              </div>
-            </div>
-          )}
-
           {loading ? (
-            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="h-56 animate-pulse rounded-lg bg-gray-200" />
+            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="aspect-[420/297] animate-pulse rounded bg-white/5" />
               ))}
             </div>
           ) : sortedArtworks.length === 0 ? (
-            <div className="mt-10 rounded-lg border border-gray-200 bg-white px-6 py-10 text-center text-gray-600">
-              まだ優秀作品が選定されていません。
+            <div className="mt-20 flex flex-col items-center justify-center text-center text-gray-500 font-light">
+              <p className="text-lg">まだ優秀作品が選定されていません。</p>
             </div>
           ) : (
-            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {showcase?.overviewImageUrl && (
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setOverviewModalOpen(true)}
-                    className="group block w-full overflow-hidden rounded-lg border border-gray-200 bg-white p-0 text-left leading-none shadow-sm transition hover:shadow-md"
-                  >
-                    <div className="relative w-full bg-gray-100" style={{ aspectRatio: '420 / 297' }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={showcase.overviewImageUrl}
-                        alt={`${displayTitle} 概要`}
-                        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                      />
-                    </div>
-                    <div className={canManage ? 'flex min-h-[52px] items-center px-4 py-2' : 'p-4'}>
-                      <span className="text-sm font-semibold text-gray-800">課題概要</span>
-                    </div>
-                  </button>
-                  {canManage && (
-                    <button
-                      type="button"
-                      onClick={() => setReuploadConfirmOpen(true)}
-                      disabled={uploadingOverview}
-                      className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow-md transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                      title="課題概要を再アップロード"
-                    >
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.6}
-                          d="M4 12a8 8 0 0 1 13.657-5.657L20 8M20 8V4m0 4h-4M20 12a8 8 0 0 1-13.657 5.657L4 16m0 0v4m0-4h4"
-                        />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {canManage && !showcase?.overviewImageUrl && (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingOverview}
-                  className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 bg-white text-sm text-gray-600 hover:border-gray-400"
+            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {/* Overview Panel (Always first) */}
+              <div
+                  className="relative overflow-hidden bg-[#1e1e1e] group"
                   style={{ aspectRatio: '420 / 297' }}
-                >
-                  <span className="text-base font-semibold">課題概要をアップロード</span>
-                  <span className="text-xs">A3画像を追加</span>
-                </button>
-              )}
+              >
+                 {showcase?.overviewImageUrl ? (
+                    <button
+                        type="button"
+                        onClick={() => setOverviewModalOpen(true)}
+                        className="h-full w-full block"
+                    >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={showcase.overviewImageUrl}
+                            alt="課題概要"
+                            className="h-full w-full object-cover transition duration-700 group-hover:scale-105 group-hover:opacity-90"
+                        />
+                        <div className="absolute bottom-0 left-0 p-4 bg-gradient-to-t from-black/80 to-transparent w-full">
+                            <span className="text-white font-serif text-lg tracking-widest">OVERVIEW</span>
+                        </div>
+                    </button>
+                 ) : (
+                   <div className="flex h-full w-full flex-col items-center justify-center border border-white/10 text-gray-500">
+                      <span className="text-xs tracking-widest">OVERVIEW PANEL</span>
+                   </div>
+                 )}
 
+                 {/* Admin Controls for Overview */}
+                 {canManage && (
+                    <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                         {showcase?.overviewImageUrl ? (
+                            <button
+                                type="button"
+                                onClick={() => setReuploadConfirmOpen(true)}
+                                className="bg-black/60 hover:bg-black text-white p-2 rounded-full backdrop-blur-sm transition"
+                                title="概要画像を再アップロード"
+                            >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                </svg>
+                            </button>
+                         ) : (
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="bg-white text-black px-4 py-2 rounded-full text-xs font-bold shadow-lg hover:bg-gray-200 transition"
+                            >
+                                Upload Image
+                            </button>
+                         )}
+                    </div>
+                 )}
+              </div>
+
+              {/* Artworks */}
               {sortedArtworks.map((artwork, index) => {
                 const coverImage = getCoverImage(artwork);
                 const isFeatured = artwork.id === resolvedFeaturedId;
                 return (
                   <div
                     key={artwork.id}
-                    className="group overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition hover:shadow-md"
+                    className="group relative animate-fade-in"
+                    style={{ animationDelay: `${index * 50}ms` }}
                   >
                     <button
                       type="button"
                       onClick={() => setSelectedIndex(index)}
-                      className="block w-full p-0 text-left leading-none"
+                      className="block w-full overflow-hidden bg-[#1e1e1e]"
+                      style={{ aspectRatio: '420 / 297' }}
                     >
-                      <div className="relative w-full bg-gray-100" style={{ aspectRatio: '420 / 297' }}>
                         {coverImage ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={coverImage.thumbnailUrl || coverImage.url}
                             alt={artwork.title || artwork.studentName}
-                            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                            className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-105"
                           />
                         ) : (
-                          <div className="flex h-full items-center justify-center text-sm text-gray-500">画像なし</div>
+                          <div className="flex h-full items-center justify-center text-xs text-gray-600 font-light">NO IMAGE</div>
                         )}
-                        {canManage && isFeatured && (
-                          <div className="absolute left-3 top-3 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-800">
-                            最優秀
+                        
+                        {/* Hover Info */}
+                        <div className="absolute inset-0 flex flex-col justify-end p-4 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                             <p className="text-white text-sm font-medium">{artwork.studentName}</p>
+                             {/* {artwork.title && <p className="text-gray-300 text-xs truncate">{artwork.title}</p>} */}
+                        </div>
+
+                        {/* Featured Badge */}
+                        {isFeatured && (
+                          <div className="absolute top-3 left-3 flex items-center gap-1 bg-yellow-500/90 text-black text-[10px] font-bold px-2 py-1 rounded shadow-sm backdrop-blur-md">
+                             <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                             </svg>
+                             BEST
                           </div>
                         )}
-                      </div>
                     </button>
-                    <div className={canManage ? 'flex min-h-[52px] items-center justify-between gap-3 px-4 py-2' : 'p-4'}>
-                      <p className="text-sm font-semibold text-gray-900">{artwork.studentName}</p>
-                      {canManage && (
-                        <button
-                          type="button"
-                          onClick={() => void handleSelectFeatured(artwork.id)}
-                          className="shrink-0 rounded-md border border-gray-300 px-3 py-1 text-[11px] font-semibold text-gray-700 transition hover:bg-gray-50"
-                        >
-                          最優秀に指定
-                        </button>
-                      )}
-                    </div>
+
+                    {/* Admin Controls for Artwork */}
+                    {canManage && (
+                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                             {!isFeatured && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleSelectFeatured(artwork.id)}
+                                  className="bg-black/60 hover:bg-yellow-600 hover:text-white text-gray-300 px-3 py-1 rounded-full text-[10px] backdrop-blur-sm transition border border-white/20"
+                                >
+                                  最優秀に指定
+                                </button>
+                             )}
+                        </div>
+                    )}
                   </div>
                 );
               })}
@@ -442,39 +438,42 @@ const ShowcaseGalleryPage = () => {
           />
         )}
 
+        {/* Overview Modal */}
         {overviewModalOpen && showcase?.overviewImageUrl && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4 animate-fade-in">
             <button
               type="button"
               onClick={() => setOverviewModalOpen(false)}
-              className="absolute left-4 top-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-gray-800 shadow-lg transition hover:bg-white"
+              className="absolute right-6 top-6 z-10 text-white/50 hover:text-white transition"
               title="閉じる"
             >
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={showcase.overviewImageUrl}
               alt={`${displayTitle} 概要`}
-              className="max-h-full max-w-full rounded-lg object-contain"
+              className="max-h-full max-w-full object-contain shadow-2xl"
             />
           </div>
         )}
 
+        {/* Confirmation Modal */}
         {reuploadConfirmOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-              <h2 className="text-lg font-semibold text-gray-900">課題概要を再アップロードしますか？</h2>
-              <p className="mt-2 text-sm text-gray-600">
-                既存の課題概要画像は削除されます。よろしいですか？
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 animate-fade-in">
+            <div className="glass-panel w-full max-w-md rounded-xl p-8 shadow-2xl text-center">
+              <h2 className="text-xl font-medium text-white">画像の上書き確認</h2>
+              <p className="mt-4 text-sm text-gray-300 leading-relaxed">
+                既存の課題概要画像は削除され、新しい画像に置き換わります。<br/>
+                よろしいですか？
               </p>
-              <div className="mt-6 flex items-center justify-end gap-3">
+              <div className="mt-8 flex items-center justify-center gap-4">
                 <button
                   type="button"
                   onClick={() => setReuploadConfirmOpen(false)}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="rounded-full border border-gray-600 px-6 py-2 text-sm text-gray-300 hover:bg-white hover:text-black transition"
                 >
                   キャンセル
                 </button>
@@ -484,13 +483,42 @@ const ShowcaseGalleryPage = () => {
                     setReuploadConfirmOpen(false);
                     fileInputRef.current?.click();
                   }}
-                  className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                  className="rounded-full bg-white px-6 py-2 text-sm font-medium text-black hover:bg-gray-200 transition"
                 >
-                  再アップロード
+                  実行する
                 </button>
               </div>
             </div>
           </div>
+        )}
+
+        {/* Floating Admin Bar */}
+        {isAdmin && (
+            <div className="fixed bottom-8 right-8 z-50 flex items-center gap-4">
+                 {/* Only show "Update This" if in Manage Mode */}
+                 {canManage && (
+                   <button
+                     type="button"
+                     onClick={handleSyncGallery}
+                     disabled={syncing}
+                     className="glass-panel flex h-10 items-center gap-2 rounded-full px-5 text-xs font-medium text-white shadow-lg transition hover:bg-white/10 disabled:opacity-50"
+                   >
+                     <span className="h-2 w-2 rounded-full bg-green-500"></span>
+                     この課題を更新
+                   </button>
+                 )}
+                 
+                 <button
+                   type="button"
+                   onClick={() => setViewerMode((prev) => !prev)}
+                   className={`glass-panel flex h-10 items-center gap-2 rounded-full px-5 text-xs font-medium shadow-lg transition ${viewerMode ? 'bg-blue-500/20 text-blue-200 border-blue-500/30' : 'text-gray-300 hover:bg-white/10'}`}
+                 >
+                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={viewerMode ? "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" : "M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29"} />
+                   </svg>
+                   {viewerMode ? '閲覧モード中' : '管理者モード'}
+                 </button>
+            </div>
         )}
       </main>
     </ShowcaseAccessGate>
