@@ -1,7 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  DndContext,
+  type DragEndEvent,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  rectSortingStrategy,
+  defaultAnimateLayoutChanges,
+  type AnimateLayoutChanges,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import withShowcaseAuth from '@/components/withShowcaseAuth';
 import { useAuth } from '@/context/AuthContext';
 import type { Artwork, Gallery, ShowcaseGallery } from '@/types';
@@ -20,6 +37,14 @@ type ShowcaseEntryBase = {
 
 type ShowcaseEntry = ShowcaseEntryBase & {
   featuredArtwork: Artwork | null;
+};
+
+type ShowcaseCardProps = {
+  entry: ShowcaseEntry;
+  canManage: boolean;
+  updateCandidates: Gallery[];
+  onUpdateSourceChange: (galleryId: string, nextSourceId: string) => void;
+  savingOrder: boolean;
 };
 
 const mapGalleryDoc = (id: string, data: Record<string, any>): Gallery => {
@@ -49,18 +74,23 @@ const ShowcaseHomePage = () => {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [updatingSourceId, setUpdatingSourceId] = useState<string | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
   const { viewerMode, setViewerMode } = useShowcaseViewerMode();
+  const initialLoadRef = useRef(true);
 
   const isAdmin = user?.role === 'admin';
   const isAllowed = isShowcaseDomainAllowed(user?.email);
   const canManage = isAdmin && !viewerMode;
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const getClassroomKey = (gallery: Gallery): string =>
     gallery.classroomId || gallery.courseId;
 
   const loadData = useCallback(async () => {
     try {
-      setLoading(true);
+      if (initialLoadRef.current) {
+        setLoading(true);
+      }
       setError(null);
 
       const { collection, getDocs, orderBy, query } = await import('firebase/firestore');
@@ -82,6 +112,7 @@ const ShowcaseHomePage = () => {
           featuredArtworkId: data.featuredArtworkId ?? null,
           curatedArtworkIds: Array.isArray(data.curatedArtworkIds) ? data.curatedArtworkIds : [],
           updateSourceGalleryId: data.updateSourceGalleryId ?? null,
+          displayOrder: typeof data.displayOrder === 'number' ? data.displayOrder : undefined,
           overviewImageUrl: data.overviewImageUrl,
           overviewImagePath: data.overviewImagePath,
           syncedAt: data.syncedAt?.toDate ? data.syncedAt.toDate() : data.syncedAt,
@@ -114,9 +145,20 @@ const ShowcaseHomePage = () => {
         })
         .filter((entry): entry is ShowcaseEntryBase => entry !== null);
 
+      const orderedEntries = [...candidateEntries].sort((a, b) => {
+        const aOrder = typeof a.showcase.displayOrder === 'number' ? a.showcase.displayOrder : Number.POSITIVE_INFINITY;
+        const bOrder = typeof b.showcase.displayOrder === 'number' ? b.showcase.displayOrder : Number.POSITIVE_INFINITY;
+        if (aOrder !== bOrder) {
+          return aOrder - bOrder;
+        }
+        const aCreated = a.gallery.createdAt ? new Date(a.gallery.createdAt).getTime() : 0;
+        const bCreated = b.gallery.createdAt ? new Date(b.gallery.createdAt).getTime() : 0;
+        return bCreated - aCreated;
+      });
+
       const updateSourceIds = Array.from(
         new Set(
-          candidateEntries
+          orderedEntries
             .map((entry) => entry.showcase.updateSourceGalleryId)
             .filter((id): id is string => Boolean(id)),
         ),
@@ -131,11 +173,11 @@ const ShowcaseHomePage = () => {
       const updateSourceMap = new Map(updateSourcePairs);
 
       // Fetch artworks for thumbnails
-      const uniqueFeaturedIds = Array.from(new Set(candidateEntries.map((entry) => entry.featuredArtworkId)));
+      const uniqueFeaturedIds = Array.from(new Set(orderedEntries.map((entry) => entry.featuredArtworkId)));
       const featuredArtworks = await fetchArtworksByIds(uniqueFeaturedIds);
       const featuredMap = new Map(featuredArtworks.map((artwork) => [artwork.id, artwork]));
 
-      const resolvedEntries = candidateEntries.map((entry) => {
+      const resolvedEntries = orderedEntries.map((entry) => {
         const featuredArtwork = entry.featuredArtworkId ? featuredMap.get(entry.featuredArtworkId) ?? null : null;
         const updateSourceId = entry.showcase.updateSourceGalleryId;
         const updateArtworks = updateSourceId ? updateSourceMap.get(updateSourceId) : null;
@@ -155,6 +197,7 @@ const ShowcaseHomePage = () => {
       setError('専用ギャラリーの読み込みに失敗しました。');
     } finally {
       setLoading(false);
+      initialLoadRef.current = false;
     }
   }, []);
 
@@ -192,6 +235,188 @@ const ShowcaseHomePage = () => {
     setSyncMessage(null);
     setSyncing(false);
     void loadData();
+  };
+
+  const persistEntryOrder = useCallback(
+    async (nextEntries: ShowcaseEntry[]) => {
+      if (!user?.email) {
+        return;
+      }
+
+      const { doc, writeBatch } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
+      const batch = writeBatch(db);
+
+      nextEntries.forEach((entry, index) => {
+        batch.set(
+          doc(db, 'showcaseGalleries', entry.gallery.id),
+          {
+            displayOrder: index + 1,
+            updatedBy: user.email,
+          },
+          { merge: true },
+        );
+      });
+
+      await batch.commit();
+    },
+    [user?.email],
+  );
+  const handleDragEnd = async (event: DragEndEvent) => {
+    if (!canManage || savingOrder) {
+      return;
+    }
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    const oldIndex = entries.findIndex((entry) => entry.gallery.id === activeId);
+    const newIndex = entries.findIndex((entry) => entry.gallery.id === overId);
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+    const nextEntries = arrayMove(entries, oldIndex, newIndex);
+    setEntries(nextEntries);
+    setSavingOrder(true);
+    setError(null);
+    try {
+      await persistEntryOrder(nextEntries);
+    } catch (saveError) {
+      console.error('[Showcase] Failed to save order:', saveError);
+      setError('並び替えの保存に失敗しました。');
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const ShowcaseCardContent = ({
+    entry,
+    canManage,
+    updateCandidates,
+    onUpdateSourceChange,
+    savingOrder,
+  }: ShowcaseCardProps) => {
+    const displayTitle = entry.showcase.displayTitle?.trim() || entry.gallery.assignmentName;
+    const featuredArtwork = entry.featuredArtwork;
+    const coverImage = featuredArtwork ? getCoverImage(featuredArtwork) : null;
+
+    return (
+      <>
+        <Link
+          href={`/showcase/${entry.gallery.id}`}
+          className="block"
+        >
+          <div className="relative w-full overflow-hidden bg-[#1e1e1e]" style={{ aspectRatio: '420 / 297' }}>
+            {coverImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={coverImage.thumbnailUrl || coverImage.url}
+                alt={displayTitle}
+                className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-105 group-hover:opacity-80"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs text-gray-600 font-light tracking-widest">NO IMAGE</div>
+            )}
+            
+            {/* Hover Overlay */}
+            <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+          </div>
+          
+          <div className="mt-4 flex items-baseline justify-between border-b border-white/10 pb-2 transition-colors group-hover:border-white/40">
+            <h2 className="font-serif text-lg font-light text-gray-200 group-hover:text-white transition-colors">
+              {displayTitle}
+            </h2>
+            <span className="text-[10px] text-gray-600 group-hover:text-gray-400">
+               VIEW DETAILS
+            </span>
+          </div>
+        </Link>
+
+        {canManage && (
+          <div className="mt-3 text-xs text-gray-400">
+            <label className="mb-1 block text-[10px] uppercase tracking-[0.2em] text-gray-500">
+              ＋更新用データのソースを選択
+            </label>
+            <select
+              value={entry.showcase.updateSourceGalleryId ?? ''}
+              onChange={(event) => void onUpdateSourceChange(entry.gallery.id, event.target.value)}
+              disabled={savingOrder}
+              className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-xs text-gray-200 outline-none transition focus:border-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">（未設定）</option>
+              {updateCandidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.assignmentName || candidate.title || candidate.id}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  const SortableShowcaseCard = ({
+    entry,
+    canManage,
+    updateCandidates,
+    onUpdateSourceChange,
+    savingOrder,
+  }: ShowcaseCardProps) => {
+    const animateLayoutChanges: AnimateLayoutChanges = (args) => {
+      if (args.isSorting || args.wasDragging) {
+        return defaultAnimateLayoutChanges(args);
+      }
+      return false;
+    };
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({
+      id: entry.gallery.id,
+      disabled: !canManage || savingOrder,
+      animateLayoutChanges,
+    });
+
+    const fallbackTransition = 'transform 180ms cubic-bezier(0.2, 0, 0, 1)';
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition: isDragging ? 'none' : (transition ?? fallbackTransition),
+    };
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={`group relative will-change-transform ${isDragging ? 'opacity-80' : ''}`}
+      >
+        {canManage && (
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/50 text-[10px] text-gray-200 backdrop-blur-sm transition hover:border-white/30"
+            aria-label="ドラッグして並び替え"
+            title="ドラッグして並び替え"
+          >
+            ⋮⋮
+          </button>
+        )}
+        <ShowcaseCardContent
+          entry={entry}
+          canManage={canManage}
+          updateCandidates={updateCandidates}
+          onUpdateSourceChange={onUpdateSourceChange}
+          savingOrder={savingOrder}
+        />
+      </div>
+    );
   };
 
   const handleUpdateSourceChange = async (galleryId: string, nextSourceId: string) => {
@@ -282,79 +507,69 @@ const ShowcaseHomePage = () => {
             </div>
           ) : (
             <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-3">
-              {entries.map((entry, index) => {
-                const displayTitle = entry.showcase.displayTitle?.trim() || entry.gallery.assignmentName;
-                const featuredArtwork = entry.featuredArtwork;
-                const coverImage = featuredArtwork ? getCoverImage(featuredArtwork) : null;
-                const parentClassroomId = getClassroomKey(entry.gallery);
-                const updateCandidates = galleries
-                  .filter((gallery) => {
-                    if (gallery.id === entry.gallery.id) {
-                      return false;
-                    }
-                    return getClassroomKey(gallery) === parentClassroomId;
-                  })
-                  .sort((a, b) => (a.assignmentName || '').localeCompare(b.assignmentName || ''));
-
-                return (
-                  <div
-                    key={entry.gallery.id}
-                    className="group relative opacity-0 animate-fade-in"
-                    style={{ animationDelay: `${index * 100}ms` }}
+              {canManage ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={entries.map((entry) => entry.gallery.id)}
+                    strategy={rectSortingStrategy}
                   >
-                    <Link
-                      href={`/showcase/${entry.gallery.id}`}
-                      className="block"
-                    >
-                      <div className="relative w-full overflow-hidden bg-[#1e1e1e]" style={{ aspectRatio: '420 / 297' }}>
-                        {coverImage ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={coverImage.thumbnailUrl || coverImage.url}
-                            alt={displayTitle}
-                            className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-105 group-hover:opacity-80"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-xs text-gray-600 font-light tracking-widest">NO IMAGE</div>
-                        )}
-                        
-                        {/* Hover Overlay */}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
-                      </div>
-                      
-                      <div className="mt-4 flex items-baseline justify-between border-b border-white/10 pb-2 transition-colors group-hover:border-white/40">
-                        <h2 className="font-serif text-lg font-light text-gray-200 group-hover:text-white transition-colors">
-                          {displayTitle}
-                        </h2>
-                        <span className="text-[10px] text-gray-600 group-hover:text-gray-400">
-                           VIEW DETAILS
-                        </span>
-                      </div>
-                    </Link>
+                    {entries.map((entry, index) => {
+                      const parentClassroomId = getClassroomKey(entry.gallery);
+                      const updateCandidates = galleries
+                        .filter((gallery) => {
+                          if (gallery.id === entry.gallery.id) {
+                            return false;
+                          }
+                          return getClassroomKey(gallery) === parentClassroomId;
+                        })
+                        .sort((a, b) => (a.assignmentName || '').localeCompare(b.assignmentName || ''));
 
-                    {canManage && (
-                      <div className="mt-3 text-xs text-gray-400">
-                        <label className="mb-1 block text-[10px] uppercase tracking-[0.2em] text-gray-500">
-                          ＋更新用データのソースを選択
-                        </label>
-                        <select
-                          value={entry.showcase.updateSourceGalleryId ?? ''}
-                          onChange={(event) => void handleUpdateSourceChange(entry.gallery.id, event.target.value)}
-                          disabled={updatingSourceId === entry.gallery.id}
-                          className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-xs text-gray-200 outline-none transition focus:border-white/30 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <option value="">（未設定）</option>
-                          {updateCandidates.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {candidate.assignmentName || candidate.title || candidate.id}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                      return (
+                        <SortableShowcaseCard
+                          key={entry.gallery.id}
+                          entry={entry}
+                          canManage={canManage}
+                          updateCandidates={updateCandidates}
+                          onUpdateSourceChange={handleUpdateSourceChange}
+                          savingOrder={savingOrder || updatingSourceId === entry.gallery.id}
+                        />
+                      );
+                    })}
+                  </SortableContext>
+                </DndContext>
+              ) : (
+                entries.map((entry, index) => {
+                  const parentClassroomId = getClassroomKey(entry.gallery);
+                  const updateCandidates = galleries
+                    .filter((gallery) => {
+                      if (gallery.id === entry.gallery.id) {
+                        return false;
+                      }
+                      return getClassroomKey(gallery) === parentClassroomId;
+                    })
+                    .sort((a, b) => (a.assignmentName || '').localeCompare(b.assignmentName || ''));
+
+                  return (
+                    <div
+                      key={entry.gallery.id}
+                      className="group relative opacity-0 animate-fade-in-opacity"
+                      style={{ animationDelay: `${index * 100}ms` }}
+                    >
+                      <ShowcaseCardContent
+                        entry={entry}
+                        canManage={false}
+                        updateCandidates={updateCandidates}
+                        onUpdateSourceChange={handleUpdateSourceChange}
+                        savingOrder={savingOrder}
+                      />
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
         </div>
@@ -364,15 +579,20 @@ const ShowcaseHomePage = () => {
             <div className="fixed bottom-8 right-8 z-50 flex items-center gap-4">
                  {/* Only show "Update All" if in Manage Mode */}
                  {canManage && (
-                   <button
-                     type="button"
-                     onClick={handleSyncAll}
-                     disabled={syncing}
-                     className="glass-panel flex h-10 items-center gap-2 rounded-full px-5 text-xs font-medium text-white shadow-lg transition hover:bg-white/10 disabled:opacity-50"
-                   >
-                     <span className="h-2 w-2 rounded-full bg-green-500"></span>
-                     全データを同期
-                   </button>
+                   <div className="flex items-center gap-4">
+                     <div className="hidden text-[10px] uppercase tracking-[0.3em] text-gray-400 sm:block">
+                       管理者のみ：カードは「⋮⋮」ハンドルドラッグで並び替え可能
+                     </div>
+                     <button
+                       type="button"
+                       onClick={handleSyncAll}
+                       disabled={syncing}
+                       className="glass-panel flex h-10 items-center gap-2 rounded-full px-5 text-xs font-medium text-white shadow-lg transition hover:bg-white/10 disabled:opacity-50"
+                     >
+                       <span className="h-2 w-2 rounded-full bg-green-500"></span>
+                       全データを同期
+                     </button>
+                   </div>
                  )}
                  
                  <button

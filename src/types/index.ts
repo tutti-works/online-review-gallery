@@ -101,6 +101,7 @@ export interface ShowcaseGallery {
   featuredArtworkId?: string | null;
   curatedArtworkIds?: string[];
   updateSourceGalleryId?: string | null;
+  displayOrder?: number;
   overviewImageUrl?: string;
   overviewImagePath?: string;
   syncedAt?: Date | string;
