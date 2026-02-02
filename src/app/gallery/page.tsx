@@ -17,6 +17,7 @@ import { useImportProgress } from './hooks/useImportProgress';
 import type { SortOption } from './types';
 import { extractLinesFromStageJSON } from '@/utils/annotations';
 import { sortBySubmissionDate, sortByStudentId, isIncomplete, filterCompleteArtworks, getStudentId } from '@/lib/artworkUtils';
+import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
 
 const removePageFromMap = <T,>(
   map: Record<string, T> | undefined,
@@ -272,7 +273,7 @@ function GalleryPage() {
     if (user?.role !== 'admin' || !user?.email) return;
 
     try {
-      const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL || 'http://localhost:5001';
+      const functionsBaseUrl = getFunctionsBaseUrl();
       const response = await fetch(`${functionsBaseUrl}/deleteArtwork`, {
         method: 'POST',
         headers: {

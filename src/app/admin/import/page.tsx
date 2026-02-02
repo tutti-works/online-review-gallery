@@ -6,6 +6,7 @@ import withAuth from '@/components/withAuth';
 import { useAuth } from '@/context/AuthContext';
 import { ClassroomCourse, CourseAssignment } from '@/types';
 import { CLASSROOM_INCREMENTAL_SCOPES } from '@/lib/firebase';
+import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
 
 const CONSENT_MESSAGE = 'Google Classroom APIへのアクセス許可が必要です。下のボタンから許可してください。';
 const TOKEN_MESSAGE = 'Google Classroom APIのトークンを取得できませんでした。ログアウト後に再度ログインしてください。';
@@ -324,7 +325,7 @@ function AdminImportPage() {
         console.log(`Created new gallery: ${galleryId}`);
       }
 
-      const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL || 'http://localhost:5001';
+      const functionsBaseUrl = getFunctionsBaseUrl();
 
       console.log('読み込まれたFunctionsのURL:', functionsBaseUrl);
       console.log('Access Token being sent:', accessToken);

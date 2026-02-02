@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
 
 export type ImportProgress = {
   importJobId: string;
@@ -51,7 +52,7 @@ export const useImportProgress = ({
         return;
       }
 
-      const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL || 'http://localhost:5001';
+      const functionsBaseUrl = getFunctionsBaseUrl();
       const checkProgress = setInterval(async () => {
         try {
           const response = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`);

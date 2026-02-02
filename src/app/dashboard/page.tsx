@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import withAuth from '@/components/withAuth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Gallery } from '@/types';
+import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
 
 interface SyncResult {
   galleryId: string;
@@ -44,10 +45,7 @@ function DashboardPage() {
             throw new Error('ユーザー情報が見つかりません。');
           }
 
-          const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL;
-          if (!functionsBaseUrl) {
-            throw new Error('Cloud FunctionsのURLが設定されていません。');
-          }
+          const functionsBaseUrl = getFunctionsBaseUrl();
           const deleteAllDataUrl = `${functionsBaseUrl}/deleteAllData`;
           
           const response = await fetch(deleteAllDataUrl, {
@@ -98,11 +96,7 @@ function DashboardPage() {
         throw new Error('ユーザー情報が見つかりません。');
       }
 
-      const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL;
-      if (!functionsBaseUrl) {
-        throw new Error('Cloud FunctionsのURLが設定されていません。');
-      }
-
+      const functionsBaseUrl = getFunctionsBaseUrl();
       const response = await fetch(`${functionsBaseUrl}/syncGalleryArtworkCount`, {
         method: 'POST',
         headers: {
@@ -186,10 +180,7 @@ function DashboardPage() {
             throw new Error('ユーザー情報が見つかりません。');
           }
 
-          const functionsBaseUrl = process.env.NEXT_PUBLIC_FUNCTIONS_BASE_URL;
-          if (!functionsBaseUrl) {
-            throw new Error('Cloud FunctionsのURLが設定されていません。');
-          }
+          const functionsBaseUrl = getFunctionsBaseUrl();
           const deleteGalleryDataUrl = `${functionsBaseUrl}/deleteGalleryData`;
 
           const response = await fetch(deleteGalleryDataUrl, {
