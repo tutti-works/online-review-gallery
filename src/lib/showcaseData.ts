@@ -126,3 +126,15 @@ export const fetchArtworksByIds = async (ids: string[]): Promise<Artwork[]> => {
 
   return artworks;
 };
+
+export const fetchArtworksByGalleryId = async (galleryId: string): Promise<Artwork[]> => {
+  if (!galleryId) {
+    return [];
+  }
+
+  const { collection, getDocs, query, where } = await import('firebase/firestore');
+  const { db } = await import('@/lib/firebase');
+
+  const snapshot = await getDocs(query(collection(db, 'artworks'), where('galleryId', '==', galleryId)));
+  return snapshot.docs.map((docSnap) => normalizeArtworkDoc(docSnap.id, docSnap.data()));
+};

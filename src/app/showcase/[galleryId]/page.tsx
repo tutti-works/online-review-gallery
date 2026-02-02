@@ -8,11 +8,12 @@ import { useAuth } from '@/context/AuthContext';
 import type { Artwork, Gallery, ShowcaseGallery } from '@/types';
 import ShowcaseAccessGate from '../components/ShowcaseAccessGate';
 import ShowcaseArtworkModal from '../components/ShowcaseArtworkModal';
-import { fetchArtworksByIds, getCoverImage } from '@/lib/showcaseData';
+import { fetchArtworksByGalleryId, fetchArtworksByIds, getCoverImage } from '@/lib/showcaseData';
 import { sortByStudentId } from '@/lib/artworkUtils';
 import { syncShowcaseGallery } from '@/lib/showcaseSync';
 import { isShowcaseDomainAllowed } from '@/utils/showcaseAccess';
 import { useShowcaseViewerMode } from '@/hooks/useShowcaseViewerMode';
+import { mergeShowcaseArtworks } from '@/lib/showcaseMerge';
 
 const mapGalleryDoc = (id: string, data: Record<string, any>): Gallery => {
   return {
@@ -86,6 +87,7 @@ const ShowcaseGalleryPage = () => {
         displayTitle: showcaseData.displayTitle,
         featuredArtworkId: showcaseData.featuredArtworkId ?? null,
         curatedArtworkIds: Array.isArray(showcaseData.curatedArtworkIds) ? showcaseData.curatedArtworkIds : [],
+        updateSourceGalleryId: showcaseData.updateSourceGalleryId ?? null,
         overviewImageUrl: showcaseData.overviewImageUrl,
         overviewImagePath: showcaseData.overviewImagePath,
         syncedAt: showcaseData.syncedAt?.toDate ? showcaseData.syncedAt.toDate() : showcaseData.syncedAt,
@@ -95,7 +97,11 @@ const ShowcaseGalleryPage = () => {
       setTitleInput(nextShowcase.displayTitle || nextGallery?.assignmentName || '');
 
       if (nextShowcase.curatedArtworkIds && nextShowcase.curatedArtworkIds.length > 0) {
-        const fetchedArtworks = await fetchArtworksByIds(nextShowcase.curatedArtworkIds);
+        let fetchedArtworks = await fetchArtworksByIds(nextShowcase.curatedArtworkIds);
+        if (nextShowcase.updateSourceGalleryId) {
+          const updateArtworks = await fetchArtworksByGalleryId(nextShowcase.updateSourceGalleryId);
+          fetchedArtworks = mergeShowcaseArtworks(fetchedArtworks, updateArtworks);
+        }
         setArtworks(fetchedArtworks);
       } else {
         setArtworks([]);

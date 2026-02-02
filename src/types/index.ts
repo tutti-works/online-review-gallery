@@ -100,6 +100,7 @@ export interface ShowcaseGallery {
   displayTitle?: string;
   featuredArtworkId?: string | null;
   curatedArtworkIds?: string[];
+  updateSourceGalleryId?: string | null;
   overviewImageUrl?: string;
   overviewImagePath?: string;
   syncedAt?: Date | string;

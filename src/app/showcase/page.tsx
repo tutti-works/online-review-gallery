@@ -6,10 +6,11 @@ import withShowcaseAuth from '@/components/withShowcaseAuth';
 import { useAuth } from '@/context/AuthContext';
 import type { Artwork, Gallery, ShowcaseGallery } from '@/types';
 import ShowcaseAccessGate from './components/ShowcaseAccessGate';
-import { fetchArtworksByIds, getCoverImage } from '@/lib/showcaseData';
+import { fetchArtworksByGalleryId, fetchArtworksByIds, getCoverImage } from '@/lib/showcaseData';
 import { syncShowcaseGallery } from '@/lib/showcaseSync';
 import { isShowcaseDomainAllowed } from '@/utils/showcaseAccess';
 import { useShowcaseViewerMode } from '@/hooks/useShowcaseViewerMode';
+import { mergeShowcaseArtworks } from '@/lib/showcaseMerge';
 
 type ShowcaseEntryBase = {
   gallery: Gallery;
@@ -47,11 +48,15 @@ const ShowcaseHomePage = () => {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [updatingSourceId, setUpdatingSourceId] = useState<string | null>(null);
   const { viewerMode, setViewerMode } = useShowcaseViewerMode();
 
   const isAdmin = user?.role === 'admin';
   const isAllowed = isShowcaseDomainAllowed(user?.email);
   const canManage = isAdmin && !viewerMode;
+
+  const getClassroomKey = (gallery: Gallery): string =>
+    gallery.classroomId || gallery.courseId;
 
   const loadData = useCallback(async () => {
     try {
@@ -76,6 +81,7 @@ const ShowcaseHomePage = () => {
           displayTitle: data.displayTitle,
           featuredArtworkId: data.featuredArtworkId ?? null,
           curatedArtworkIds: Array.isArray(data.curatedArtworkIds) ? data.curatedArtworkIds : [],
+          updateSourceGalleryId: data.updateSourceGalleryId ?? null,
           overviewImageUrl: data.overviewImageUrl,
           overviewImagePath: data.overviewImagePath,
           syncedAt: data.syncedAt?.toDate ? data.syncedAt.toDate() : data.syncedAt,
@@ -108,15 +114,40 @@ const ShowcaseHomePage = () => {
         })
         .filter((entry): entry is ShowcaseEntryBase => entry !== null);
 
+      const updateSourceIds = Array.from(
+        new Set(
+          candidateEntries
+            .map((entry) => entry.showcase.updateSourceGalleryId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+
+      const updateSourcePairs = await Promise.all(
+        updateSourceIds.map(async (sourceId) => {
+          const updateArtworks = await fetchArtworksByGalleryId(sourceId);
+          return [sourceId, updateArtworks] as const;
+        }),
+      );
+      const updateSourceMap = new Map(updateSourcePairs);
+
       // Fetch artworks for thumbnails
       const uniqueFeaturedIds = Array.from(new Set(candidateEntries.map((entry) => entry.featuredArtworkId)));
       const featuredArtworks = await fetchArtworksByIds(uniqueFeaturedIds);
       const featuredMap = new Map(featuredArtworks.map((artwork) => [artwork.id, artwork]));
 
-      const resolvedEntries = candidateEntries.map((entry) => ({
-        ...entry,
-        featuredArtwork: entry.featuredArtworkId ? featuredMap.get(entry.featuredArtworkId) ?? null : null,
-      }));
+      const resolvedEntries = candidateEntries.map((entry) => {
+        const featuredArtwork = entry.featuredArtworkId ? featuredMap.get(entry.featuredArtworkId) ?? null : null;
+        const updateSourceId = entry.showcase.updateSourceGalleryId;
+        const updateArtworks = updateSourceId ? updateSourceMap.get(updateSourceId) : null;
+        const mergedFeatured = featuredArtwork && updateArtworks
+          ? mergeShowcaseArtworks([featuredArtwork], updateArtworks)[0] ?? featuredArtwork
+          : featuredArtwork;
+
+        return {
+          ...entry,
+          featuredArtwork: mergedFeatured,
+        };
+      });
 
       setEntries(resolvedEntries);
     } catch (loadError) {
@@ -161,6 +192,37 @@ const ShowcaseHomePage = () => {
     setSyncMessage(null);
     setSyncing(false);
     void loadData();
+  };
+
+  const handleUpdateSourceChange = async (galleryId: string, nextSourceId: string) => {
+    if (!user?.email || !canManage || !isAllowed) {
+      return;
+    }
+
+    setUpdatingSourceId(galleryId);
+    setError(null);
+
+    try {
+      const { doc, setDoc } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
+      const updateSourceGalleryId = nextSourceId || null;
+
+      await setDoc(
+        doc(db, 'showcaseGalleries', galleryId),
+        {
+          updateSourceGalleryId,
+          updatedBy: user.email,
+        },
+        { merge: true },
+      );
+
+      void loadData();
+    } catch (saveError) {
+      console.error('[Showcase] Failed to update source gallery:', saveError);
+      setError('更新用データのソース保存に失敗しました。');
+    } finally {
+      setUpdatingSourceId(null);
+    }
   };
 
   const hasEntries = entries.length > 0;
@@ -224,39 +286,73 @@ const ShowcaseHomePage = () => {
                 const displayTitle = entry.showcase.displayTitle?.trim() || entry.gallery.assignmentName;
                 const featuredArtwork = entry.featuredArtwork;
                 const coverImage = featuredArtwork ? getCoverImage(featuredArtwork) : null;
+                const parentClassroomId = getClassroomKey(entry.gallery);
+                const updateCandidates = galleries
+                  .filter((gallery) => {
+                    if (gallery.id === entry.gallery.id) {
+                      return false;
+                    }
+                    return getClassroomKey(gallery) === parentClassroomId;
+                  })
+                  .sort((a, b) => (a.assignmentName || '').localeCompare(b.assignmentName || ''));
 
                 return (
-                  <Link
+                  <div
                     key={entry.gallery.id}
-                    href={`/showcase/${entry.gallery.id}`}
-                    className={`group relative block opacity-0 animate-fade-in`}
+                    className="group relative opacity-0 animate-fade-in"
                     style={{ animationDelay: `${index * 100}ms` }}
                   >
-                    <div className="relative w-full overflow-hidden bg-[#1e1e1e]" style={{ aspectRatio: '420 / 297' }}>
-                      {coverImage ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={coverImage.thumbnailUrl || coverImage.url}
-                          alt={displayTitle}
-                          className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-105 group-hover:opacity-80"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-xs text-gray-600 font-light tracking-widest">NO IMAGE</div>
-                      )}
+                    <Link
+                      href={`/showcase/${entry.gallery.id}`}
+                      className="block"
+                    >
+                      <div className="relative w-full overflow-hidden bg-[#1e1e1e]" style={{ aspectRatio: '420 / 297' }}>
+                        {coverImage ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={coverImage.thumbnailUrl || coverImage.url}
+                            alt={displayTitle}
+                            className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-105 group-hover:opacity-80"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-xs text-gray-600 font-light tracking-widest">NO IMAGE</div>
+                        )}
+                        
+                        {/* Hover Overlay */}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
+                      </div>
                       
-                      {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
-                    </div>
-                    
-                    <div className="mt-4 flex items-baseline justify-between border-b border-white/10 pb-2 transition-colors group-hover:border-white/40">
-                      <h2 className="font-serif text-lg font-light text-gray-200 group-hover:text-white transition-colors">
-                        {displayTitle}
-                      </h2>
-                      <span className="text-[10px] text-gray-600 group-hover:text-gray-400">
-                         VIEW DETAILS
-                      </span>
-                    </div>
-                  </Link>
+                      <div className="mt-4 flex items-baseline justify-between border-b border-white/10 pb-2 transition-colors group-hover:border-white/40">
+                        <h2 className="font-serif text-lg font-light text-gray-200 group-hover:text-white transition-colors">
+                          {displayTitle}
+                        </h2>
+                        <span className="text-[10px] text-gray-600 group-hover:text-gray-400">
+                           VIEW DETAILS
+                        </span>
+                      </div>
+                    </Link>
+
+                    {canManage && (
+                      <div className="mt-3 text-xs text-gray-400">
+                        <label className="mb-1 block text-[10px] uppercase tracking-[0.2em] text-gray-500">
+                          ＋更新用データのソースを選択
+                        </label>
+                        <select
+                          value={entry.showcase.updateSourceGalleryId ?? ''}
+                          onChange={(event) => void handleUpdateSourceChange(entry.gallery.id, event.target.value)}
+                          disabled={updatingSourceId === entry.gallery.id}
+                          className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-xs text-gray-200 outline-none transition focus:border-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <option value="">（未設定）</option>
+                          {updateCandidates.map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {candidate.assignmentName || candidate.title || candidate.id}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>

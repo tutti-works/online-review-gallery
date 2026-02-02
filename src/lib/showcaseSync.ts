@@ -1,6 +1,7 @@
 import type { Artwork, ShowcaseGallery } from '@/types';
 import { sortByStudentId } from '@/lib/artworkUtils';
-import { normalizeArtworkDoc } from '@/lib/showcaseData';
+import { fetchArtworksByGalleryId, normalizeArtworkDoc } from '@/lib/showcaseData';
+import { mergeShowcaseArtworks } from '@/lib/showcaseMerge';
 
 export type ShowcaseSyncResult = {
   showcase: ShowcaseGallery;
@@ -17,6 +18,7 @@ export const syncShowcaseGallery = async (
   const showcaseRef = doc(db, 'showcaseGalleries', galleryId);
   const showcaseSnapshot = await getDoc(showcaseRef);
   const existing = showcaseSnapshot.exists() ? showcaseSnapshot.data() : {};
+  const updateSourceGalleryId = existing.updateSourceGalleryId ?? null;
 
   const artworksQuery = query(
     collection(db, 'artworks'),
@@ -26,6 +28,12 @@ export const syncShowcaseGallery = async (
   const artworksSnapshot = await getDocs(artworksQuery);
   const artworks = artworksSnapshot.docs.map((docSnap) => normalizeArtworkDoc(docSnap.id, docSnap.data()));
   const sortedArtworks = sortByStudentId(artworks);
+  let mergedArtworks = sortedArtworks;
+
+  if (updateSourceGalleryId) {
+    const updateArtworks = await fetchArtworksByGalleryId(updateSourceGalleryId);
+    mergedArtworks = mergeShowcaseArtworks(sortedArtworks, updateArtworks);
+  }
 
   const curatedArtworkIds = sortedArtworks.map((artwork) => artwork.id);
   let featuredArtworkId: string | null = existing.featuredArtworkId ?? null;
@@ -47,7 +55,8 @@ export const syncShowcaseGallery = async (
       id: galleryId,
       ...existing,
       ...payload,
+      updateSourceGalleryId,
     },
-    artworks: sortedArtworks,
+    artworks: mergedArtworks,
   };
 };
