@@ -270,6 +270,8 @@ const ShowcaseHomePage = () => {
     if (!over || active.id === over.id) {
       return;
     }
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
     const activeId = String(active.id);
     const overId = String(over.id);
     const oldIndex = entries.findIndex((entry) => entry.gallery.id === activeId);
@@ -279,10 +281,16 @@ const ShowcaseHomePage = () => {
     }
     const nextEntries = arrayMove(entries, oldIndex, newIndex);
     setEntries(nextEntries);
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: scrollY, left: scrollX, behavior: 'auto' });
+    });
     setSavingOrder(true);
     setError(null);
     try {
       await persistEntryOrder(nextEntries);
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollY, left: scrollX, behavior: 'auto' });
+      });
     } catch (saveError) {
       console.error('[Showcase] Failed to save order:', saveError);
       setError('並び替えの保存に失敗しました。');
@@ -511,6 +519,7 @@ const ShowcaseHomePage = () => {
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
+                  autoScroll={false}
                   onDragEnd={handleDragEnd}
                 >
                   <SortableContext

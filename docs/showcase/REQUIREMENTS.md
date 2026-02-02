@@ -99,3 +99,6 @@
 - 入口/詳細の両方に「更新」ボタンを配置。
 - Overviewパネルは閲覧者に非表示、管理者にはアップロードUI。
 - ドメイン制限は専用ルートのみ適用。
+
+## Change Log
+- 2026-02-02 (commit 6a9541d0486e1e42c9616f522b1d5fa3f62a6597): 課題統合（Update Merge）を追加。showcaseGalleries に updateSourceGalleryId を保持し、同一クラスの既存ギャラリーから更新ソースを選択可能にした。プレビュー/同期時に学籍番号でマッチした学生の作品を差し替え（submitted のみ）。新規追加は行わず、既存の curated 作品のみを更新対象とする。
