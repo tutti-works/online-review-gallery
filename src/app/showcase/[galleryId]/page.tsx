@@ -33,6 +33,79 @@ const mapGalleryDoc = (id: string, data: Record<string, any>): Gallery => {
   };
 };
 
+const getFileExtension = (file: File): string => {
+  const type = file.type?.toLowerCase();
+  if (type === 'image/jpeg' || type === 'image/jpg') {
+    return 'jpg';
+  }
+  if (type === 'image/png') {
+    return 'png';
+  }
+  if (type === 'image/webp') {
+    return 'webp';
+  }
+  if (type === 'image/gif') {
+    return 'gif';
+  }
+  const nameParts = file.name.split('.');
+  if (nameParts.length > 1) {
+    return nameParts[nameParts.length - 1].toLowerCase();
+  }
+  return 'jpg';
+};
+
+const loadImageFromFile = (file: File): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = (error) => {
+      URL.revokeObjectURL(url);
+      reject(error);
+    };
+    image.src = url;
+  });
+};
+
+const createResizedImageBlob = async (
+  file: File,
+  maxSize: number,
+  type = 'image/jpeg',
+  quality = 0.82,
+): Promise<Blob> => {
+  const image = await loadImageFromFile(file);
+  const maxDimension = Math.max(image.width, image.height);
+  const scale = maxDimension > maxSize ? maxSize / maxDimension : 1;
+  const targetWidth = Math.max(1, Math.round(image.width * scale));
+  const targetHeight = Math.max(1, Math.round(image.height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Canvas context unavailable');
+  }
+  context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error('Failed to create thumbnail blob'));
+        }
+      },
+      type,
+      quality,
+    );
+  });
+};
+
 const ShowcaseGalleryPage = () => {
   const params = useParams();
   const galleryId = typeof params?.galleryId === 'string' ? params.galleryId : '';
@@ -55,6 +128,10 @@ const ShowcaseGalleryPage = () => {
   const [overviewModalOpen, setOverviewModalOpen] = useState(false);
   const [reuploadConfirmOpen, setReuploadConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const animatedArtworkIdsRef = useRef<Set<string>>(new Set());
+  const shouldDebugImages = process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
+  const loadCountRef = useRef(0);
+  const loadInFlightRef = useRef(false);
 
   const sortedArtworks = useMemo(() => sortByStudentId(artworks), [artworks]);
 
@@ -65,11 +142,45 @@ const ShowcaseGalleryPage = () => {
     return sortedArtworks[0]?.id ?? null;
   }, [showcase?.featuredArtworkId, sortedArtworks]);
 
+  useEffect(() => {
+    animatedArtworkIdsRef.current = new Set();
+  }, [galleryId]);
+
+  useEffect(() => {
+    sortedArtworks.forEach((artwork) => {
+      animatedArtworkIdsRef.current.add(artwork.id);
+    });
+  }, [sortedArtworks]);
+
+  useEffect(() => {
+    if (!shouldDebugImages) {
+      return;
+    }
+    console.log('[Showcase][Detail] sortedArtworks changed', {
+      count: sortedArtworks.length,
+      ids: sortedArtworks.map((artwork) => artwork.id),
+    });
+  }, [sortedArtworks, shouldDebugImages]);
+
   const loadData = useCallback(async () => {
     if (!galleryId) {
       return;
     }
+    if (loadInFlightRef.current) {
+      if (shouldDebugImages) {
+        console.log('[Showcase][Detail] loadData skipped (in flight)', { galleryId });
+      }
+      return;
+    }
+    loadInFlightRef.current = true;
     try {
+      loadCountRef.current += 1;
+      if (shouldDebugImages) {
+        console.log('[Showcase][Detail] loadData start', {
+          count: loadCountRef.current,
+          galleryId,
+        });
+      }
       setLoading(true);
       setError(null);
 
@@ -90,6 +201,8 @@ const ShowcaseGalleryPage = () => {
         updateSourceGalleryId: showcaseData.updateSourceGalleryId ?? null,
         overviewImageUrl: showcaseData.overviewImageUrl,
         overviewImagePath: showcaseData.overviewImagePath,
+        overviewImageThumbUrl: showcaseData.overviewImageThumbUrl,
+        overviewImageThumbPath: showcaseData.overviewImageThumbPath,
         syncedAt: showcaseData.syncedAt?.toDate ? showcaseData.syncedAt.toDate() : showcaseData.syncedAt,
         updatedBy: showcaseData.updatedBy,
       };
@@ -103,14 +216,33 @@ const ShowcaseGalleryPage = () => {
           fetchedArtworks = mergeShowcaseArtworks(fetchedArtworks, updateArtworks);
         }
         setArtworks(fetchedArtworks);
+        if (shouldDebugImages) {
+          console.log('[Showcase][Detail] setArtworks', {
+            count: fetchedArtworks.length,
+            curatedCount: nextShowcase.curatedArtworkIds.length,
+            updateSourceGalleryId: nextShowcase.updateSourceGalleryId ?? null,
+          });
+        }
       } else {
         setArtworks([]);
+        if (shouldDebugImages) {
+          console.log('[Showcase][Detail] setArtworks empty', {
+            curatedCount: nextShowcase.curatedArtworkIds?.length ?? 0,
+          });
+        }
       }
     } catch (loadError) {
       console.error('[Showcase] Failed to load gallery:', loadError);
       setError('課題詳細の読み込みに失敗しました。');
     } finally {
       setLoading(false);
+      loadInFlightRef.current = false;
+      if (shouldDebugImages) {
+        console.log('[Showcase][Detail] loadData done', {
+          count: loadCountRef.current,
+          galleryId,
+        });
+      }
     }
   }, [galleryId]);
 
@@ -128,6 +260,13 @@ const ShowcaseGalleryPage = () => {
     setSyncing(true);
     setError(null);
     try {
+      loadCountRef.current += 1;
+      if (shouldDebugImages) {
+        console.log('[Showcase][Detail] loadData start', {
+          count: loadCountRef.current,
+          galleryId,
+        });
+      }
       const result = await syncShowcaseGallery(galleryId, user.email);
       setShowcase(result.showcase);
       setArtworks(result.artworks);
@@ -145,6 +284,13 @@ const ShowcaseGalleryPage = () => {
     }
     setSavingTitle(true);
     try {
+      loadCountRef.current += 1;
+      if (shouldDebugImages) {
+        console.log('[Showcase][Detail] loadData start', {
+          count: loadCountRef.current,
+          galleryId,
+        });
+      }
       const { doc, setDoc } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase');
       const trimmed = titleInput.trim();
@@ -171,6 +317,13 @@ const ShowcaseGalleryPage = () => {
       return;
     }
     try {
+      loadCountRef.current += 1;
+      if (shouldDebugImages) {
+        console.log('[Showcase][Detail] loadData start', {
+          count: loadCountRef.current,
+          galleryId,
+        });
+      }
       const { doc, setDoc } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase');
       await setDoc(
@@ -197,31 +350,59 @@ const ShowcaseGalleryPage = () => {
     setUploadingOverview(true);
     setError(null);
     try {
+      loadCountRef.current += 1;
+      if (shouldDebugImages) {
+        console.log('[Showcase][Detail] loadData start', {
+          count: loadCountRef.current,
+          galleryId,
+        });
+      }
       const { ref, uploadBytes, getDownloadURL, deleteObject } = await import('firebase/storage');
       const { doc, setDoc } = await import('firebase/firestore');
       const { db, storage } = await import('@/lib/firebase');
 
-      const extension = file.name.includes('.') ? file.name.split('.').pop() : 'jpg';
-      const path = `showcase/${galleryId}/overview-${Date.now()}.${extension}`;
-      const storageRef = ref(storage, path);
+      const extension = getFileExtension(file);
+      const timestamp = Date.now();
+      const basePath = `showcase/${galleryId}/overview-${timestamp}`;
+      const originalPath = `${basePath}.${extension}`;
+      const thumbPath = `${basePath}-thumb.jpg`;
+      const originalRef = ref(storage, originalPath);
+      const thumbRef = ref(storage, thumbPath);
 
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
+      const thumbBlob = await createResizedImageBlob(file, 1600);
+
+      await Promise.all([
+        uploadBytes(originalRef, file),
+        uploadBytes(thumbRef, thumbBlob, { contentType: 'image/jpeg' }),
+      ]);
+
+      const [url, thumbUrl] = await Promise.all([
+        getDownloadURL(originalRef),
+        getDownloadURL(thumbRef),
+      ]);
 
       await setDoc(
         doc(db, 'showcaseGalleries', galleryId),
         {
           overviewImageUrl: url,
-          overviewImagePath: path,
+          overviewImagePath: originalPath,
+          overviewImageThumbUrl: thumbUrl,
+          overviewImageThumbPath: thumbPath,
           updatedBy: user.email,
         },
         { merge: true },
       );
 
       const previousPath = showcase?.overviewImagePath;
-      if (previousPath && previousPath !== path) {
+      if (previousPath && previousPath !== originalPath) {
         deleteObject(ref(storage, previousPath)).catch((deleteError) => {
           console.warn('[Showcase] Failed to delete previous overview image:', deleteError);
+        });
+      }
+      const previousThumbPath = showcase?.overviewImageThumbPath;
+      if (previousThumbPath && previousThumbPath !== thumbPath) {
+        deleteObject(ref(storage, previousThumbPath)).catch((deleteError) => {
+          console.warn('[Showcase] Failed to delete previous overview thumbnail:', deleteError);
         });
       }
 
@@ -230,7 +411,9 @@ const ShowcaseGalleryPage = () => {
           ? {
               ...prev,
               overviewImageUrl: url,
-              overviewImagePath: path,
+              overviewImagePath: originalPath,
+              overviewImageThumbUrl: thumbUrl,
+              overviewImageThumbPath: thumbPath,
             }
           : prev,
       );
@@ -247,6 +430,7 @@ const ShowcaseGalleryPage = () => {
   };
 
   const displayTitle = showcase?.displayTitle?.trim() || gallery?.assignmentName || '課題詳細';
+  const overviewThumbUrl = showcase?.overviewImageThumbUrl || showcase?.overviewImageUrl;
 
   return (
     <ShowcaseAccessGate>
@@ -321,7 +505,7 @@ const ShowcaseGalleryPage = () => {
                     >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                            src={showcase.overviewImageUrl}
+                            src={overviewThumbUrl}
                             alt="課題概要"
                             className="h-full w-full object-cover transition duration-700 group-hover:scale-105 group-hover:opacity-90"
                         />
@@ -363,11 +547,11 @@ const ShowcaseGalleryPage = () => {
               {sortedArtworks.map((artwork, index) => {
                 const coverImage = getCoverImage(artwork);
                 const isFeatured = artwork.id === resolvedFeaturedId;
+                const shouldAnimate = !animatedArtworkIdsRef.current.has(artwork.id);
                 return (
                   <div
                     key={artwork.id}
-                    className="group relative animate-fade-in"
-                    style={{ animationDelay: `${index * 50}ms` }}
+                    className={`group relative ${shouldAnimate ? 'animate-fade-in' : ''}`}
                   >
                     <button
                       type="button"
@@ -381,6 +565,22 @@ const ShowcaseGalleryPage = () => {
                             src={coverImage.thumbnailUrl || coverImage.url}
                             alt={artwork.title || artwork.studentName}
                             className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-105"
+                            onLoad={() => {
+                              if (shouldDebugImages) {
+                                console.log('[Showcase][Detail] thumbnail loaded', {
+                                  artworkId: artwork.id,
+                                  url: coverImage.thumbnailUrl || coverImage.url,
+                                });
+                              }
+                            }}
+                            onError={() => {
+                              if (shouldDebugImages) {
+                                console.warn('[Showcase][Detail] thumbnail load error', {
+                                  artworkId: artwork.id,
+                                  url: coverImage.thumbnailUrl || coverImage.url,
+                                });
+                              }
+                            }}
                           />
                         ) : (
                           <div className="flex h-full items-center justify-center text-xs text-gray-600 font-light">NO IMAGE</div>

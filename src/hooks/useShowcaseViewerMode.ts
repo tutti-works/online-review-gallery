@@ -5,15 +5,16 @@ import { useEffect, useState } from 'react';
 const STORAGE_KEY = 'showcaseViewerMode';
 
 export const useShowcaseViewerMode = () => {
-  const [viewerMode, setViewerMode] = useState(false);
-
-  useEffect(() => {
+  const [viewerMode, setViewerMode] = useState(() => {
     if (typeof window === 'undefined') {
-      return;
+      return false;
     }
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    setViewerMode(saved === 'true');
-  }, []);
+    try {
+      return window.localStorage.getItem(STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') {

@@ -104,6 +104,8 @@ export interface ShowcaseGallery {
   displayOrder?: number;
   overviewImageUrl?: string;
   overviewImagePath?: string;
+  overviewImageThumbUrl?: string;
+  overviewImageThumbPath?: string;
   syncedAt?: Date | string;
   updatedBy?: string;
 }

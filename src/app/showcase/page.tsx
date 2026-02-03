@@ -77,6 +77,7 @@ const ShowcaseHomePage = () => {
   const [savingOrder, setSavingOrder] = useState(false);
   const { viewerMode, setViewerMode } = useShowcaseViewerMode();
   const initialLoadRef = useRef(true);
+  const shouldDebugImages = process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
 
   const isAdmin = user?.role === 'admin';
   const isAllowed = isShowcaseDomainAllowed(user?.email);
@@ -88,6 +89,9 @@ const ShowcaseHomePage = () => {
 
   const loadData = useCallback(async () => {
     try {
+      if (shouldDebugImages) {
+        console.log('[Showcase] loadData start');
+      }
       if (initialLoadRef.current) {
         setLoading(true);
       }
@@ -115,6 +119,8 @@ const ShowcaseHomePage = () => {
           displayOrder: typeof data.displayOrder === 'number' ? data.displayOrder : undefined,
           overviewImageUrl: data.overviewImageUrl,
           overviewImagePath: data.overviewImagePath,
+          overviewImageThumbUrl: data.overviewImageThumbUrl,
+          overviewImageThumbPath: data.overviewImageThumbPath,
           syncedAt: data.syncedAt?.toDate ? data.syncedAt.toDate() : data.syncedAt,
           updatedBy: data.updatedBy,
         });
@@ -192,6 +198,13 @@ const ShowcaseHomePage = () => {
       });
 
       setEntries(resolvedEntries);
+      if (shouldDebugImages) {
+        console.log('[Showcase] loadData done', {
+          entries: resolvedEntries.length,
+          galleries: fetchedGalleries.length,
+          updateSources: updateSourceIds.length,
+        });
+      }
     } catch (loadError) {
       console.error('[Showcase] Failed to load showcase data:', loadError);
       setError('専用ギャラリーの読み込みに失敗しました。');
@@ -221,6 +234,9 @@ const ShowcaseHomePage = () => {
       const gallery = galleries[index];
       setSyncMessage(`更新中... ${index + 1} / ${galleries.length} : ${gallery.assignmentName}`);
       try {
+      if (shouldDebugImages) {
+        console.log('[Showcase] loadData start');
+      }
         await syncShowcaseGallery(gallery.id, user.email);
       } catch (syncError) {
         console.error('[Showcase] Sync failed:', syncError);
@@ -287,6 +303,9 @@ const ShowcaseHomePage = () => {
     setSavingOrder(true);
     setError(null);
     try {
+      if (shouldDebugImages) {
+        console.log('[Showcase] loadData start');
+      }
       await persistEntryOrder(nextEntries);
       requestAnimationFrame(() => {
         window.scrollTo({ top: scrollY, left: scrollX, behavior: 'auto' });
@@ -323,6 +342,22 @@ const ShowcaseHomePage = () => {
                 src={coverImage.thumbnailUrl || coverImage.url}
                 alt={displayTitle}
                 className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-105 group-hover:opacity-80"
+                onLoad={() => {
+                  if (shouldDebugImages) {
+                    console.log('[Showcase] thumbnail loaded', {
+                      galleryId: entry.gallery.id,
+                      url: coverImage.thumbnailUrl || coverImage.url,
+                    });
+                  }
+                }}
+                onError={() => {
+                  if (shouldDebugImages) {
+                    console.warn('[Showcase] thumbnail load error', {
+                      galleryId: entry.gallery.id,
+                      url: coverImage.thumbnailUrl || coverImage.url,
+                    });
+                  }
+                }}
               />
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-gray-600 font-light tracking-widest">NO IMAGE</div>
@@ -436,6 +471,9 @@ const ShowcaseHomePage = () => {
     setError(null);
 
     try {
+      if (shouldDebugImages) {
+        console.log('[Showcase] loadData start');
+      }
       const { doc, setDoc } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase');
       const updateSourceGalleryId = nextSourceId || null;
@@ -566,7 +604,6 @@ const ShowcaseHomePage = () => {
                     <div
                       key={entry.gallery.id}
                       className="group relative opacity-0 animate-fade-in-opacity"
-                      style={{ animationDelay: `${index * 100}ms` }}
                     >
                       <ShowcaseCardContent
                         entry={entry}
