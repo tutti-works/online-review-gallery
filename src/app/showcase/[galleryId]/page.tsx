@@ -134,6 +134,8 @@ const ShowcaseGalleryPage = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const animatedArtworkIdsRef = useRef<Set<string>>(new Set());
   const shouldDebugImages = process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
+  const shouldDebugReads =
+    process.env.NEXT_PUBLIC_FIRESTORE_READ_DEBUG === 'true' || shouldDebugImages;
   const loadCountRef = useRef(0);
   const loadInFlightRef = useRef(false);
 
@@ -213,10 +215,14 @@ const ShowcaseGalleryPage = () => {
       setShowcase(nextShowcase);
       setTitleInput(nextShowcase.displayTitle || nextGallery?.assignmentName || '');
 
+      let curatedReadCount = 0;
+      let updateSourceReadCount = 0;
       if (nextShowcase.curatedArtworkIds && nextShowcase.curatedArtworkIds.length > 0) {
+        curatedReadCount = nextShowcase.curatedArtworkIds.length;
         let fetchedArtworks = await fetchArtworksByIds(nextShowcase.curatedArtworkIds);
         if (nextShowcase.updateSourceGalleryId) {
           const updateArtworks = await fetchArtworksByGalleryId(nextShowcase.updateSourceGalleryId);
+          updateSourceReadCount = updateArtworks.length;
           fetchedArtworks = mergeShowcaseArtworks(fetchedArtworks, updateArtworks);
         }
         setArtworks(fetchedArtworks);
@@ -234,6 +240,16 @@ const ShowcaseGalleryPage = () => {
             curatedCount: nextShowcase.curatedArtworkIds?.length ?? 0,
           });
         }
+      }
+      if (shouldDebugReads) {
+        const totalReads = 2 + curatedReadCount + updateSourceReadCount;
+        console.log('[Showcase][Detail][Reads]', {
+          galleryDoc: 1,
+          showcaseDoc: 1,
+          curatedArtworks: curatedReadCount,
+          updateSourceArtworks: updateSourceReadCount,
+          total: totalReads,
+        });
       }
     } catch (loadError) {
       console.error('[Showcase] Failed to load gallery:', loadError);

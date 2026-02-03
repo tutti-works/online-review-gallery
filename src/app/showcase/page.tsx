@@ -78,6 +78,8 @@ const ShowcaseHomePage = () => {
   const { viewerMode, setViewerMode } = useShowcaseViewerMode();
   const initialLoadRef = useRef(true);
   const shouldDebugImages = process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
+  const shouldDebugReads =
+    process.env.NEXT_PUBLIC_FIRESTORE_READ_DEBUG === 'true' || shouldDebugImages;
 
   const isAdmin = user?.role === 'admin';
   const isAllowed = isShowcaseDomainAllowed(user?.email);
@@ -177,6 +179,7 @@ const ShowcaseHomePage = () => {
         }),
       );
       const updateSourceMap = new Map(updateSourcePairs);
+      const updateSourceReadCount = updateSourcePairs.reduce((sum, [, artworks]) => sum + artworks.length, 0);
 
       // Fetch artworks for thumbnails
       const uniqueFeaturedIds = Array.from(new Set(orderedEntries.map((entry) => entry.featuredArtworkId)));
@@ -203,6 +206,19 @@ const ShowcaseHomePage = () => {
           entries: resolvedEntries.length,
           galleries: fetchedGalleries.length,
           updateSources: updateSourceIds.length,
+        });
+      }
+      if (shouldDebugReads) {
+        const galleriesRead = galleriesSnapshot.size;
+        const showcaseRead = showcaseSnapshot.size;
+        const featuredRead = uniqueFeaturedIds.length;
+        const totalReads = galleriesRead + showcaseRead + featuredRead + updateSourceReadCount;
+        console.log('[Showcase][Entry][Reads]', {
+          galleries: galleriesRead,
+          showcaseGalleries: showcaseRead,
+          featuredArtworks: featuredRead,
+          updateSourceArtworks: updateSourceReadCount,
+          total: totalReads,
         });
       }
     } catch (loadError) {

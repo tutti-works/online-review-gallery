@@ -16,6 +16,9 @@ export const useGalleryArtworks = (
   currentGalleryId: string | null,
   isInitialized: boolean,
 ): UseGalleryArtworksResult => {
+  const shouldDebugReads =
+    process.env.NEXT_PUBLIC_FIRESTORE_READ_DEBUG === 'true' ||
+    process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +44,13 @@ export const useGalleryArtworks = (
       );
 
       const querySnapshot = await getDocs(artworksQuery);
+      if (shouldDebugReads) {
+        console.log('[Gallery][Reads]', {
+          galleryId: currentGalleryId,
+          artworks: querySnapshot.size,
+          total: querySnapshot.size,
+        });
+      }
 
       const toFiniteNumber = (value: unknown): number => {
         if (typeof value === 'number' && Number.isFinite(value)) {

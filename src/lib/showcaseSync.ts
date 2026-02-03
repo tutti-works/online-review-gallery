@@ -12,6 +12,9 @@ export const syncShowcaseGallery = async (
   galleryId: string,
   userEmail: string,
 ): Promise<ShowcaseSyncResult> => {
+  const shouldDebugReads =
+    process.env.NEXT_PUBLIC_FIRESTORE_READ_DEBUG === 'true' ||
+    process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
   const { collection, doc, getDoc, getDocs, query, setDoc, where } = await import('firebase/firestore');
   const { db } = await import('@/lib/firebase');
 
@@ -29,9 +32,11 @@ export const syncShowcaseGallery = async (
   const artworks = artworksSnapshot.docs.map((docSnap) => normalizeArtworkDoc(docSnap.id, docSnap.data()));
   const sortedArtworks = sortByStudentId(artworks);
   let mergedArtworks = sortedArtworks;
+  let updateSourceReadCount = 0;
 
   if (updateSourceGalleryId) {
     const updateArtworks = await fetchArtworksByGalleryId(updateSourceGalleryId);
+    updateSourceReadCount = updateArtworks.length;
     mergedArtworks = mergeShowcaseArtworks(sortedArtworks, updateArtworks);
   }
 
@@ -49,6 +54,17 @@ export const syncShowcaseGallery = async (
   };
 
   await setDoc(showcaseRef, payload, { merge: true });
+
+  if (shouldDebugReads) {
+    const totalReads = 1 + artworksSnapshot.size + updateSourceReadCount;
+    console.log('[Showcase][Sync][Reads]', {
+      galleryId,
+      showcaseDoc: 1,
+      curatedArtworks: artworksSnapshot.size,
+      updateSourceArtworks: updateSourceReadCount,
+      total: totalReads,
+    });
+  }
 
   return {
     showcase: {

@@ -15,6 +15,9 @@ export const useGalleryInitialization = (): UseGalleryInitializationResult => {
   const [currentGalleryId, setCurrentGalleryId] = useState<string | null>(null);
   const [hasGalleries, setHasGalleries] = useState<boolean>(true);
   const [isInitialized, setIsInitialized] = useState(false);
+  const shouldDebugReads =
+    process.env.NEXT_PUBLIC_FIRESTORE_READ_DEBUG === 'true' ||
+    process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
 
   useEffect(() => {
     const initializeGalleryId = async () => {
@@ -29,6 +32,14 @@ export const useGalleryInitialization = (): UseGalleryInitializationResult => {
           const { doc, getDoc } = await import('firebase/firestore');
           const { db } = await import('@/lib/firebase');
           const galleryDoc = await getDoc(doc(db, 'galleries', urlGalleryId));
+          if (shouldDebugReads) {
+            console.log('[Gallery][Reads]', {
+              source: 'url',
+              galleryId: urlGalleryId,
+              galleryDoc: 1,
+              total: 1,
+            });
+          }
 
           if (galleryDoc.exists()) {
             setCurrentGalleryId(urlGalleryId);
@@ -53,6 +64,14 @@ export const useGalleryInitialization = (): UseGalleryInitializationResult => {
           const { doc, getDoc } = await import('firebase/firestore');
           const { db } = await import('@/lib/firebase');
           const galleryDoc = await getDoc(doc(db, 'galleries', savedGalleryId));
+          if (shouldDebugReads) {
+            console.log('[Gallery][Reads]', {
+              source: 'saved',
+              galleryId: savedGalleryId,
+              galleryDoc: 1,
+              total: 1,
+            });
+          }
 
           if (galleryDoc.exists()) {
             setCurrentGalleryId(savedGalleryId);
@@ -74,6 +93,13 @@ export const useGalleryInitialization = (): UseGalleryInitializationResult => {
         const { db } = await import('@/lib/firebase');
         const galleriesQuery = query(collection(db, 'galleries'), limit(1));
         const galleriesSnapshot = await getDocs(galleriesQuery);
+        if (shouldDebugReads) {
+          console.log('[Gallery][Reads]', {
+            source: 'presence-check',
+            galleryDocs: galleriesSnapshot.size,
+            total: galleriesSnapshot.size,
+          });
+        }
 
         if (galleriesSnapshot.empty) {
           setHasGalleries(false);
