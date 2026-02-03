@@ -83,12 +83,15 @@
 - curatedArtworkIds: 優秀作品ID一覧（更新ボタンで同期）
 - overviewImageUrl: 課題概要（A3画像）のURL
 - overviewImagePath: Storage上の保存パス
+- overviewImageThumbUrl: 課題概要サムネイルのURL
+- overviewImageThumbPath: サムネイルの保存パス
 - syncedAt: 最終同期日時
 - updatedBy: 更新した管理者のメール
 
 ### Storage
 - 既存 /galleries とは別パスを使用する（干渉回避）。
 - 例: /showcase/{galleryId}/overview.{ext}
+- サムネイルも同じパス配下に保存する（例: /showcase/{galleryId}/overview-{timestamp}-thumb.jpg）
 
 ## 既存ギャラリーへの影響
 - 既存の galleries / artworks / likes は読み取りのみ。
@@ -100,5 +103,34 @@
 - Overviewパネルは閲覧者に非表示、管理者にはアップロードUI。
 - ドメイン制限は専用ルートのみ適用。
 
+## メンテナンス（未使用データのクリーンアップ）
+Showcase の未使用データを検出・削除するスクリプトを用意する。
+
+### 対象
+- Firestore: galleries に存在しない showcaseGalleries ドキュメント（孤立）
+- Storage: showcaseGalleries で参照されていない overview 画像/サムネイル
+
+### 使い方
+- ドライラン（削除なし）
+  - `npm run cleanup:showcase`
+- 未使用ファイルを削除
+  - `npm run cleanup:showcase -- --apply --delete-orphan-files`
+- 孤立した showcase ドキュメントも削除
+  - `npm run cleanup:showcase -- --apply --delete-orphan-docs`
+- curatedArtworkIds が空の showcase ドキュメントを削除
+  - `npm run cleanup:showcase -- --apply --delete-empty-curated`
+- overview 以外の showcase 配下も対象にする
+  - `npm run cleanup:showcase -- --apply --delete-orphan-files --include-non-overview`
+- 件数表示
+  - `--limit=200` / `--list-all`
+ - PowerShell で `npm run` 経由の引数が落ちる場合は、直接実行する
+   - `node scripts/cleanup-showcase.js --apply --delete-orphan-files`
+
+### 認証
+- `firebase-admin-key.json` がある場合は自動で使用。
+- 別パスを使う場合は `--credentials=PATH` もしくは `GOOGLE_APPLICATION_CREDENTIALS` を指定。
+- `--project=PROJECT_ID` / `--bucket=BUCKET_NAME` の指定にも対応。
+
 ## Change Log
+- 2026-02-03: 課題概要のサムネイルを Storage に保存して一覧表示を高速化。未使用データのクリーンアップスクリプト（cleanup:showcase）を追加。
 - 2026-02-02 (commit 6a9541d0486e1e42c9616f522b1d5fa3f62a6597): 課題統合（Update Merge）を追加。showcaseGalleries に updateSourceGalleryId を保持し、同一クラスの既存ギャラリーから更新ソースを選択可能にした。プレビュー/同期時に学籍番号でマッチした学生の作品を差し替え（submitted のみ）。新規追加は行わず、既存の curated 作品のみを更新対象とする。

@@ -106,6 +106,10 @@ const createResizedImageBlob = async (
   });
 };
 
+const OVERVIEW_THUMB_MAX_SIZE = 480;
+const OVERVIEW_THUMB_TYPE = 'image/webp';
+const OVERVIEW_THUMB_QUALITY = 0.78;
+
 const ShowcaseGalleryPage = () => {
   const params = useParams();
   const galleryId = typeof params?.galleryId === 'string' ? params.galleryId : '';
@@ -365,15 +369,26 @@ const ShowcaseGalleryPage = () => {
       const timestamp = Date.now();
       const basePath = `showcase/${galleryId}/overview-${timestamp}`;
       const originalPath = `${basePath}.${extension}`;
-      const thumbPath = `${basePath}-thumb.jpg`;
+      const thumbPath = `${basePath}-thumb.webp`;
       const originalRef = ref(storage, originalPath);
       const thumbRef = ref(storage, thumbPath);
 
-      const thumbBlob = await createResizedImageBlob(file, 1600);
+      const thumbBlob = await createResizedImageBlob(
+        file,
+        OVERVIEW_THUMB_MAX_SIZE,
+        OVERVIEW_THUMB_TYPE,
+        OVERVIEW_THUMB_QUALITY,
+      );
 
       await Promise.all([
-        uploadBytes(originalRef, file),
-        uploadBytes(thumbRef, thumbBlob, { contentType: 'image/jpeg' }),
+        uploadBytes(originalRef, file, {
+          contentType: file.type || 'application/octet-stream',
+          cacheControl: 'public,max-age=31536000,immutable',
+        }),
+        uploadBytes(thumbRef, thumbBlob, {
+          contentType: OVERVIEW_THUMB_TYPE,
+          cacheControl: 'public,max-age=31536000,immutable',
+        }),
       ]);
 
       const [url, thumbUrl] = await Promise.all([
@@ -431,6 +446,15 @@ const ShowcaseGalleryPage = () => {
 
   const displayTitle = showcase?.displayTitle?.trim() || gallery?.assignmentName || '課題詳細';
   const overviewThumbUrl = showcase?.overviewImageThumbUrl || showcase?.overviewImageUrl;
+
+  useEffect(() => {
+    if (!overviewThumbUrl) {
+      return;
+    }
+    const preload = new Image();
+    preload.decoding = 'async';
+    preload.src = overviewThumbUrl;
+  }, [overviewThumbUrl]);
 
   return (
     <ShowcaseAccessGate>
@@ -507,7 +531,26 @@ const ShowcaseGalleryPage = () => {
                         <img
                             src={overviewThumbUrl}
                             alt="課題概要"
+                            loading="eager"
+                            decoding="async"
+                            fetchPriority="high"
                             className="h-full w-full object-cover transition duration-700 group-hover:scale-105 group-hover:opacity-90"
+                            onLoad={() => {
+                              if (shouldDebugImages) {
+                                console.log('[Showcase][Detail] overview thumbnail loaded', {
+                                  galleryId,
+                                  url: overviewThumbUrl,
+                                });
+                              }
+                            }}
+                            onError={() => {
+                              if (shouldDebugImages) {
+                                console.warn('[Showcase][Detail] overview thumbnail load error', {
+                                  galleryId,
+                                  url: overviewThumbUrl,
+                                });
+                              }
+                            }}
                         />
                     </button>
                  ) : (

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "emulators": "firebase emulators:start --config firebase.emulators.json"
+    "emulators": "firebase emulators:start --config firebase.emulators.json",
+    "cleanup:showcase": "node scripts/cleanup-showcase.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
