@@ -388,7 +388,10 @@ const ShowcaseHomePage = () => {
           </div>
           
           <div className="mt-4 flex items-baseline justify-between border-b border-white/10 pb-2 transition-colors group-hover:border-white/40">
-            <h2 className="font-serif text-lg font-light text-gray-200 group-hover:text-white transition-colors">
+            <h2
+              className="font-serif text-lg font-light text-gray-200 group-hover:text-white transition-colors"
+              style={{ fontFamily: 'var(--font-serif)' }}
+            >
               {displayTitle}
             </h2>
             <span className="text-[10px] text-gray-600 group-hover:text-gray-400">
