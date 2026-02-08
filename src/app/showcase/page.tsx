@@ -86,6 +86,10 @@ const ShowcaseHomePage = () => {
   const canManage = isAdmin && !viewerMode;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
+  useEffect(() => {
+    document.title = 'GALLERY COLLECTION';
+  }, []);
+
   const getClassroomKey = (gallery: Gallery): string =>
     gallery.classroomId || gallery.courseId;
 
