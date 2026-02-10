@@ -54,6 +54,7 @@
 - A3作品を全画面に近い形で表示。
 - 左右操作で「同じ課題内の優秀作品」を順に移動。
 - 作品ページが複数ある場合はページ切り替え可能。
+- 作品ドキュメントに `showcaseHiddenPageNumbers` が設定されている場合、該当ページは Showcase 上で非表示にする。
 - 画像は縦横比を維持し、下部が欠けないように表示する。
 
 ## 優秀作品の選定ルール
@@ -88,6 +89,11 @@
 - syncedAt: 最終同期日時
 - updatedBy: 更新した管理者のメール
 
+### Firestore: artworks/{artworkId}（Showcase表示制御の任意フィールド）
+- showcaseHiddenPageNumbers: number[]（任意）
+- 用途: Showcase のみで非表示にしたいページ番号を指定する（例: `[1]`）。
+- 補足: 元画像や `images` 配列自体は削除しない。Showcase 読み込み時に表示対象から除外する。
+
 ### Storage
 - 既存 /galleries とは別パスを使用する（干渉回避）。
 - 例: /showcase/{galleryId}/overview.{ext}
@@ -95,6 +101,7 @@
 
 ## 既存ギャラリーへの影響
 - 既存の galleries / artworks / likes は読み取りのみ。
+- 例外: Showcase 表示制御が必要な場合のみ、`artworks/{artworkId}.showcaseHiddenPageNumbers` を更新する。
 - 既存UI・運用フローは変更しない。
 
 ## 今後の実装メモ
@@ -132,5 +139,6 @@ Showcase の未使用データを検出・削除するスクリプトを用意�
 - `--project=PROJECT_ID` / `--bucket=BUCKET_NAME` の指定にも対応。
 
 ## Change Log
+- 2026-02-10: 作品単位で Showcase 非表示ページを制御できる `showcaseHiddenPageNumbers` を artworks に追加。例: `M5nh110LkXwptybPmmuX` の1ページ目を `[1]` で非表示化。
 - 2026-02-03: 課題概要のサムネイルを Storage に保存して一覧表示を高速化。未使用データのクリーンアップスクリプト（cleanup:showcase）を追加。
 - 2026-02-02 (commit 6a9541d0486e1e42c9616f522b1d5fa3f62a6597): 課題統合（Update Merge）を追加。showcaseGalleries に updateSourceGalleryId を保持し、同一クラスの既存ギャラリーから更新ソースを選択可能にした。プレビュー/同期時に学籍番号でマッチした学生の作品を差し替え（submitted のみ）。新規追加は行わず、既存の curated 作品のみを更新対象とする。
