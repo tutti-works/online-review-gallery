@@ -42,6 +42,7 @@ export interface Artwork {
   annotationsMap?: Record<string, ArtworkAnnotationPage>; // 新スキーマ: ページごとの注釈データ
   createdAt: Date | string;
   importedBy: string; // インポート実行者
+  showcaseHiddenPageNumbers?: number[]; // showcaseで非表示にするページ番号
 }
 
 export interface SubmittedFile {

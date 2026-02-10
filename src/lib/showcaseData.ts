@@ -63,7 +63,39 @@ const normalizeAnnotationsMap = (rawMap: unknown): Record<string, ArtworkAnnotat
   );
 };
 
+const normalizeShowcaseHiddenPages = (rawValue: unknown): number[] => {
+  if (!Array.isArray(rawValue)) {
+    return [];
+  }
+  const normalized = rawValue
+    .map((value) => {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+          return parsed;
+        }
+      }
+      return NaN;
+    })
+    .filter((value) => Number.isInteger(value) && value > 0);
+
+  return Array.from(new Set(normalized));
+};
+
 export const normalizeArtworkDoc = (id: string, data: Record<string, any>): Artwork => {
+  const showcaseHiddenPageNumbers = normalizeShowcaseHiddenPages(data.showcaseHiddenPageNumbers);
+  const hiddenPageSet = new Set(showcaseHiddenPageNumbers);
+  const normalizedImages = Array.isArray(data.images)
+    ? data.images.filter((image: any) => {
+        const pageNumber =
+          typeof image?.pageNumber === 'number' ? image.pageNumber : Number(image?.pageNumber);
+        return !Number.isFinite(pageNumber) || !hiddenPageSet.has(pageNumber);
+      })
+    : [];
+
   return {
     id,
     title: data.title || '',
@@ -72,7 +104,7 @@ export const normalizeArtworkDoc = (id: string, data: Record<string, any>): Artw
     status: data.status || 'submitted',
     errorReason: data.errorReason,
     files: data.files || [],
-    images: data.images || [],
+    images: normalizedImages,
     studentName: data.studentName || '',
     studentEmail: data.studentEmail || '',
     studentId: data.studentId,
@@ -93,6 +125,7 @@ export const normalizeArtworkDoc = (id: string, data: Record<string, any>): Artw
     annotationsMap: normalizeAnnotationsMap(data.annotationsMap),
     createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
     importedBy: data.importedBy || '',
+    showcaseHiddenPageNumbers: showcaseHiddenPageNumbers.length > 0 ? showcaseHiddenPageNumbers : undefined,
   };
 };
 
