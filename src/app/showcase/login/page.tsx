@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { isShowcaseDomainAllowed } from '@/utils/showcaseAccess';
+import { getShowcaseReturnPath, isShowcaseDomainAllowed } from '@/utils/showcaseAccess';
 
 const ShowcaseLoginPage = () => {
   const { user, signInWithGoogle, logout, loading } = useAuth();
@@ -12,7 +12,9 @@ const ShowcaseLoginPage = () => {
 
   useEffect(() => {
     if (user && !loading && isAllowed) {
-      window.location.href = '/showcase';
+      const searchParams = new URLSearchParams(window.location.search);
+      const returnPath = getShowcaseReturnPath(searchParams.get('next'));
+      window.location.replace(returnPath);
     }
   }, [user, loading, isAllowed]);
 
