@@ -4,7 +4,7 @@ import { useEffect, ComponentType } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ROLES, type UserRole } from '@/utils/roles';
-import { isShowcaseDomainAllowed } from '@/utils/showcaseAccess';
+import { getShowcaseReturnPath, isShowcaseDomainAllowed } from '@/utils/showcaseAccess';
 
 const withShowcaseAuth = <P extends object>(
   WrappedComponent: ComponentType<P>,
@@ -21,12 +21,18 @@ const withShowcaseAuth = <P extends object>(
       }
 
       if (!user) {
-        router.replace('/showcase/login');
+        const returnPath = getShowcaseReturnPath(
+          `${window.location.pathname}${window.location.search}${window.location.hash}`,
+        );
+        router.replace(`/showcase/login?next=${encodeURIComponent(returnPath)}`);
         return;
       }
 
       if (requiredRole !== ROLES.GUEST && user.role === ROLES.GUEST && !isAllowedDomain) {
-        router.replace('/showcase/login');
+        const returnPath = getShowcaseReturnPath(
+          `${window.location.pathname}${window.location.search}${window.location.hash}`,
+        );
+        router.replace(`/showcase/login?next=${encodeURIComponent(returnPath)}`);
         return;
       }
 
