@@ -4,7 +4,7 @@
 
 ## 現在の変更と利用状況
 
-- `users.json` はローカルに残し、Gitインデックスからのみ除外した。`.gitignore`にも登録した。変更は未コミット・未pushのため、公開GitHubの現行mainにはまだ存在する。
+- `users.json` はローカルに残し、Gitの追跡対象から外して `.gitignore` に登録した。追跡停止はコミット `d561ccb` で反映・push済みで、現行 `main` の追跡ファイルには含まれない。旧コミットには引き続き残る。
 - アプリ、Functions、script、Firebase deploy設定、テスト、CI、ローカル開発手順に `users.json` の実行時参照はない。文書にある参照は監査上の言及のみ。`.claude/settings.local.json` には `firebase auth:export` 実行許可の記録があるが、このファイルの利用ではない。
 - 内容は2ユーザー分のFirebase Authenticationエクスポート形式。メールアドレス、Firebase / provider ID、表示名、写真URL、作成・最終ログイン時刻を含む。確認したJSON項目にはpassword hash / salt、access / refresh / custom token、秘密鍵、service account credentialはない。値の実在性はリポジトリだけでは確定できない。
 - 追跡中の他ファイルについて、`localId` / `providerUserInfo`形式のコピーと、service account / credential / secretを示すファイル名は見つからなかった。全面的なsecrets auditではない。
@@ -12,7 +12,7 @@
 ## 履歴と公開範囲
 
 - `users.json` は2025-09-30の初期コミット `3972afd` と `424c60f` の両系統に同一blobとして追加された。`git rev-list --objects --all -- users.json` では内容blobは1種類。追加後の内容変更は確認されなかった。
-- `main`、`feature/annotation-system`、`agent/showcase-login-return` とその `origin/*` 履歴から取得可能。通常の追跡停止コミット後も旧コミットからの取得は可能。
+- `main`、`feature/annotation-system`、`agent/showcase-login-return` とその `origin/*` の旧履歴から取得可能。追跡停止コミットは履歴を書き換えないため、旧コミットからの取得は引き続き可能。
 - GitHubリポジトリ作成時刻は2025-09-29 18:07:39 UTC（JSTでは2025-09-30 03:07:39）、調査時のvisibilityはPUBLIC。初期コミットは同日03:11:36 JST。visibility変更の履歴を確認できないため、公開開始日時や閲覧・取得の有無までは断定できない。
 
 ## 判断と、別承認が必要な対応
