@@ -89,3 +89,6 @@ functions/lib
 
 # Firebase Admin SDK Service Account Key
 firebase-admin-key.json
+
+# Local Firebase Authentication export (contains personal data)
+users.json
