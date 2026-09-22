@@ -84,5 +84,8 @@ functions/lib
 # Claude-specific settings
 .claude/firebase-admin-key.json
 
+# Local Codex settings
+.codex/
+
 # Firebase Admin SDK Service Account Key
 firebase-admin-key.json
