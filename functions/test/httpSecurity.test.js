@@ -63,12 +63,27 @@ test('Google OAuth token は Firebase Authorization と別ヘッダーから取�
   const request = {
     get: (name) => {
       if (name.toLowerCase() === 'authorization') return 'Bearer firebase-id-token';
-      if (name.toLowerCase() === 'x-google-oauth-token') return 'google-oauth-access-token';
+      if (name.toLowerCase() === 'x-classroom-oauth-token') return 'google-oauth-access-token';
       return undefined;
     },
   };
 
   assert.equal(requireGoogleOAuthToken(request), 'google-oauth-access-token');
+});
+
+test('Google Cloud に除去される予約済み X-Google-* ヘッダーを使わない', () => {
+  const request = {
+    get: (name) => name.toLowerCase() === 'x-google-oauth-token'
+      ? 'google-oauth-access-token'
+      : undefined,
+  };
+
+  assert.throws(
+    () => requireGoogleOAuthToken(request),
+    (error) => error instanceof HttpAuthError
+      && error.status === 401
+      && error.code === 'authentication_required'
+  );
 });
 
 test('viewer と未登録ユーザーは 403 で admin は許可される', async () => {

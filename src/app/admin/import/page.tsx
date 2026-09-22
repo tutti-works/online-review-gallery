@@ -334,7 +334,7 @@ function AdminImportPage() {
         headers: {
           'Content-Type': 'application/json',
           Authorization: authorization,
-          'X-Google-OAuth-Token': accessToken,
+          'X-Classroom-OAuth-Token': accessToken,
         },
         body: JSON.stringify({
           galleryId,

@@ -7,7 +7,9 @@ export const ALLOWED_CORS_ORIGINS = [
   'http://127.0.0.1:3000',
 ];
 
-export const GOOGLE_OAUTH_TOKEN_HEADER = 'x-google-oauth-token';
+// Cloud Functions removes client-supplied X-Google-* headers before they reach
+// the function, so use an application-owned header name for the OAuth token.
+export const GOOGLE_OAUTH_TOKEN_HEADER = 'x-classroom-oauth-token';
 
 type RequestLike = {
   get(name: string): string | undefined;

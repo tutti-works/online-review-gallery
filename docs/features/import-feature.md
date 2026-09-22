@@ -4,7 +4,7 @@
 📝 **ステータス**: 本番環境デプロイ済み
 📄 **機能ID**: F-02-07, F-02-08, F-02-09
 
-> **2026-09-22 認証更新（ローカル実装、未デプロイ）:** Functions の `Authorization` は Firebase ID token 専用とする。Google Classroom / Drive の OAuth access token は `X-Google-OAuth-Token` で別送し、本文の email は認可に使用しない。`getImportStatus` を含む管理系 endpoint は Firebase ID token と admin role を必須とする。
+> **2026-09-22 認証更新:** Functions の `Authorization` は Firebase ID token 専用とする。Google Classroom / Drive の OAuth access token は、Cloud Functions に除去される予約済み `X-Google-*` を避けて `X-Classroom-OAuth-Token` で別送し、本文の email は認可に使用しない。`getImportStatus` を含む管理系 endpoint は Firebase ID token と admin role を必須とする。
 
 ---
 
@@ -20,7 +20,7 @@ await fetch(`${functionsBaseUrl}/importClassroomSubmissions`, {
   headers: {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${firebaseIdToken}`,
-    'X-Google-OAuth-Token': googleAccessToken,
+    'X-Classroom-OAuth-Token': googleAccessToken,
   },
   body: JSON.stringify({ galleryId, classroomId, assignmentId }),
 });
