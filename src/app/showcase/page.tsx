@@ -28,6 +28,7 @@ import { syncShowcaseGallery } from '@/lib/showcaseSync';
 import { isShowcaseDomainAllowed } from '@/utils/showcaseAccess';
 import { useShowcaseViewerMode } from '@/hooks/useShowcaseViewerMode';
 import { mergeShowcaseArtworks } from '@/lib/showcaseMerge';
+import AuthenticatedStorageImage from '@/components/AuthenticatedStorageImage';
 
 type ShowcaseEntryBase = {
   gallery: Gallery;
@@ -357,9 +358,9 @@ const ShowcaseHomePage = () => {
         >
           <div className="relative w-full overflow-hidden bg-[#1e1e1e]" style={{ aspectRatio: '420 / 297' }}>
             {coverImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={coverImage.thumbnailUrl || coverImage.url}
+              <AuthenticatedStorageImage
+                storagePath={coverImage.thumbnailPath || coverImage.storagePath}
+                legacyUrl={coverImage.thumbnailUrl || coverImage.url}
                 alt={displayTitle}
                 className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-105 group-hover:opacity-80"
                 onLoad={() => {

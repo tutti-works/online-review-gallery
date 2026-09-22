@@ -6,11 +6,11 @@
 
 再監査時点で確認した HTTP 認証の問題は、Issue #4 で修正し、本番デプロイ済みである。全管理系 HTTP endpoint は Firebase ID token と検証済み email の admin role を要求し、Google OAuth token は別ヘッダーへ分離した。`getImportStatus` の返却項目制限と機密ログ除去も実施済みで、実 token を使った管理者ログインと Classroom インポートの成功を本番で確認した。
 
-Storage公開、インポート進捗・冪等性・504、削除整合性の主要問題は引き続き未解消である。Issue #5 では Functions / Cloud Run を Node.js 22 に統一し、直接依存と未使用依存を整理した。production vulnerability はルート13件から3件、Functions 29件から4件へ減少した。root / Functions の build・test は成功している。さらに `processfiletask` imageのDocker build、GraphicsMagick、Ghostscript、Sharp、PDF→JPEG→WebPとCloud Runエントリーポイントのbuild-time smoke test、実コンテナでのFunctions FrameworkのHTTP待受も成功した。
+Issue #6 では Storage Rules、`makePublic()`、フロントの公開URL依存を修正し、認証付き `getBlob()` 取得、Storage path 保存、Rules Emulator テスト、既存データ・ACL・download token の dry-run 棚卸しを実装した。本番 Rules のデプロイ、既存 ACL / token の解除、Firestore path 移行は未実施であり、[`docs/implementation/storage-privacy-migration.md`](docs/implementation/storage-privacy-migration.md) の段階移行と人手確認を経て完了とする。インポート進捗・冪等性・504、削除整合性の主要問題は引き続き未解消である。Issue #5 では Functions / Cloud Run を Node.js 22 に統一し、直接依存と未使用依存を整理した。production vulnerability はルート13件から3件、Functions 29件から4件へ減少した。root / Functions の build・test は成功している。さらに `processfiletask` imageのDocker build、GraphicsMagick、Ghostscript、Sharp、PDF→JPEG→WebPとCloud Runエントリーポイントのbuild-time smoke test、実コンテナでのFunctions FrameworkのHTTP待受も成功した。
 
 現在の推奨順序は次のとおり。
 
-1. Storage Rules、`makePublic()`、既存公開オブジェクトを一体で扱う非公開化
+1. Issue #6 の本番段階移行（path補完、Rules反映、ACL / token解除、認証済み表示確認）
 2. 学生提出単位の進捗、安定 student key、冪等な Task / artwork ID
 3. インポート入口の504、Google API N+1、PDF上限判定
 4. 削除・like・index の整合性
@@ -39,7 +39,7 @@ Storage公開、インポート進捗・冪等性・504、削除整合性の主�
 | ID | 重要度 | 問題 | 現行コード上の根拠 | 改善方針 | 確信度 |
 |---|---|---|---|---|---|
 | SEC-HTTP-01 | 修正・本番デプロイ済み（Issue #4） | Firebase IDトークン未検証、本文メール認可、本番管理者自動作成が結合したHTTP認証境界の欠落 | `functions/src/httpSecurity.ts`、`functions/src/index.ts` | 共通IDトークン検証、本文メール認可廃止、自動管理者作成廃止を実装し、管理者ログインとインポート成功を確認 | High |
-| SEC-STORAGE-01 | High | `unprocessed/`匿名アクセス、画像の公開読み取り、`makePublic()`による公開ACL | `storage.rules`、`functions/src/fileProcessor.ts` | Rules、公開ACL、既存オブジェクトを一体で非公開化 | High |
+| SEC-STORAGE-01 | 実装済み・本番移行待ち（Issue #6） | `unprocessed/`匿名アクセス、画像の公開読み取り、`makePublic()`による公開ACL | `storage.rules`、`functions/src/fileProcessor.ts`、`src/hooks/useAuthenticatedStorageUrl.ts` | コードとテスト、dry-run棚卸しは完了。本番 Rules / ACL / token / data移行は未実施 | High |
 | SEC-STATUS-01 | 修正・本番デプロイ済み（Issue #4） | `getImportStatus`が認証なしでジョブ文書を返していた | `functions/src/index.ts`、`functions/src/httpSecurity.ts` | admin 認証必須・進捗4項目だけの返却へ変更し、認証済みインポートで確認 | High |
 | SEC-LOG-01 | 修正・本番デプロイ済み（Issue #4） | Google OAuthトークン、提出オブジェクト、学生メール一覧をログ出力していた | `src/app/admin/import/page.tsx`、`functions/src/importController.ts` | 件数・job ID・error code 中心のログへ変更 | High |
 | PRIV-REPO-01 | High | 公開GitHubリポジトリで`users.json`が追跡され、認証エクスポート情報を含む | `users.json`、GitHub visibility=`PUBLIC`を確認済み | 追跡停止、公開履歴・データ実在性を確認し、必要なら履歴除去と通知 | High |
@@ -87,15 +87,13 @@ Storage公開、インポート進捗・冪等性・504、削除整合性の主�
 - CORSは本番Hostingドメインとローカル開発元だけを許可する。**実装済み**
 - 実 token を使った管理者ログインと Google Classroom / Drive インポートの成功を本番で確認済み。未認証・非管理者を含む全 endpoint の網羅確認は継続課題。
 
-### 2. Storage非公開化
+### 2. Storage非公開化（Issue #6 コード実装済み・本番移行待ち）
 
-- `unprocessed/`はクライアントから全面拒否する。Admin SDKはRulesを通らないため例外設定は不要。
-- `fileProcessor.ts`の全`makePublic()`を停止する。
-- `galleries/`はFirebase認証済みユーザーへ限定する。
-- `showcase/`は製品要件を確認するまで少なくとも匿名公開を停止する。
-- 既存オブジェクトのpublic ACLを棚卸しし、一括解除する。
-- 既存Firebase download token URLを無効化する必要がある場合は、メタデータ上のトークンもローテーションまたは削除する。
-- ACL移行前に、現行フロントが使用するURL方式を認証付き取得へ変更する。
+- `unprocessed/`のクライアント全面拒否、`galleries/`の認証必須、`showcase/`の学内ドメイン制限をRulesへ実装済み。
+- `fileProcessor.ts`の全`makePublic()`を廃止し、新規画像はStorage pathを保存する。
+- フロントは共通hookからFirebase Storage Web SDKの認証付き`getBlob()`で取得し、Object URLを破棄する。
+- 既存URLからpathを復元する後方互換と、ACL / download token / Firestore参照 / 孤立objectのdry-run棚卸しを追加済み。
+- 本番ではpath補完、Rules反映、ACL解除、token解除を別々の明示操作として段階実行する。詳細は移行ガイドを参照する。
 
 ### 3. 機密情報と公開リポジトリ
 
@@ -314,7 +312,7 @@ Storage公開、インポート進捗・冪等性・504、削除整合性の主�
 ## 最優先改善トップ5
 
 1. Firebase IDトークンによるHTTP認証境界を構築し、本文メール認可と管理者自動作成を廃止する。
-2. Storageの匿名アクセス、`makePublic()`、既存公開ACLと必要なdownload tokenを停止する。
+2. Issue #6 のコードを段階反映し、既存公開ACLと必要なdownload tokenを停止する。
 3. インポート進捗を学生提出単位の終端状態へ統一する。
 4. 安定した学生識別キーと冪等な処理・作品IDを導入する。
 5. 認証、Storage、進捗、Task重送を守る最小限の自動テストとCIを追加する。
@@ -323,6 +321,6 @@ Storage公開、インポート進捗・冪等性・504、削除整合性の主�
 
 - 運用中MVP、個人開発、70人規模の大学講評会を基準とする。
 - 認証、漏えい、破損、既知障害をコード整理より優先する。
-- 現時点ではこの計画を実装しない。
+- 初版作成時は実装しない前提だったが、Issue #4〜#6 の対応状況は冒頭の2026-09更新を正とする。
 - 実装開始時には、対象フェーズと完了条件を改めて確認する。
-- この文書の保存に伴い、コード、設定、Security Rules、データ構造、CI、デプロイ構成は変更しない。
+- 本番変更は各Issueの制約と承認に従い、コード実装と本番移行を分ける。

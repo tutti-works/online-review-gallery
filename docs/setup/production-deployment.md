@@ -81,6 +81,8 @@ firebase deploy --only firestore:rules
 firebase deploy --only storage
 ```
 
+Issue #6 の非公開化を初めて本番反映する場合は、Rulesだけを先にデプロイしないでください。先に認証付き画像取得を含むCloud Run / Functions / Hostingを反映し、Firestore path補完と表示確認を行ってからRules、public ACL、download tokenを段階的に移行します。詳細は[Storage 非公開化の本番移行手順](../implementation/storage-privacy-migration.md)を参照してください。
+
 ## 5. 全てをまとめてデプロイ
 
 ```bash

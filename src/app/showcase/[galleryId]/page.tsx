@@ -14,6 +14,7 @@ import { syncShowcaseGallery } from '@/lib/showcaseSync';
 import { isShowcaseDomainAllowed } from '@/utils/showcaseAccess';
 import { useShowcaseViewerMode } from '@/hooks/useShowcaseViewerMode';
 import { mergeShowcaseArtworks } from '@/lib/showcaseMerge';
+import AuthenticatedStorageImage from '@/components/AuthenticatedStorageImage';
 
 const mapGalleryDoc = (id: string, data: Record<string, any>): Gallery => {
   return {
@@ -377,8 +378,8 @@ const ShowcaseGalleryPage = () => {
           galleryId,
         });
       }
-      const { ref, uploadBytes, getDownloadURL, deleteObject } = await import('firebase/storage');
-      const { doc, setDoc } = await import('firebase/firestore');
+      const { ref, uploadBytes, deleteObject } = await import('firebase/storage');
+      const { deleteField, doc, setDoc } = await import('firebase/firestore');
       const { db, storage } = await import('@/lib/firebase');
 
       const extension = getFileExtension(file);
@@ -399,25 +400,20 @@ const ShowcaseGalleryPage = () => {
       await Promise.all([
         uploadBytes(originalRef, file, {
           contentType: file.type || 'application/octet-stream',
-          cacheControl: 'public,max-age=31536000,immutable',
+          cacheControl: 'private,max-age=31536000,immutable',
         }),
         uploadBytes(thumbRef, thumbBlob, {
           contentType: OVERVIEW_THUMB_TYPE,
-          cacheControl: 'public,max-age=31536000,immutable',
+          cacheControl: 'private,max-age=31536000,immutable',
         }),
-      ]);
-
-      const [url, thumbUrl] = await Promise.all([
-        getDownloadURL(originalRef),
-        getDownloadURL(thumbRef),
       ]);
 
       await setDoc(
         doc(db, 'showcaseGalleries', galleryId),
         {
-          overviewImageUrl: url,
+          overviewImageUrl: deleteField(),
           overviewImagePath: originalPath,
-          overviewImageThumbUrl: thumbUrl,
+          overviewImageThumbUrl: deleteField(),
           overviewImageThumbPath: thumbPath,
           updatedBy: user.email,
         },
@@ -441,9 +437,9 @@ const ShowcaseGalleryPage = () => {
         prev
           ? {
               ...prev,
-              overviewImageUrl: url,
+              overviewImageUrl: undefined,
               overviewImagePath: originalPath,
-              overviewImageThumbUrl: thumbUrl,
+              overviewImageThumbUrl: undefined,
               overviewImageThumbPath: thumbPath,
             }
           : prev,
@@ -461,16 +457,7 @@ const ShowcaseGalleryPage = () => {
   };
 
   const displayTitle = showcase?.displayTitle?.trim() || gallery?.assignmentName || '課題詳細';
-  const overviewThumbUrl = showcase?.overviewImageThumbUrl || showcase?.overviewImageUrl;
-
-  useEffect(() => {
-    if (!overviewThumbUrl) {
-      return;
-    }
-    const preload = new Image();
-    preload.decoding = 'async';
-    preload.src = overviewThumbUrl;
-  }, [overviewThumbUrl]);
+  const hasOverviewImage = Boolean(showcase?.overviewImagePath || showcase?.overviewImageUrl);
 
   return (
     <ShowcaseAccessGate>
@@ -537,15 +524,15 @@ const ShowcaseGalleryPage = () => {
                   className="relative overflow-hidden bg-[#1e1e1e] group"
                   style={{ aspectRatio: '420 / 297' }}
               >
-                 {showcase?.overviewImageUrl ? (
+                 {hasOverviewImage ? (
                     <button
                         type="button"
                         onClick={() => setOverviewModalOpen(true)}
                         className="h-full w-full block"
                     >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                            src={overviewThumbUrl}
+                        <AuthenticatedStorageImage
+                            storagePath={showcase?.overviewImageThumbPath || showcase?.overviewImagePath}
+                            legacyUrl={showcase?.overviewImageThumbUrl || showcase?.overviewImageUrl}
                             alt="課題概要"
                             loading="eager"
                             decoding="async"
@@ -555,7 +542,7 @@ const ShowcaseGalleryPage = () => {
                               if (shouldDebugImages) {
                                 console.log('[Showcase][Detail] overview thumbnail loaded', {
                                   galleryId,
-                                  url: overviewThumbUrl,
+                                  path: showcase?.overviewImageThumbPath || showcase?.overviewImagePath,
                                 });
                               }
                             }}
@@ -563,7 +550,7 @@ const ShowcaseGalleryPage = () => {
                               if (shouldDebugImages) {
                                 console.warn('[Showcase][Detail] overview thumbnail load error', {
                                   galleryId,
-                                  url: overviewThumbUrl,
+                                  path: showcase?.overviewImageThumbPath || showcase?.overviewImagePath,
                                 });
                               }
                             }}
@@ -578,7 +565,7 @@ const ShowcaseGalleryPage = () => {
                  {/* Admin Controls for Overview */}
                  {canManage && (
                     <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                         {showcase?.overviewImageUrl ? (
+                         {hasOverviewImage ? (
                             <button
                                 type="button"
                                 onClick={() => setReuploadConfirmOpen(true)}
@@ -619,9 +606,9 @@ const ShowcaseGalleryPage = () => {
                       style={{ aspectRatio: '420 / 297' }}
                     >
                         {coverImage ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={coverImage.thumbnailUrl || coverImage.url}
+                          <AuthenticatedStorageImage
+                            storagePath={coverImage.thumbnailPath || coverImage.storagePath}
+                            legacyUrl={coverImage.thumbnailUrl || coverImage.url}
                             alt={artwork.title || artwork.studentName}
                             className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-105"
                             onLoad={() => {
@@ -701,7 +688,7 @@ const ShowcaseGalleryPage = () => {
         )}
 
         {/* Overview Modal */}
-        {overviewModalOpen && showcase?.overviewImageUrl && (
+        {overviewModalOpen && hasOverviewImage && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4 animate-fade-in">
             <button
               type="button"
@@ -713,9 +700,9 @@ const ShowcaseGalleryPage = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={showcase.overviewImageUrl}
+            <AuthenticatedStorageImage
+              storagePath={showcase?.overviewImagePath}
+              legacyUrl={showcase?.overviewImageUrl}
               alt={`${displayTitle} 概要`}
               className="max-h-full max-w-full object-contain shadow-2xl"
             />

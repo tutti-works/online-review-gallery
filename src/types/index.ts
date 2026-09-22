@@ -55,11 +55,13 @@ export interface SubmittedFile {
 
 export interface ArtworkImage {
   id: string;
-  url: string; // Firebase Storage URL
+  url?: string; // 旧データとの互換用Firebase Storage URL
+  storagePath?: string; // 認証付き取得に使うStorage object path
   pageNumber: number; // 全ファイル通しのページ番号（1から開始）
   width: number;
   height: number;
   thumbnailUrl?: string; // サムネイル画像URL
+  thumbnailPath?: string; // 認証付き取得に使うサムネイルのStorage object path
   sourceFileId: string; // どのファイルから生成されたか（SubmittedFile.id）
   sourceFileName: string; // 元ファイル名
 }

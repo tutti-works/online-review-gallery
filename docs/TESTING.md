@@ -2,6 +2,14 @@
 
 このドキュメントは、Online Review Galleryの主要機能に関するテストシナリオを記載します。
 
+## Storage Rules 自動テスト
+
+```powershell
+npm.cmd run test:storage-rules
+```
+
+Firebase Emulator上で、通常ギャラリーの認証read / admin write、Showcaseの学内ドメインread / write、`unprocessed/**`のクライアント全面拒否とserver contextのRulesバイパスを検証する。
+
 ---
 
 ## 1. 再インポートスキップ・上書き機能のテスト

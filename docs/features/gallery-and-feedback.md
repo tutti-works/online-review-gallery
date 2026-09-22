@@ -298,8 +298,8 @@
 
 ```javascript
 match /artworks/{artworkId} {
-  // 全員が読み取り可能
-  allow read: if true;
+  // Firebase Auth 認証済みユーザーのみ読み取り可能
+  allow read: if request.auth != null;
 
   // 管理者のみ作成・更新・削除可能
   allow write: if request.auth != null
@@ -311,14 +311,16 @@ match /artworks/{artworkId} {
 
 ```javascript
 match /galleries/{galleryId}/{allPaths=**} {
-  // 全員が読み取り可能
-  allow read: if true;
+  // Firebase Auth 認証済みユーザーのみ読み取り可能
+  allow read: if request.auth != null;
 
   // 管理者のみ書き込み・削除可能
   allow write, delete: if request.auth != null
     && firestore.get(/databases/(default)/documents/userRoles/$(request.auth.token.email)).data.role == 'admin';
 }
 ```
+
+画像表示はpublic URLへ直接アクセスせず、Firestoreの`storagePath` / `thumbnailPath`（旧データではURLから復元したpath）を使ってFirebase Storage Web SDKから認証付きで取得する。
 
 ---
 
@@ -329,6 +331,7 @@ match /galleries/{galleryId}/{allPaths=**} {
 - [アノテーション機能仕様](ANNOTATION_FEATURE.md) - F-06の詳細
 - [コストとパフォーマンス分析](../COST_AND_PERFORMANCE.md) - パフォーマンス最適化
 - [テストシナリオ](../TESTING.md) - 機能テスト
+- [Storage 非公開化の本番移行手順](../implementation/storage-privacy-migration.md) - Rules、ACL、download token、既存pathの段階移行
 
 ---
 

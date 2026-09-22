@@ -455,17 +455,16 @@ export const deleteArtwork = onRequest(
         const deletePromises: Promise<void>[] = [];
 
         for (const image of images) {
-          // URLからファイルパスを抽出
-          let imagePath = '';
-          let thumbnailPath = '';
+          let imagePath = typeof image.storagePath === 'string' ? image.storagePath : '';
+          let thumbnailPath = typeof image.thumbnailPath === 'string' ? image.thumbnailPath : '';
 
-          // エミュレーターの場合
-          if (image.url.includes('localhost:9199')) {
+          // 旧データはURLからパスを復元する
+          if (!imagePath && typeof image.url === 'string' && image.url.includes('localhost:9199')) {
             const urlMatch = image.url.match(/o\/(.+?)\?/);
             if (urlMatch) {
               imagePath = decodeURIComponent(urlMatch[1]);
             }
-          } else {
+          } else if (!imagePath && typeof image.url === 'string') {
             // 本番環境の場合
             const urlMatch = image.url.match(/storage\.googleapis\.com\/[^/]+\/(.+)$/);
             if (urlMatch) {
@@ -474,7 +473,7 @@ export const deleteArtwork = onRequest(
           }
 
           // サムネイルパス
-          if (image.thumbnailUrl) {
+          if (!thumbnailPath && typeof image.thumbnailUrl === 'string') {
             if (image.thumbnailUrl.includes('localhost:9199')) {
               const urlMatch = image.thumbnailUrl.match(/o\/(.+?)\?/);
               if (urlMatch) {

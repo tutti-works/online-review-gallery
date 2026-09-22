@@ -86,9 +86,9 @@
 - displayTitle: 課題名（管理者による上書き）
 - featuredArtworkId: 最優秀作品ID
 - curatedArtworkIds: 優秀作品ID一覧（更新ボタンで同期）
-- overviewImageUrl: 課題概要（A3画像）のURL
+- overviewImageUrl: 旧データ互換用URL（新規保存では使用しない）
 - overviewImagePath: Storage上の保存パス
-- overviewImageThumbUrl: 課題概要サムネイルのURL
+- overviewImageThumbUrl: 旧データ互換用URL（新規保存では使用しない）
 - overviewImageThumbPath: サムネイルの保存パス
 - syncedAt: 最終同期日時
 - updatedBy: 更新した管理者のメール
@@ -102,6 +102,8 @@
 - 既存 /galleries とは別パスを使用する（干渉回避）。
 - 例: /showcase/{galleryId}/overview.{ext}
 - サムネイルも同じパス配下に保存する（例: /showcase/{galleryId}/overview-{timestamp}-thumb.jpg）
+- 画像は学内ドメインのFirebase Auth利用者だけがStorage Rules経由で取得できる。
+- 表示時は保存pathを使った認証付き取得とし、public ACLや永続download token URLには依存しない。
 
 ## 既存ギャラリーへの影響
 - 既存の galleries / artworks / likes は読み取りのみ。

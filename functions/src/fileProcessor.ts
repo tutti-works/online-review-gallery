@@ -12,11 +12,13 @@ const logSafeError = (operation: string, error: unknown, context: Record<string,
 
 interface ProcessedImage {
   id: string;
-  url: string;
+  storagePath: string;
+  url?: string;
   pageNumber: number;
   width: number;
   height: number;
   thumbnailUrl?: string;
+  thumbnailPath?: string;
 }
 
 // ファイルサイズ制限（バイト）
@@ -103,7 +105,7 @@ export async function processFile(
       id: artworkId,
       title: fileName,
       originalFileUrl,
-      thumbnailUrl: processedImages[0]?.thumbnailUrl || '', // フロントエンド表示用のトップレベルサムネイル
+      thumbnailPath: processedImages[0]?.thumbnailPath || '',
       images: processedImages,
       fileType,
       studentName,
@@ -201,7 +203,7 @@ async function processImageFile(
 
   // サムネイルを生成（全体で1ページ目のみ）
   const globalPageNumber = startPageNumber || 1;
-  let thumbnailUrl: string | undefined;
+  let thumbnailPath: string | undefined;
   let thumbnailBuffer: Buffer | undefined;
 
   if (globalPageNumber === 1) {
@@ -221,7 +223,7 @@ async function processImageFile(
   await imageFile.save(optimizedBuffer, {
     metadata: {
       contentType: 'image/webp',
-      cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
+      cacheControl: 'private, max-age=31536000',
       metadata: {
         originalName: fileName,
         galleryId,
@@ -229,29 +231,15 @@ async function processImageFile(
     }
   });
 
-  // エミュレーター環境判定
-  const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
-
-  let imageUrl: string;
-
-  if (isEmulator) {
-    // エミュレーター環境: localhost URLを使用
-    imageUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(imagePath)}?alt=media`;
-  } else {
-    // 本番環境: 公開URLを使用
-    await imageFile.makePublic();
-    imageUrl = `https://storage.googleapis.com/${bucket.name}/${imagePath}`;
-  }
-
-  // サムネイルのアップロードとURL生成（1ページ目のみ）
+  // サムネイルのアップロード（1ページ目のみ）
   if (thumbnailBuffer) {
-    const thumbnailPath = `galleries/${galleryId}/thumbnails/${imageId}${fileExtension}`;
+    thumbnailPath = `galleries/${galleryId}/thumbnails/${imageId}${fileExtension}`;
     const thumbnailFile = bucket.file(thumbnailPath);
 
     await thumbnailFile.save(thumbnailBuffer, {
       metadata: {
         contentType: 'image/webp',
-        cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
+        cacheControl: 'private, max-age=31536000',
         metadata: {
           originalName: fileName,
           galleryId,
@@ -260,25 +248,18 @@ async function processImageFile(
       }
     });
 
-    if (isEmulator) {
-      thumbnailUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(thumbnailPath)}?alt=media`;
-    } else {
-      await thumbnailFile.makePublic();
-      thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailPath}`;
-    }
   }
 
   const imageData: any = {
     id: imageId,
-    url: imageUrl,
+    storagePath: imagePath,
     pageNumber: 1,
     width,
     height,
   };
 
-  // thumbnailUrlがある場合のみ追加
-  if (thumbnailUrl) {
-    imageData.thumbnailUrl = thumbnailUrl;
+  if (thumbnailPath) {
+    imageData.thumbnailPath = thumbnailPath;
   }
 
   return [imageData];
@@ -380,7 +361,7 @@ async function processPdfFile(
       console.log(`Optimized size: ${width}x${height}`);
 
       // サムネイルを生成（全体で1ページ目のみ）
-      let thumbnailUrl: string | undefined;
+      let thumbnailPath: string | undefined;
       if (globalPageNumber === 1) {
         const thumbnailBuffer = await sharp(pageBuffer)
           .resize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, {
@@ -390,13 +371,13 @@ async function processPdfFile(
           .webp({ quality: 80 })
           .toBuffer();
 
-        const thumbnailPath = `galleries/${galleryId}/thumbnails/${imageId}.webp`;
+        thumbnailPath = `galleries/${galleryId}/thumbnails/${imageId}.webp`;
         const thumbnailFile = bucket.file(thumbnailPath);
 
         await thumbnailFile.save(thumbnailBuffer, {
           metadata: {
             contentType: 'image/webp',
-            cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
+            cacheControl: 'private, max-age=31536000',
             metadata: {
               originalName: fileName,
               galleryId,
@@ -406,8 +387,6 @@ async function processPdfFile(
           }
         });
 
-        await thumbnailFile.makePublic();
-        thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailPath}`;
       }
 
       // メイン画像をアップロード
@@ -417,7 +396,7 @@ async function processPdfFile(
       await imageFile.save(optimizedBuffer, {
         metadata: {
           contentType: 'image/webp',
-          cacheControl: 'public, max-age=31536000', // 1年間ブラウザキャッシュ
+          cacheControl: 'private, max-age=31536000',
           metadata: {
             originalName: fileName,
             galleryId,
@@ -426,25 +405,16 @@ async function processPdfFile(
         }
       });
 
-      let imageUrl: string;
-      if (isEmulator) {
-        imageUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(imagePath)}?alt=media`;
-      } else {
-        await imageFile.makePublic();
-        imageUrl = `https://storage.googleapis.com/${bucket.name}/${imagePath}`;
-      }
-
       const imageData: any = {
         id: imageId,
-        url: imageUrl,
+        storagePath: imagePath,
         pageNumber,
         width,
         height,
       };
 
-      // thumbnailUrlがある場合のみ追加（undefinedを避ける）
-      if (thumbnailUrl) {
-        imageData.thumbnailUrl = thumbnailUrl;
+      if (thumbnailPath) {
+        imageData.thumbnailPath = thumbnailPath;
       }
 
       processedImages.push(imageData);

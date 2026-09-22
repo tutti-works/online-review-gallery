@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Artwork } from '@/types';
+import AuthenticatedStorageImage from '@/components/AuthenticatedStorageImage';
 
 type ShowcaseArtworkModalProps = {
   artworks: Artwork[];
@@ -87,11 +88,12 @@ const ShowcaseArtworkModal = ({ artworks, currentIndex, onNavigate, onClose }: S
         {/* Main Image Area */}
         <div className="flex flex-1 items-center justify-center p-4 md:p-10 min-h-0">
           {currentImage ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={currentImage.url}
+            <AuthenticatedStorageImage
+              storagePath={currentImage.storagePath}
+              legacyUrl={currentImage.url}
               alt={title}
               className="max-h-full max-w-full object-contain shadow-2xl transition-transform duration-500"
+              loadingFallback={<div className="h-8 w-8 animate-spin rounded-full border-b-2 border-white" />}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-gray-500 font-light">

@@ -258,11 +258,13 @@ artworks (コレクション)
 │   │   └── mimeType: string
 │   ├── images: ArtworkImage[] （変換済み画像の配列、全ファイルの全ページ統合）
 │   │   ├── id: string
-│   │   ├── url: string
+│   │   ├── storagePath: string （認証付き取得に使用）
+│   │   ├── url?: string （旧データ互換）
 │   │   ├── pageNumber: number （全ファイル通しのページ番号）
 │   │   ├── width: number
 │   │   ├── height: number
-│   │   ├── thumbnailUrl?: string
+│   │   ├── thumbnailPath?: string （認証付き取得に使用）
+│   │   ├── thumbnailUrl?: string （旧データ互換）
 │   │   ├── sourceFileId: string （どのファイルから生成されたか）
 │   │   └── sourceFileName: string
 │   ├── studentName: string

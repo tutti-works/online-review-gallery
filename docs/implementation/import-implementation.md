@@ -35,8 +35,9 @@ export function ArtworkCard({ artwork, onClick }: ArtworkCardProps) {
       <div className="relative aspect-[3/2] bg-gray-100">
         {status === 'submitted' ? (
           // 通常のサムネイル
-          <img
-            src={artwork.images[0]?.thumbnailUrl || artwork.images[0]?.url}
+          <AuthenticatedStorageImage
+            storagePath={artwork.images[0]?.thumbnailPath || artwork.images[0]?.storagePath}
+            legacyUrl={artwork.images[0]?.thumbnailUrl || artwork.images[0]?.url}
             alt={artwork.title}
             className="w-full h-full object-cover"
           />

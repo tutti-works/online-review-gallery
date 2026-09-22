@@ -1,7 +1,7 @@
 'use client';
 
-import Image from 'next/image';
 import LabelBadge from '@/components/labels/LabelBadge';
+import AuthenticatedStorageImage from '@/components/AuthenticatedStorageImage';
 import type { Artwork } from '@/types';
 import { isIncomplete, getStatusText } from '@/lib/artworkUtils';
 
@@ -82,13 +82,14 @@ const GalleryGrid = ({ artworks, onSelectArtwork, likedArtworkIds, canLike, onLi
               onClick={() => onSelectArtwork(artwork)}
             >
               <div className="relative w-full" style={{ aspectRatio: '420 / 297' }}>
-                <Image
-                  src={coverImage.thumbnailUrl || coverImage.url}
+                <AuthenticatedStorageImage
+                  storagePath={coverImage.thumbnailPath || coverImage.storagePath}
+                  legacyUrl={coverImage.thumbnailUrl || coverImage.url}
                   alt={artwork.title}
                   width={420}
                   height={297}
                   className="h-full w-full object-cover"
-                  unoptimized
+                  loading="lazy"
                 />
               </div>
               <div className="p-3">

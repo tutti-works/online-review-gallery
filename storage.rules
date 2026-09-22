@@ -2,27 +2,39 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
 
-    // ギャラリー画像: 誰でも読み取り可能（開発環境用）、管理者のみ書き込み可能
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && firestore.exists(/databases/(default)/documents/userRoles/$(request.auth.token.email))
+        && firestore.get(/databases/(default)/documents/userRoles/$(request.auth.token.email)).data.role == 'admin';
+    }
+
+    function isShowcaseDomainAllowed() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.matches('.*@([A-Za-z0-9-]+\\.)*musashino-u\\.ac\\.jp$');
+    }
+
+    // 通常ギャラリー: Firebase Auth 認証済みユーザーのみ読み取り可能
     match /galleries/{galleryId}/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null
-        && firestore.get(/databases/(default)/documents/userRoles/$(request.auth.token.email)).data.role == 'admin';
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
-    // 専用ギャラリー用の概要画像など
+    // Showcase: 学内ドメインの認証済みユーザーのみ読み取り可能
     match /showcase/{galleryId}/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null
-        && firestore.get(/databases/(default)/documents/userRoles/$(request.auth.token.email)).data.role == 'admin';
+      allow read: if isShowcaseDomainAllowed();
+      allow write: if isAdmin() && isShowcaseDomainAllowed();
     }
 
-    // 一時ファイル: Cloud Functionsのみアクセス可能
-    // 注意: Storage Rulesにはファイル自動削除機能がないため、
-    // 定期的なクリーンアップFunctionを別途実装することを推奨
-    match /unprocessed/{importJobId}/{fileName} {
-      // Cloud Functionsからのアクセスのみ許可（認証なしのリクエストを想定）
-      allow read, write: if request.auth == null; // Service Accountからのアクセス
+    // 一時ファイル: クライアントからは全面拒否する。
+    // Admin SDK / Cloud Run / Cloud Functions は Storage Rules をバイパスする。
+    match /unprocessed/{importJobId}/{allPaths=**} {
+      allow read, write: if false;
     }
 
     // その他のパスは拒否

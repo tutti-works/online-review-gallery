@@ -1,6 +1,5 @@
 ﻿'use client';
 
-import Image from 'next/image';
 import {
   useCallback,
   useEffect,
@@ -18,6 +17,8 @@ import {
   type AnnotationSavePayload,
 } from '@/components/AnnotationCanvas';
 import type { Artwork } from '@/types';
+import AuthenticatedStorageImage from '@/components/AuthenticatedStorageImage';
+import { useAuthenticatedStorageUrl } from '@/hooks/useAuthenticatedStorageUrl';
 import { usePanZoom } from './usePanZoom';
 
 type ArtworkViewerProps = {
@@ -82,6 +83,14 @@ const ArtworkViewer = ({
   totalArtworks,
   onArtworkChange,
 }: ArtworkViewerProps) => {
+  const {
+    url: currentImageUrl,
+    loading: currentImageLoading,
+    error: currentImageError,
+  } = useAuthenticatedStorageUrl({
+    storagePath: currentImage.storagePath,
+    legacyUrl: currentImage.url,
+  });
   const [AnnotationCanvasComponent, setAnnotationCanvasComponent] =
     useState<ForwardRefExoticComponent<AnnotationCanvasProps & RefAttributes<AnnotationCanvasHandle>> | null>(null);
   const [isAnnotationCanvasLoading, setAnnotationCanvasLoading] = useState(true);
@@ -155,7 +164,7 @@ const ArtworkViewer = ({
   useEffect(() => {
     setImageDimensions(null);
     resetZoom();
-  }, [currentImage?.id, currentImage.url, resetZoom]);
+  }, [currentImage?.id, currentImage.storagePath, currentImage.url, resetZoom]);
 
   useEffect(() => {
     resetZoom();
@@ -197,7 +206,7 @@ const ArtworkViewer = ({
       artwork.id,
       currentImage.id ?? '',
       String(currentImage.pageNumber ?? currentPage + 1),
-      currentImage.url ?? '',
+      currentImage.storagePath ?? currentImage.url ?? '',
     ];
     return parts.filter(Boolean).join(':');
   }, [artwork.id, currentImage, currentPage]);
@@ -328,10 +337,10 @@ const ArtworkViewer = ({
       <div ref={viewportRef} className="flex-1 flex items-center justify-center overflow-hidden relative bg-gray-100">
         {showAnnotation ? (
           <div className="h-full w-full">
-            {AnnotationCanvasComponent ? (
+            {AnnotationCanvasComponent && currentImageUrl ? (
               <AnnotationCanvasComponent
                 ref={annotationCanvasRef}
-                imageUrl={currentImage.url}
+                imageUrl={currentImageUrl}
                 imageCacheKey={imageCacheKey}
                 initialAnnotation={
                   currentAnnotation
@@ -358,7 +367,7 @@ const ArtworkViewer = ({
               />
             ) : (
               <div className="flex h-full items-center justify-center">
-                {isAnnotationCanvasLoading ? (
+                {isAnnotationCanvasLoading || currentImageLoading ? (
                   <div className="flex items-center justify-center p-8">
                     <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
                   </div>
@@ -390,16 +399,24 @@ const ArtworkViewer = ({
                 userSelect: 'none',
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                ref={imageRef}
-                src={currentImage.url}
-                alt={`${currentFileName} - Page ${currentPage + 1}`}
-                className="max-w-full max-h-full object-contain select-none pointer-events-none"
-                draggable={false}
-                onDragStart={handleDragStart}
-                onLoad={updateImageDimensions}
-              />
+              {currentImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  ref={imageRef}
+                  src={currentImageUrl}
+                  alt={`${currentFileName} - Page ${currentPage + 1}`}
+                  className="max-w-full max-h-full object-contain select-none pointer-events-none"
+                  draggable={false}
+                  onDragStart={handleDragStart}
+                  onLoad={updateImageDimensions}
+                />
+              ) : currentImageLoading ? (
+                <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+              ) : (
+                <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {currentImageError ? '画像を読み込めませんでした。' : '画像がありません。'}
+                </div>
+              )}
             </div>
             {shouldShowOverlay && overlayAnnotation && (() => {
               const dims = imageDimensions || (imageRef.current ? {
@@ -565,13 +582,14 @@ const ArtworkViewer = ({
                   {imageHasAnnotation && (
                     <span className="pointer-events-none absolute right-1 top-1 rounded-full bg-black/60 px-1 text-[10px] font-semibold text-white">📝</span>
                   )}
-                  <Image
-                    src={image.thumbnailUrl || image.url}
+                  <AuthenticatedStorageImage
+                    storagePath={image.thumbnailPath || image.storagePath}
+                    legacyUrl={image.thumbnailUrl || image.url}
                     alt={`Page ${index + 1} thumbnail`}
                     width={80}
                     height={56}
                     className="h-full w-full object-cover"
-                    unoptimized
+                    loading="lazy"
                   />
                 </button>
               );
