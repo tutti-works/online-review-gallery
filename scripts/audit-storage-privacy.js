@@ -29,6 +29,7 @@ const apply = hasFlag('--apply');
 const removePublicAcl = hasFlag('--remove-public-acl');
 const removeDownloadTokens = hasFlag('--remove-download-tokens');
 const updateFirestorePaths = hasFlag('--update-firestore-paths');
+const expectedPathUpdates = getFlagValue('--expected-path-updates');
 
 if (!projectId) {
   console.error('[storage-privacy] Project is required. Pass --project=PROJECT_ID.');
@@ -63,22 +64,48 @@ const pathFromUrl = (rawUrl) => {
     if (rawUrl.startsWith('gs://')) {
       const value = rawUrl.slice(5);
       const slashIndex = value.indexOf('/');
-      return slashIndex >= 0 ? normalizePath(decodeURIComponent(value.slice(slashIndex + 1))) : null;
+      return slashIndex >= 0 && value.slice(0, slashIndex) === bucketName
+        ? normalizePath(decodeURIComponent(value.slice(slashIndex + 1))) : null;
     }
     const url = new URL(rawUrl);
     if (url.hostname === 'storage.googleapis.com') {
       const parts = url.pathname.replace(/^\/+/, '').split('/');
-      return parts.length > 1 ? normalizePath(decodeURIComponent(parts.slice(1).join('/'))) : null;
+      return parts.length > 1 && decodeURIComponent(parts[0]) === bucketName
+        ? normalizePath(decodeURIComponent(parts.slice(1).join('/'))) : null;
     }
     if (url.hostname === 'firebasestorage.googleapis.com' || url.hostname === 'localhost') {
-      const marker = '/o/';
-      const index = url.pathname.indexOf(marker);
-      return index >= 0 ? normalizePath(decodeURIComponent(url.pathname.slice(index + marker.length))) : null;
+      const match = url.pathname.match(/\/b\/([^/]+)\/o\/(.+)$/);
+      return match && decodeURIComponent(match[1]) === bucketName
+        ? normalizePath(decodeURIComponent(match[2])) : null;
     }
   } catch {
     return null;
   }
   return null;
+};
+
+const addMissingArtworkPaths = (images) => {
+  let changed = false;
+  const nextImages = images.map((image) => {
+    if (!image || typeof image !== 'object' || Array.isArray(image)) return image;
+    const next = { ...image };
+    if (!image.storagePath) {
+      const storagePath = pathFromUrl(image.url);
+      if (storagePath) {
+        next.storagePath = storagePath;
+        changed = true;
+      }
+    }
+    if (!image.thumbnailPath) {
+      const thumbnailPath = pathFromUrl(image.thumbnailUrl);
+      if (thumbnailPath) {
+        next.thumbnailPath = thumbnailPath;
+        changed = true;
+      }
+    }
+    return next;
+  });
+  return { changed, nextImages };
 };
 
 const printList = (label, values) => {
@@ -114,24 +141,16 @@ const run = async () => {
   artworksSnapshot.docs.forEach((snapshot) => {
     const data = snapshot.data();
     const images = Array.isArray(data.images) ? data.images : [];
-    let changed = false;
-    const nextImages = images.map((image, index) => {
+    images.forEach((image, index) => {
+      if (!image || typeof image !== 'object') return;
       const storagePath = normalizePath(image.storagePath) || pathFromUrl(image.url);
       const thumbnailPath = normalizePath(image.thumbnailPath) || pathFromUrl(image.thumbnailUrl);
       addReference(storagePath, `artworks/${snapshot.id}.images[${index}].storagePath`);
       addReference(thumbnailPath, `artworks/${snapshot.id}.images[${index}].thumbnailPath`);
-      const next = { ...image };
-      if (storagePath && !image.storagePath) {
-        next.storagePath = storagePath;
-        changed = true;
-      }
-      if (thumbnailPath && !image.thumbnailPath) {
-        next.thumbnailPath = thumbnailPath;
-        changed = true;
-      }
-      return next;
     });
-    if (changed) artworkUpdates.push({ ref: snapshot.ref, label: `artworks/${snapshot.id}`, images: nextImages });
+    if (addMissingArtworkPaths(images).changed) {
+      artworkUpdates.push({ ref: snapshot.ref, label: `artworks/${snapshot.id}` });
+    }
   });
 
   const showcaseUpdates = [];
@@ -173,6 +192,16 @@ const run = async () => {
     ...showcaseUpdates.map((entry) => entry.label),
   ];
 
+  if (apply && updateFirestorePaths) {
+    const expected = Number(expectedPathUpdates);
+    if (expectedPathUpdates === null || !Number.isSafeInteger(expected) || expected < 0 || expected !== legacyUrlDocs.length) {
+      throw new Error(`Expected ${expectedPathUpdates || 'an explicit count'} path updates, found ${legacyUrlDocs.length}. No changes were made.`);
+    }
+    if (missingObjects.length > 0) {
+      throw new Error(`${missingObjects.length} referenced Storage objects are missing. No changes were made.`);
+    }
+  }
+
   printList('Public ACL objects', publicObjects);
   printList('Firebase download token objects', tokenObjects);
   printList('Firestore documents needing path fields', legacyUrlDocs);
@@ -211,12 +240,47 @@ const run = async () => {
   }
   if (updateFirestorePaths) {
     for (const entry of artworkUpdates) {
-      await entry.ref.update({ images: entry.images });
-      console.log('[storage-privacy] Added artwork path fields:', entry.label);
+      const updated = await db.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(entry.ref);
+        if (!snapshot.exists) throw new Error(`Document disappeared: ${entry.label}`);
+        const currentImages = Array.isArray(snapshot.get('images')) ? snapshot.get('images') : [];
+        const { changed, nextImages } = addMissingArtworkPaths(currentImages);
+        nextImages.forEach((image, index) => {
+          if (!image || typeof image !== 'object') return;
+          for (const field of ['storagePath', 'thumbnailPath']) {
+            if (!currentImages[index][field] && image[field] && !objectNames.has(image[field])) {
+              throw new Error(`Storage object missing for ${entry.label}.images[${index}].${field}: ${image[field]}`);
+            }
+          }
+        });
+        if (changed) transaction.update(entry.ref, { images: nextImages });
+        return changed;
+      });
+      if (updated) console.log('[storage-privacy] Added artwork path fields:', entry.label);
     }
     for (const entry of showcaseUpdates) {
-      await entry.ref.update(entry.update);
-      console.log('[storage-privacy] Added showcase path fields:', entry.label);
+      const updated = await db.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(entry.ref);
+        if (!snapshot.exists) throw new Error(`Document disappeared: ${entry.label}`);
+        const data = snapshot.data();
+        const update = {};
+        if (!data.overviewImagePath) {
+          const storagePath = pathFromUrl(data.overviewImageUrl);
+          if (storagePath) update.overviewImagePath = storagePath;
+        }
+        if (!data.overviewImageThumbPath) {
+          const thumbnailPath = pathFromUrl(data.overviewImageThumbUrl);
+          if (thumbnailPath) update.overviewImageThumbPath = thumbnailPath;
+        }
+        for (const storagePath of Object.values(update)) {
+          if (!objectNames.has(storagePath)) {
+            throw new Error(`Storage object missing for ${entry.label}: ${storagePath}`);
+          }
+        }
+        if (Object.keys(update).length > 0) transaction.update(entry.ref, update);
+        return Object.keys(update).length > 0;
+      });
+      if (updated) console.log('[storage-privacy] Added showcase path fields:', entry.label);
     }
   }
 };

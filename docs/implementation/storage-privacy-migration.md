@@ -43,8 +43,10 @@ dry-runは次を列挙し、何も変更しない。
 1. 既存Firestore文書へ復元可能なpathだけを補完する。
 
    ```powershell
-   npm.cmd run audit:storage-privacy -- --project=online-review-gallery --bucket=BUCKET_NAME --apply --update-firestore-paths
+   npm.cmd run audit:storage-privacy -- --project=online-review-gallery --bucket=BUCKET_NAME --apply --update-firestore-paths --expected-path-updates=DRY_RUN_COUNT
    ```
+
+   `DRY_RUN_COUNT`には直前のdry-runで確認した文書件数を指定する。件数不一致や参照先objectの欠損があれば、更新を開始しない。各文書はトランザクションで再読込し、既存pathを保持したまま未設定pathだけを補完する。
 
 2. Hosting上で、管理者ログイン、通常ギャラリーthumbnail、モーダル原寸、注釈、Showcase入口・詳細・概要画像を確認する。
 3. Storage Rulesを反映する。
