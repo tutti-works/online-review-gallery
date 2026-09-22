@@ -1,4 +1,5 @@
-import * as admin from 'firebase-admin';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 
 export const ALLOWED_CORS_ORIGINS = [
   'https://online-review-gallery.web.app',
@@ -42,9 +43,9 @@ export class HttpAuthError extends Error {
 }
 
 const defaultDependencies: AdminAuthDependencies = {
-  verifyIdToken: (token) => admin.auth().verifyIdToken(token),
+  verifyIdToken: (token) => getAuth().verifyIdToken(token),
   getRole: async (email) => {
-    const roleDoc = await admin.firestore().collection('userRoles').doc(email).get();
+    const roleDoc = await getFirestore().collection('userRoles').doc(email).get();
     return roleDoc.exists ? roleDoc.data()?.role : undefined;
   },
 };

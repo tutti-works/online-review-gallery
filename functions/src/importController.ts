@@ -1,7 +1,7 @@
-import * as admin from 'firebase-admin';
 import { google, Auth, classroom_v1 } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import { processMultipleFiles } from './fileProcessor';
 import { getSafeErrorCode } from './httpSecurity';
 
@@ -104,7 +104,7 @@ export async function initializeImport(
   auth: Auth.OAuth2Client | Auth.GoogleAuth,
   tasksClient: CloudTasksClient
 ): Promise<string> {
-  const db = admin.firestore();
+  const db = getFirestore();
 
   // galleriesコレクションを作成/更新
   await ensureGalleryExists(galleryId, classroomId, assignmentId, userEmail, auth);
@@ -290,7 +290,7 @@ export async function initializeImport(
           );
           const fileBuffer = Buffer.from(fileResponse.data as ArrayBuffer);
 
-          const bucket = admin.storage().bucket();
+          const bucket = getStorage().bucket();
           const tempFilePath = `unprocessed/${importJobRef.id}/${file.id}-${file.name}`;
           const tempFile = bucket.file(tempFilePath);
           await tempFile.save(fileBuffer, { contentType: file.mimeType });
@@ -655,7 +655,7 @@ export async function initializeImport(
 }
 
 export async function checkImportCompletion(importJobId: string): Promise<void> {
-  const db = admin.firestore();
+  const db = getFirestore();
   const importJobRef = db.collection('importJobs').doc(importJobId);
 
   try {
@@ -696,7 +696,7 @@ export async function checkImportCompletion(importJobId: string): Promise<void> 
 }
 
 async function finalizeGallery(galleryId: string, importJobId: string): Promise<void> {
-  const db = admin.firestore();
+  const db = getFirestore();
   try {
     // Note: artworks配列フィールドは非推奨のため更新しない
     // artworkCountのみが使用される（作品作成時に自動インクリメント）
@@ -718,7 +718,7 @@ async function ensureGalleryExists(
   userEmail: string,
   auth: Auth.OAuth2Client | Auth.GoogleAuth
 ): Promise<void> {
-  const db = admin.firestore();
+  const db = getFirestore();
   const galleryRef = db.collection('galleries').doc(galleryId);
   const galleryDoc = await galleryRef.get();
 

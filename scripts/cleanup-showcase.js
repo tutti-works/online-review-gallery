@@ -2,7 +2,9 @@
 /* eslint-disable no-console */
 const fs = require('fs');
 const path = require('path');
-const admin = require('firebase-admin');
+const { cert, initializeApp } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+const { getStorage } = require('firebase-admin/storage');
 
 const readJsonIfExists = (filePath) => {
   if (!filePath || !fs.existsSync(filePath)) {
@@ -100,14 +102,14 @@ const bucketName =
   envEntries.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
   `${projectId}.appspot.com`;
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+const app = initializeApp({
+  credential: cert(serviceAccount),
   projectId,
   storageBucket: bucketName,
 });
 
-const db = admin.firestore();
-const bucket = admin.storage().bucket();
+const db = getFirestore(app);
+const bucket = getStorage(app).bucket();
 
 const printList = (label, items) => {
   const limited = listAll ? items : items.slice(0, listLimit);

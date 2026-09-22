@@ -6,7 +6,7 @@
 
 - Google Cloud SDK（`gcloud` CLI）がインストール済み
 - プロジェクトへの適切な権限（Cloud Run Admin, Service Account User）
-- Node.js 18以上
+- Node.js 22
 
 ## なぜCloud Runを使うのか？
 
@@ -77,7 +77,7 @@ Firebase Consoleで設定する場合：
     {
       "source": "functions",
       "codebase": "default",
-      "runtime": "nodejs18",
+      "runtime": "nodejs22",
       "environmentVariables": {
         "PROCESS_FILE_TASK_URL": "https://processfiletask-xxxxxxxxxxxx-an.a.run.app"
       }
@@ -150,6 +150,7 @@ cd functions
 npm run build
 
 # Dockerイメージをビルド
+# GraphicsMagick / Ghostscript / Sharp / PDF・WebP変換のsmoke testもbuild中に実行されます
 docker build -t processfiletask .
 
 # コンテナを起動

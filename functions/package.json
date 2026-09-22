@@ -4,6 +4,7 @@
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test test/httpSecurity.test.js",
+    "smoke:container": "node test/containerSmoke.js",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
@@ -12,23 +13,24 @@
     "gcp-build": "npm run build"
   },
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "lib/index.js",
   "dependencies": {
-    "@google-cloud/functions-framework": "^3.3.0",
-    "@google-cloud/tasks": "^5.0.0",
-    "firebase-admin": "^12.0.0",
-    "firebase-functions": "^5.0.0",
-    "googleapis": "^134.0.0",
+    "@google-cloud/functions-framework": "^5.0.5",
+    "@google-cloud/tasks": "^7.1.1",
+    "firebase-admin": "^14.4.0",
+    "firebase-functions": "^7.4.0",
+    "googleapis": "^181.0.0",
     "pdf2pic": "^3.2.0",
-    "sharp": "^0.33.0",
-    "uuid": "^9.0.1"
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
-    "@types/uuid": "^9.0.7",
-    "typescript": "^5.3.0"
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "jws": "^3.2.3"
   },
   "private": true
 }

@@ -1,9 +1,9 @@
 import sharp from 'sharp';
 const pdf2pic = require('pdf2pic');
-import * as admin from 'firebase-admin';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 
-import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { getStorage, Storage } from 'firebase-admin/storage';
 import { getSafeErrorCode } from './httpSecurity';
 
 const logSafeError = (operation: string, error: unknown, context: Record<string, unknown> = {}) => {
@@ -43,8 +43,8 @@ export async function processFile(
   submittedAt?: string,
   isLate?: boolean
 ): Promise<void> {
-  const db = admin.firestore();
-  const storage = admin.storage();
+  const db = getFirestore();
+  const storage = getStorage();
   const bucket = storage.bucket();
 
   // tempFilePathの検証
@@ -174,13 +174,13 @@ export async function processFile(
 async function processImageFile(
   imageBuffer: Buffer,
   fileName: string,
-  storage: admin.storage.Storage,
+  storage: Storage,
   galleryId: string,
   startPageNumber?: number
 ): Promise<ProcessedImage[]> {
 
   const bucket = storage.bucket();
-  const imageId = uuidv4();
+  const imageId = randomUUID();
   const fileExtension = '.webp';
 
   // 画像を最適化（A3全画面表示対応: 2400px）
@@ -287,7 +287,7 @@ async function processImageFile(
 async function processPdfFile(
   pdfBuffer: Buffer,
   fileName: string,
-  storage: admin.storage.Storage,
+  storage: Storage,
   galleryId: string,
   maxPages?: number,
   startPageNumber?: number
@@ -346,7 +346,7 @@ async function processPdfFile(
       const page = pages[i];
       const pageNumber = i + 1;
       const globalPageNumber = (startPageNumber || 1) + i; // 全体での通しページ番号
-      const imageId = uuidv4();
+      const imageId = randomUUID();
 
       if (!page.path) {
         console.warn(`⚠️ Page ${pageNumber} has no path, skipping`);
@@ -490,8 +490,8 @@ export async function processMultipleFiles(
   assignmentId: string,
   existingArtworkId?: string
 ): Promise<void> {
-  const db = admin.firestore();
-  const storage = admin.storage();
+  const db = getFirestore();
+  const storage = getStorage();
   const bucket = storage.bucket();
 
   console.log('Processing submission files', { importJobId, fileCount: files.length });

@@ -1,7 +1,9 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import * as admin from 'firebase-admin';
+import { initializeApp } from 'firebase-admin/app';
+import { FieldValue, Firestore, getFirestore, Query } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import { google } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
 import { initializeImport, checkImportCompletion } from './importController';
@@ -24,7 +26,7 @@ if (process.env.FUNCTIONS_EMULATOR === 'true') {
   console.log('🔧 Using Firebase Emulators');
 }
 
-admin.initializeApp();
+initializeApp();
 
 const tasksClient = new CloudTasksClient();
 
@@ -200,8 +202,7 @@ export const getImportStatus = onRequest(
         return;
       }
 
-      const importJobDoc = await admin
-        .firestore()
+      const importJobDoc = await getFirestore()
         .collection('importJobs')
         .doc(importJobId as string)
         .get();
@@ -434,8 +435,7 @@ export const deleteArtwork = onRequest(
         }
 
         // Firestoreから作品情報を取得
-        const artworkDoc = await admin
-          .firestore()
+        const artworkDoc = await getFirestore()
           .collection('artworks')
           .doc(artworkId)
           .get();
@@ -451,7 +451,7 @@ export const deleteArtwork = onRequest(
         const images = artworkData?.images || [];
 
         // Storage から画像ファイルを削除
-        const bucket = admin.storage().bucket();
+        const bucket = getStorage().bucket();
         const deletePromises: Promise<void>[] = [];
 
         for (const image of images) {
@@ -515,8 +515,7 @@ export const deleteArtwork = onRequest(
         await artworkDoc.ref.delete();
 
         // 関連するlikesを削除
-        const likesSnapshot = await admin
-          .firestore()
+        const likesSnapshot = await getFirestore()
           .collection('likes')
           .where('artworkId', '==', artworkId)
           .get();
@@ -528,10 +527,10 @@ export const deleteArtwork = onRequest(
         const galleryId = artworkData?.galleryId;
         if (galleryId) {
           try {
-            const galleryRef = admin.firestore().collection('galleries').doc(galleryId);
+            const galleryRef = getFirestore().collection('galleries').doc(galleryId);
             await galleryRef.update({
-              artworkCount: admin.firestore.FieldValue.increment(-1),
-              artworks: admin.firestore.FieldValue.arrayRemove(artworkId),
+              artworkCount: FieldValue.increment(-1),
+              artworks: FieldValue.arrayRemove(artworkId),
             });
             console.log(`Updated gallery ${galleryId}: decremented artworkCount and removed from artworks array`);
           } catch (galleryError) {
@@ -569,7 +568,7 @@ export const cleanupTempFiles = onSchedule(
   async (event) => {
     console.log('Starting cleanup of temporary files...');
 
-    const bucket = admin.storage().bucket();
+    const bucket = getStorage().bucket();
     const cutoffTime = Date.now() - (24 * 60 * 60 * 1000); // 24時間前
 
     try {
@@ -628,8 +627,8 @@ export const deleteGalleryData = onRequest(
 
       console.log('Gallery data deletion initiated', { galleryId });
 
-      const db = admin.firestore();
-      const bucket = admin.storage().bucket();
+      const db = getFirestore();
+      const bucket = getStorage().bucket();
 
       // 1. galleryIdに紐づく作品を取得して削除
       const artworksSnapshot = await db.collection('artworks')
@@ -701,7 +700,7 @@ export const deleteGalleryData = onRequest(
 );
 
 // Firestoreのコレクションをバッチで削除するためのヘルパー関数
-async function deleteCollection(db: admin.firestore.Firestore, collectionPath: string, batchSize: number) {
+async function deleteCollection(db: Firestore, collectionPath: string, batchSize: number) {
   const collectionRef = db.collection(collectionPath);
   const query = collectionRef.orderBy('__name__').limit(batchSize);
 
@@ -711,9 +710,9 @@ async function deleteCollection(db: admin.firestore.Firestore, collectionPath: s
 }
 
 async function deleteQueryBatch(
-  db: admin.firestore.Firestore, 
-  query: admin.firestore.Query, 
-  resolve: (value: unknown) => void, 
+  db: Firestore,
+  query: Query,
+  resolve: (value: unknown) => void,
   reject: (reason?: any) => void
 ) {
   const snapshot = await query.get();
@@ -752,8 +751,8 @@ export const deleteAllData = onRequest(
       await requireAdmin(request);
       console.log('Data reset initiated');
 
-      const db = admin.firestore();
-      const bucket = admin.storage().bucket();
+      const db = getFirestore();
+      const bucket = getStorage().bucket();
 
       // 1. コレクションの全削除
       await Promise.all([
@@ -800,7 +799,7 @@ export const syncGalleryArtworkCount = onRequest(
 
       await requireAdmin(request);
       const { galleryId } = request.body;
-      const db = admin.firestore();
+      const db = getFirestore();
       const results: Array<{
         galleryId: string;
         galleryTitle: string;

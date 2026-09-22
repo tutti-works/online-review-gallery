@@ -4,7 +4,7 @@
 
 ## 前提条件
 
-- **Node.js 20以上**
+- **Node.js 22**
 - **Firebase CLI** (`npm install -g firebase-tools`)
 - **Googleアカウント**（Google Classroom APIアクセス用）
 
@@ -109,7 +109,7 @@ firebase experiments:enable webframeworks
 
 1. **認証機能**: Google Sign-In
 2. **データインポート**: Google Classroomの課題提出物を自動取得
-3. **ギャラリー表示**: Masonryレイアウトで作品を表示
+3. **ギャラリー表示**: レスポンシブCSS Gridで作品を表示
 4. **いいね機能**: 管理者が作品にいいねを付与
 5. **コメント機能**: 管理者が作品にコメントを投稿
 

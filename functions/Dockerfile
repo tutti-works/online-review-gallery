@@ -1,5 +1,5 @@
-# Node.js 18 Debian bullseyeベースイメージを使用
-FROM node:18-bullseye-slim
+# Node.js 22 Debian bookwormベースイメージを使用
+FROM node:22-bookworm-slim
 
 # GraphicsMagickとGhostscriptをインストール（PDF処理に必要）
 RUN apt-get update && \
@@ -32,9 +32,9 @@ COPY lib/fileProcessor.js.map ./lib/
 COPY lib/importController.js ./lib/
 COPY lib/importController.js.map ./lib/
 
-# node_modulesとGraphicsMagickが正しくインストールされているか確認
-RUN ls -la node_modules/@google-cloud/functions-framework || echo "functions-framework not found"
-RUN which gm && gm version || echo "GraphicsMagick not found"
+# ネイティブ依存と画像・PDF変換をビルド時に検証
+COPY test/containerSmoke.js ./test/
+RUN npm run smoke:container
 
 # Cloud Run用の環境変数を設定
 ENV PORT=8080

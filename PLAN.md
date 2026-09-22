@@ -6,16 +6,15 @@
 
 再監査時点で確認した HTTP 認証の問題は、Issue #4 のローカル実装で修正した。全管理系 HTTP endpoint は Firebase ID token と検証済み email の admin role を要求し、Google OAuth token は別ヘッダーへ分離した。`getImportStatus` の返却項目制限と機密ログ除去も実施済みである。本番 Functions へのデプロイと実ユーザーでの回帰確認はまだ行っていない。
 
-Storage公開、インポート進捗・冪等性・504、削除整合性の主要問題は引き続き未解消である。加えて、2026-09時点の依存監査でルート13件、Functions 29件の production vulnerability が報告され、Cloud Run の Dockerfile だけが Node.js 18 のまま残っていることを確認した。
+Storage公開、インポート進捗・冪等性・504、削除整合性の主要問題は引き続き未解消である。Issue #5 では Functions / Cloud Run を Node.js 22 に統一し、直接依存と未使用依存を整理した。production vulnerability はルート13件から3件、Functions 29件から4件へ減少した。root / Functions の build・test は成功している。DockerfileにはGraphicsMagick、Ghostscript、Sharp、PDF→JPEG→WebPのbuild-time smoke testを追加したが、この作業環境ではDocker Desktopサービスを開始する管理権限がなく、実コンテナbuildだけ未確認である。
 
 現在の推奨順序は次のとおり。
 
-1. Next.js / Functions 依存の安全な更新と Cloud Run ランタイム更新
-2. Storage Rules、`makePublic()`、既存公開オブジェクトを一体で扱う非公開化
-3. 学生提出単位の進捗、安定 student key、冪等な Task / artwork ID
-4. インポート入口の504、Google API N+1、PDF上限判定
-5. 削除・like・index の整合性
-6. Rules・インポートの最小テスト、Functions CI、文書同期
+1. Storage Rules、`makePublic()`、既存公開オブジェクトを一体で扱う非公開化
+2. 学生提出単位の進捗、安定 student key、冪等な Task / artwork ID
+3. インポート入口の504、Google API N+1、PDF上限判定
+4. 削除・like・index の整合性
+5. Rules・インポートの最小テスト、Functions CI、文書同期
 
 通常ギャラリーは常時 Firestore listener を使わず、一覧では thumbnail を利用し、Konva もモーダル側へ隔離されている。現在の70〜100人規模では、一覧仮想化、即時サブコレクション化、Showcase集約キャッシュ、全面的なアーキテクチャ変更は引き続き優先しない。
 

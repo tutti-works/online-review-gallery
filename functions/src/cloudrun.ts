@@ -1,7 +1,7 @@
 // Cloud Run用のエントリーポイント
 // Dockerfileから直接呼び出される
 
-import * as admin from 'firebase-admin';
+import { getApps, initializeApp } from 'firebase-admin/app';
 import { processFileTaskHttp } from './processFileTaskHttp';
 
 console.log('🚀 [Cloud Run] Loading cloudrun.js - This is the Cloud Run entry point');
@@ -14,8 +14,8 @@ if (process.env.FUNCTIONS_EMULATOR === 'true') {
 }
 
 // Firebase Admin SDKの初期化（冪等性を保つ）
-if (!admin.apps.length) {
-  admin.initializeApp({
+if (!getApps().length) {
+  initializeApp({
     storageBucket: 'online-review-gallery.firebasestorage.app'
   });
 }
