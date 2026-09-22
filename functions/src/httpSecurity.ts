@@ -104,15 +104,28 @@ export type ImportStatusResponse = {
   progress: number;
   processedFiles: number;
   totalFiles: number;
+  completedSubmissions?: number;
+  totalSubmissions?: number;
+  succeededSubmissions?: number;
+  failedSubmissions?: number;
+  failedFileCount?: number;
 };
 
 export function toImportStatusResponse(data: FirebaseFirestore.DocumentData): ImportStatusResponse {
-  return {
+  const response: ImportStatusResponse = {
     status: typeof data.status === 'string' ? data.status : 'unknown',
     progress: typeof data.progress === 'number' ? data.progress : 0,
     processedFiles: typeof data.processedFiles === 'number' ? data.processedFiles : 0,
     totalFiles: typeof data.totalFiles === 'number' ? data.totalFiles : 0,
   };
+  if (typeof data.totalSubmissions === 'number') {
+    response.totalSubmissions = data.totalSubmissions;
+    response.completedSubmissions = typeof data.completedSubmissions === 'number' ? data.completedSubmissions : 0;
+    response.succeededSubmissions = typeof data.succeededSubmissions === 'number' ? data.succeededSubmissions : 0;
+    response.failedSubmissions = typeof data.failedSubmissions === 'number' ? data.failedSubmissions : 0;
+    response.failedFileCount = typeof data.failedFileCount === 'number' ? data.failedFileCount : 0;
+  }
+  return response;
 }
 
 export function getSafeErrorCode(error: unknown): string {

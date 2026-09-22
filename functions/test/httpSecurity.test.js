@@ -145,6 +145,18 @@ test('import status は UI に必要な進捗情報だけを返す', () => {
   });
 });
 
+test('new import status exposes submission counters but not student details', () => {
+  assert.deepEqual(toImportStatusResponse({
+    status: 'processing', progress: 42, totalSubmissions: 7,
+    completedSubmissions: 3, succeededSubmissions: 2, failedSubmissions: 1,
+    failedFileCount: 4, studentEmail: 'private@example.com',
+  }), {
+    status: 'processing', progress: 42, processedFiles: 0, totalFiles: 0,
+    totalSubmissions: 7, completedSubmissions: 3, succeededSubmissions: 2,
+    failedSubmissions: 1, failedFileCount: 4,
+  });
+});
+
 test('CORS は本番 Hosting と既定ローカル開発 origin だけを許可する', () => {
   assert.deepEqual(ALLOWED_CORS_ORIGINS, [
     'https://online-review-gallery.web.app',

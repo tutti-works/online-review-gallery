@@ -6,15 +6,17 @@
 
 再監査時点で確認した HTTP 認証の問題は、Issue #4 で修正し、本番デプロイ済みである。全管理系 HTTP endpoint は Firebase ID token と検証済み email の admin role を要求し、Google OAuth token は別ヘッダーへ分離した。`getImportStatus` の返却項目制限と機密ログ除去も実施済みで、実 token を使った管理者ログインと Classroom インポートの成功を本番で確認した。
 
-Issue #6 では Storage Rules、`makePublic()`、フロントの公開URL依存を修正し、本番バックアップ取得後、Cloud Run → Functions → Hosting、Firestore path 1,193件補完、Storage Rules、既存 public ACL / download token 解除を段階的に実施した。最終 dry-run は public ACL 0件、download token 0件、path補完必要 0件、欠損object 0件。参照されない26 objectは削除していない。Issue #7 では `users.json` の実行時参照がないことを確認し、ローカルコピーを保持したまま Git の追跡を停止した。履歴上の2ユーザー分の情報への対応は要判断。インポート進捗・冪等性・504、削除整合性の主要問題は引き続き未解消である。Issue #5 では Functions / Cloud Run を Node.js 22 に統一し、直接依存と未使用依存を整理した。production vulnerability はルート13件から3件、Functions 29件から4件へ減少した。root / Functions の build・test は成功している。さらに `processfiletask` imageのDocker build、GraphicsMagick、Ghostscript、Sharp、PDF→JPEG→WebPとCloud Runエントリーポイントのbuild-time smoke test、実コンテナでのFunctions FrameworkのHTTP待受も成功した。
+Issue #6 では Storage Rules、`makePublic()`、フロントの公開URL依存を修正し、本番バックアップ取得後、Cloud Run → Functions → Hosting、Firestore path 1,193件補完、Storage Rules、既存 public ACL / download token 解除を段階的に実施した。最終 dry-run は public ACL 0件、download token 0件、path補完必要 0件、欠損object 0件。参照されない26 objectは削除していない。Issue #7 では `users.json` の実行時参照がないことを確認し、ローカルコピーを保持したまま Git の追跡を停止した。履歴上の2ユーザー分の情報への対応は要判断。Issue #8 では学生提出単位の進捗・安定識別・Task冪等化・補償削除をローカル実装した（本番未デプロイ）。504と削除整合性は引き続き未解消である。Issue #5 では Functions / Cloud Run を Node.js 22 に統一し、直接依存と未使用依存を整理した。production vulnerability はルート13件から3件、Functions 29件から4件へ減少した。root / Functions の build・test は成功している。さらに `processfiletask` imageのDocker build、GraphicsMagick、Ghostscript、Sharp、PDF→JPEG→WebPとCloud Runエントリーポイントのbuild-time smoke test、実コンテナでのFunctions FrameworkのHTTP待受も成功した。
+
+Issue #8 の状態モデルと再送時の制約は [`docs/implementation/import-idempotency.md`](docs/implementation/import-idempotency.md) に記録する。
 
 現在の推奨順序は次のとおり。
 
 1. Issue #7 の公開履歴と実データ性を判断し、必要なら別途承認のうえ履歴除去・対象者対応
-2. 学生提出単位の進捗、安定 student key、冪等な Task / artwork ID
+2. Issue #8 の実環境相当の再送・部分失敗確認と段階的なデプロイ判断
 3. インポート入口の504、Google API N+1、PDF上限判定
 4. 削除・like・index の整合性
-5. Rules・インポートの最小テスト、Functions CI、文書同期
+5. Rules・インポートの統合テスト、Functions CI、文書同期
 
 通常ギャラリーは常時 Firestore listener を使わず、一覧では thumbnail を利用し、Konva もモーダル側へ隔離されている。現在の70〜100人規模では、一覧仮想化、即時サブコレクション化、Showcase集約キャッシュ、全面的なアーキテクチャ変更は引き続き優先しない。
 
@@ -43,14 +45,14 @@ Issue #6 では Storage Rules、`makePublic()`、フロントの公開URL依存�
 | SEC-STATUS-01 | 修正・本番デプロイ済み（Issue #4） | `getImportStatus`が認証なしでジョブ文書を返していた | `functions/src/index.ts`、`functions/src/httpSecurity.ts` | admin 認証必須・進捗4項目だけの返却へ変更し、認証済みインポートで確認 | High |
 | SEC-LOG-01 | 修正・本番デプロイ済み（Issue #4） | Google OAuthトークン、提出オブジェクト、学生メール一覧をログ出力していた | `src/app/admin/import/page.tsx`、`functions/src/importController.ts` | 件数・job ID・error code 中心のログへ変更 | High |
 | PRIV-REPO-01 | 追跡停止済み・履歴対応要判断（Issue #7） | 公開GitHubリポジトリで`users.json`が追跡され、認証エクスポート情報を含む | `.gitignore`、Git追跡停止、GitHub visibility=`PUBLIC`を確認済み | 2ユーザー分の情報は旧履歴から取得可能。実データ性、履歴除去、対象者対応は要判断 | High |
-| IMP-STATE-01 | High | 進捗の学生・ファイル単位混在と`processedFiles + errorFiles.length`による二重計上 | `functions/src/fileProcessor.ts`、`functions/src/importController.ts` | 学生提出ごとの終端状態だけで完了判定 | High |
-| IMP-ID-01 | High | プロフィール取得失敗時に空文字Mapキーで複数学生が統合され得る | `functions/src/importController.ts` | `email > Classroom userId > submission ID`の安定キーを使用し、空文字禁止 | High |
-| IMP-QUEUE-01 | High | Cloud Task投入失敗時にジョブが`processing`のまま残り得る | `functions/src/importController.ts` | 投入失敗を学生提出の`failed`終端状態として記録し、投入後も完了判定 | High |
-| IMP-IDEMP-01 | High | コンテナ停止、応答消失、入口再送時に重複作品・カウント増加が起こり得る | ランダム作品ID、名前なしCloud Task | 初期化時に作品ID・処理IDを一度だけ確定し、終端遷移を冪等化 | High |
+| IMP-STATE-01 | Issue #8 ローカル実装・本番未デプロイ | 旧処理の学生・ファイル単位混在と二重計上 | `functions/src/importState.ts`、`functions/src/importController.ts` | 新規ジョブは提出終端状態のみで完了判定 | High |
+| IMP-ID-01 | Issue #8 ローカル実装・本番未デプロイ | profile失敗時の空文字Mapキー | `functions/src/importState.ts`、`functions/src/importController.ts` | email > Classroom userId > submission ID、空文字拒否 | High |
+| IMP-QUEUE-01 | Issue #8 ローカル実装・本番未デプロイ | Task投入失敗でジョブが停止 | `functions/src/importState.ts`、`functions/src/importController.ts` | 投入失敗を提出のfailedへ終端し、全投入後に完了判定 | High |
+| IMP-IDEMP-01 | Issue #8 ローカル実装・本番未デプロイ | 再送時の重複作品・集計 | `functions/src/importState.ts`、`functions/src/fileProcessor.ts` | 確定artworkId、決定的Task名、終端guardとtransaction | High |
 | IMP-TIMEOUT-01 | High | インポート入口がDrive取得まで同期実行し、540秒504が実運用で発生 | `initializeImport`、2026-02-08障害分析 | N+1削減と計測後、60秒を超える場合は初期化処理もバックグラウンド化 | High |
 | TEST-CI-01 | High | 認証、Rules、進捗、重送の自動テストがなく、CIもFunctionsを検査しない | `package.json`、`.github/workflows` | 高リスク経路だけを守る最小テストを先行追加 | High |
 | DATA-DELETE-01 | Medium | 削除が部分成功し得て、`showcaseGalleries`と`showcase/`も対象外 | `functions/src/index.ts` | 削除順序、対象、失敗結果、再実行可能性を整理。直ちにキュー化はしない | High |
-| DATA-ORPHAN-01 | Medium | 画像公開後のFirestore・集計・進捗更新失敗で公開画像が孤立し得る | `functions/src/fileProcessor.ts` | 作成済み画像パスを保持し、保存失敗時に補償削除 | High |
+| DATA-ORPHAN-01 | Issue #8 ローカル実装・本番未デプロイ | 画像生成後の後段失敗で孤立し得る | `functions/src/fileProcessor.ts` | 今回生成した画像pathのみを追跡・補償削除。プロセス強制終了時の完全回収は別途運用確認 | High |
 | DATA-LIKE-01 | Medium | like文書と`likeCount`が別更新 | `src/app/gallery/page.tsx` | Firestoreトランザクション化 | High |
 | CFG-INDEX-01 | Medium | `galleryId + createdAt`の複合インデックスがリポジトリにない | `useGalleryArtworks.ts`、`firestore.indexes.json` | 本番状態を確認し、必要な定義を構成管理 | Medium |
 | DOC-DRIFT-01 | Medium | 完全バックグラウンド等、現行実装と異なる説明が残る | `docs/features/BACKGROUND_IMPORT.md`等 | 高リスク改修後に現行動作へ合わせる | High |

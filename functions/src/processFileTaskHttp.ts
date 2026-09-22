@@ -19,6 +19,11 @@ export async function processFileTaskHttp(req: Request, res: Response): Promise<
       classroomId,
       assignmentId,
       existingArtworkId,
+      submissionKey,
+      artworkId,
+      classroomUserId,
+      classroomSubmissionId,
+      initialFailedFileCount = 0,
     } = req.body;
 
     console.log('Processing submission', { importJobId, fileCount: files?.length || 0 });
@@ -35,7 +40,12 @@ export async function processFileTaskHttp(req: Request, res: Response): Promise<
         galleryId,
         classroomId,
         assignmentId,
-        existingArtworkId
+        existingArtworkId,
+        submissionKey,
+        artworkId,
+        classroomUserId,
+        classroomSubmissionId,
+        initialFailedFileCount,
       );
 
       console.log('Submission processed successfully', { importJobId });
@@ -60,12 +70,11 @@ export async function processFileTaskHttp(req: Request, res: Response): Promise<
         });
       }
 
-      // processMultipleFiles内でエラーは既に処理されているため、
-      // 200を返してCloud Tasksにリトライさせない
-      res.status(200).send({
+      // A terminal file failure returns normally from the processor. An exception
+      // here means the submission may still be nonterminal; let Cloud Tasks retry.
+      res.status(503).send({
         success: false,
         error: getSafeErrorCode(error),
-        note: 'Error logged in Firestore, task marked as completed to prevent retry'
       });
     }
   } catch (error) {

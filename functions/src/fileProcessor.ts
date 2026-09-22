@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getStorage, Storage } from 'firebase-admin/storage';
 import { getSafeErrorCode } from './httpSecurity';
+import { claimSubmission, finishSubmission, releaseSubmissionClaim, submissionOutcome } from './importState';
 
 const logSafeError = (operation: string, error: unknown, context: Record<string, unknown> = {}) => {
   console.error(operation, { ...context, errorCode: getSafeErrorCode(error) });
@@ -178,7 +179,8 @@ async function processImageFile(
   fileName: string,
   storage: Storage,
   galleryId: string,
-  startPageNumber?: number
+  startPageNumber?: number,
+  onCreatedPath?: (path: string) => void,
 ): Promise<ProcessedImage[]> {
 
   const bucket = storage.bucket();
@@ -219,6 +221,7 @@ async function processImageFile(
   // Firebase Storageにアップロード
   const imagePath = `galleries/${galleryId}/images/${imageId}${fileExtension}`;
   const imageFile = bucket.file(imagePath);
+  onCreatedPath?.(imagePath);
 
   await imageFile.save(optimizedBuffer, {
     metadata: {
@@ -235,6 +238,7 @@ async function processImageFile(
   if (thumbnailBuffer) {
     thumbnailPath = `galleries/${galleryId}/thumbnails/${imageId}${fileExtension}`;
     const thumbnailFile = bucket.file(thumbnailPath);
+    onCreatedPath?.(thumbnailPath);
 
     await thumbnailFile.save(thumbnailBuffer, {
       metadata: {
@@ -271,7 +275,8 @@ async function processPdfFile(
   storage: Storage,
   galleryId: string,
   maxPages?: number,
-  startPageNumber?: number
+  startPageNumber?: number,
+  onCreatedPath?: (path: string) => void,
 ): Promise<ProcessedImage[]> {
 
   const bucket = storage.bucket();
@@ -373,6 +378,7 @@ async function processPdfFile(
 
         thumbnailPath = `galleries/${galleryId}/thumbnails/${imageId}.webp`;
         const thumbnailFile = bucket.file(thumbnailPath);
+        onCreatedPath?.(thumbnailPath);
 
         await thumbnailFile.save(thumbnailBuffer, {
           metadata: {
@@ -392,6 +398,7 @@ async function processPdfFile(
       // メイン画像をアップロード
       const imagePath = `galleries/${galleryId}/images/${imageId}.webp`;
       const imageFile = bucket.file(imagePath);
+      onCreatedPath?.(imagePath);
 
       await imageFile.save(optimizedBuffer, {
         metadata: {
@@ -458,8 +465,18 @@ export async function processMultipleFiles(
   galleryId: string,
   classroomId: string,
   assignmentId: string,
-  existingArtworkId?: string
+  existingArtworkId?: string,
+  submissionKey?: string,
+  fixedArtworkId?: string,
+  classroomUserId?: string,
+  classroomSubmissionId?: string,
+  initialFailedFileCount = 0,
 ): Promise<void> {
+  if (submissionKey && fixedArtworkId) {
+    return processSubmissionV2({ importJobId, studentName, studentEmail, studentId,
+      submittedAt, isLate, files, galleryId, classroomId, assignmentId,
+      submissionKey, artworkId: fixedArtworkId, classroomUserId, classroomSubmissionId, initialFailedFileCount });
+  }
   const db = getFirestore();
   const storage = getStorage();
   const bucket = storage.bucket();
@@ -701,5 +718,134 @@ export async function processMultipleFiles(
 
     // エラーをthrowせずに正常終了（処理は継続）
     console.log('Continuing import process after submission error', { importJobId });
+  }
+}
+
+type SubmissionV2 = {
+  importJobId: string;
+  studentName: string;
+  studentEmail: string;
+  studentId: string;
+  submittedAt: string;
+  isLate: boolean;
+  files: Array<{ id: string; name: string; type: 'image' | 'pdf'; mimeType: string; originalFileUrl: string; tempFilePath: string }>;
+  galleryId: string;
+  classroomId: string;
+  assignmentId: string;
+  submissionKey: string;
+  artworkId: string;
+  classroomUserId?: string;
+  classroomSubmissionId?: string;
+  initialFailedFileCount: number;
+};
+
+export async function cleanupGeneratedObjects(
+  paths: readonly string[],
+  deletePath: (path: string) => Promise<unknown>,
+  onFailure: (path: string, error: unknown) => void,
+): Promise<void> {
+  for (const path of paths) {
+    try { await deletePath(path); }
+    catch (error) { onFailure(path, error); }
+  }
+}
+
+async function processSubmissionV2(input: SubmissionV2): Promise<void> {
+  const claim = await claimSubmission(input.importJobId, input.submissionKey);
+  if (claim.kind === 'terminal') return;
+  if (claim.kind === 'busy') throw new Error('submission_processing_in_progress');
+  if (claim.artworkId !== input.artworkId) throw new Error('artwork_id_mismatch');
+
+  const bucket = getStorage().bucket();
+  const createdPaths: string[] = [];
+  const images: Array<ProcessedImage & { sourceFileId: string; sourceFileName: string }> = [];
+  const submittedFiles: Array<Record<string, string>> = [];
+  const failedFiles: string[] = [];
+  let finished = false;
+
+  const cleanupPaths = (paths: string[]) => cleanupGeneratedObjects(paths,
+    path => bucket.file(path).delete({ ignoreNotFound: true }),
+    (path, error) => logSafeError('Failed to clean up generated object', error, { importJobId: input.importJobId, path }));
+
+  try {
+    for (const file of input.files) {
+      const start = createdPaths.length;
+      submittedFiles.push({ id: file.id, name: file.name, type: file.type,
+        originalFileUrl: file.originalFileUrl, mimeType: file.mimeType });
+      try {
+        const tempFile = bucket.file(file.tempFilePath);
+        const [exists] = await tempFile.exists();
+        if (!exists) throw new Error('temporary_file_missing');
+        const [buffer] = await tempFile.download();
+        if (buffer.length > MAX_FILE_SIZE) throw new Error('file_too_large');
+        const processed = file.type === 'image'
+          ? await processImageFile(buffer, file.name, getStorage(), input.galleryId, images.length + 1, path => createdPaths.push(path))
+          : await processPdfFile(buffer, file.name, getStorage(), input.galleryId, MAX_PDF_PAGES, images.length + 1, path => createdPaths.push(path));
+        if (!processed.length) throw new Error('no_images_generated');
+        for (const image of processed) {
+          images.push({ ...image, pageNumber: images.length + 1, sourceFileId: file.id, sourceFileName: file.name });
+        }
+      } catch (error) {
+        failedFiles.push(file.name);
+        logSafeError('Failed to process a submitted file', error, { importJobId: input.importJobId });
+        await cleanupPaths(createdPaths.splice(start));
+      }
+    }
+
+    const succeeded = submissionOutcome(images.length) === 'succeeded';
+    const artwork: Record<string, unknown> = {
+      id: input.artworkId,
+      title: `${input.studentName}の提出物`,
+      galleryId: input.galleryId,
+      status: succeeded ? 'submitted' : 'error',
+      ...(succeeded ? {} : { errorReason: 'processing_error' }),
+      ...(succeeded && claim.existingArtworkId ? { errorReason: FieldValue.delete() } : {}),
+      files: submittedFiles,
+      images,
+      ...(images[0]?.thumbnailPath ? { thumbnailPath: images[0].thumbnailPath } : {}),
+      ...(!images[0]?.thumbnailPath && claim.existingArtworkId ? { thumbnailPath: FieldValue.delete() } : {}),
+      studentName: input.studentName,
+      studentEmail: input.studentEmail,
+      ...(input.studentId ? { studentId: input.studentId } : {}),
+      ...(input.classroomUserId ? { classroomUserId: input.classroomUserId } : {}),
+      ...(input.classroomSubmissionId ? { classroomSubmissionId: input.classroomSubmissionId } : {}),
+      submittedAt: new Date(input.submittedAt),
+      isLate: input.isLate,
+      classroomId: input.classroomId,
+      assignmentId: input.assignmentId,
+      importedBy: input.importJobId,
+      ...(!claim.existingArtworkId ? {
+        likeCount: 0, labels: [], comments: [], createdAt: FieldValue.serverTimestamp(),
+      } : {}),
+    };
+    const changed = await finishSubmission({ jobId: input.importJobId, key: input.submissionKey,
+      state: succeeded ? 'succeeded' : 'failed', failedFileCount: failedFiles.length + input.initialFailedFileCount,
+      failureCode: succeeded ? (failedFiles.length + input.initialFailedFileCount ? 'partial_file_failure' : undefined) : 'no_images_generated',
+      artwork, attemptId: claim.attemptId });
+    finished = true;
+    // A superseded attempt must not delete the winning attempt's files; paths
+    // here are unique to this invocation, so its own unused objects are safe.
+    if (!changed) await cleanupPaths(createdPaths);
+  } catch (error) {
+    logSafeError('Submission processing failed', error, { importJobId: input.importJobId });
+    await cleanupPaths(createdPaths);
+    try {
+      await finishSubmission({ jobId: input.importJobId, key: input.submissionKey,
+        state: 'failed', failedFileCount: input.files.length + input.initialFailedFileCount,
+        failureCode: getSafeErrorCode(error), attemptId: claim.attemptId });
+      finished = true;
+    } catch (finishError) {
+      logSafeError('Failed to terminate a submission', finishError, { importJobId: input.importJobId });
+      try { await releaseSubmissionClaim(input.importJobId, input.submissionKey, claim.attemptId); }
+      catch (releaseError) { logSafeError('Failed to release a submission claim', releaseError, { importJobId: input.importJobId }); }
+      throw finishError;
+    }
+  } finally {
+    if (finished) {
+      for (const file of input.files) {
+        try { await bucket.file(file.tempFilePath).delete({ ignoreNotFound: true }); }
+        catch (error) { logSafeError('Failed to delete a temporary file', error, { importJobId: input.importJobId }); }
+      }
+    }
   }
 }

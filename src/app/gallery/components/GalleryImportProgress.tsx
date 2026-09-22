@@ -28,8 +28,12 @@ const GalleryImportProgress = ({ importProgress }: GalleryImportProgressProps) =
         />
       </div>
       <p className="text-xs text-blue-700">
-        {importProgress.processedFiles} / {importProgress.totalFiles} ファイル処理済み
-        {isCompleted && ' - 作品が追加されました。'}
+        {importProgress.totalSubmissions !== undefined
+          ? `${importProgress.completedSubmissions ?? 0} / ${importProgress.totalSubmissions} 学生提出を処理済み`
+          : `${importProgress.processedFiles} / ${importProgress.totalFiles} ファイル処理済み`}
+        {importProgress.failedSubmissions ? `（失敗 ${importProgress.failedSubmissions} 件）` : ''}
+        {importProgress.failedFileCount ? `（ファイル失敗 ${importProgress.failedFileCount} 件）` : ''}
+        {isCompleted && ' - インポート処理が完了しました。'}
       </p>
     </div>
   );

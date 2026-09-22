@@ -11,6 +11,11 @@ export type ImportProgress = {
   progress: number;
   processedFiles: number;
   totalFiles: number;
+  completedSubmissions?: number;
+  totalSubmissions?: number;
+  succeededSubmissions?: number;
+  failedSubmissions?: number;
+  failedFileCount?: number;
 };
 
 type UseImportProgressOptions = {
@@ -69,6 +74,11 @@ export const useImportProgress = ({
               progress: data.progress,
               processedFiles: data.processedFiles,
               totalFiles: data.totalFiles,
+              completedSubmissions: data.completedSubmissions,
+              totalSubmissions: data.totalSubmissions,
+              succeededSubmissions: data.succeededSubmissions,
+              failedSubmissions: data.failedSubmissions,
+              failedFileCount: data.failedFileCount,
             });
 
             if (data.status === 'completed' || data.status === 'error') {
