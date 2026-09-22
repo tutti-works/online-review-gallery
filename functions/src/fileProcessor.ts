@@ -4,6 +4,11 @@ import * as admin from 'firebase-admin';
 import { v4 as uuidv4 } from 'uuid';
 
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { getSafeErrorCode } from './httpSecurity';
+
+const logSafeError = (operation: string, error: unknown, context: Record<string, unknown> = {}) => {
+  console.error(operation, { ...context, errorCode: getSafeErrorCode(error) });
+};
 
 interface ProcessedImage {
   id: string;
@@ -45,7 +50,7 @@ export async function processFile(
   // tempFilePathの検証
   if (!tempFilePath || tempFilePath.trim() === '') {
     const error = new Error(`Invalid tempFilePath: "${tempFilePath}" for file: ${fileName}`);
-    console.error(error.message);
+    console.error('Invalid temporary file path', { importJobId, errorCode: 'invalid_temp_file_path' });
     await db.collection('importJobs').doc(importJobId).update({
       errorFiles: FieldValue.arrayUnion(fileName || 'unknown_file'),
     });
@@ -55,18 +60,18 @@ export async function processFile(
   const tempFile = bucket.file(tempFilePath);
 
   try {
-    console.log(`Processing file: ${fileName} for student: ${studentName} from ${tempFilePath}`);
+    console.log('Processing file', { importJobId, fileType });
 
     // ファイルの存在確認（本番環境での同期問題対策）
     const [exists] = await tempFile.exists();
     if (!exists) {
-      console.error(`File not found in storage: ${tempFilePath}`);
+      console.error('Temporary file not found in storage', { importJobId, errorCode: 'file_not_found' });
       // ファイルが存在しない場合、リトライしても無駄なのでエラーとして記録して終了
       await db.collection('importJobs').doc(importJobId).update({
         errorFiles: FieldValue.arrayUnion(fileName),
         processedFiles: FieldValue.increment(1), // カウントを増やして完了判定に含める
       });
-      console.log(`Marked file as error and incremented processedFiles: ${fileName}`);
+      console.log('Marked file as error and incremented processedFiles', { importJobId });
       return; // throwせずにreturnすることでCloud Tasksのリトライを防ぐ
     }
 
@@ -125,29 +130,20 @@ export async function processFile(
     // 一時ファイルを削除
     await tempFile.delete();
 
-    console.log(`Successfully processed file: ${fileName} and deleted temp file.`);
+    console.log('Successfully processed file and deleted temporary file', { importJobId });
 
   } catch (error) {
-    console.error(`❌ Error processing file ${fileName}:`, error);
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      fileName,
-      tempFilePath,
-      fileType,
-      studentName,
-      studentEmail,
-    });
+    logSafeError('Error processing file', error, { importJobId, fileType });
 
     // エラー時も一時ファイルを削除
     try {
       const exists = (await tempFile.exists())[0];
       if (exists) {
         await tempFile.delete();
-        console.log(`Deleted temp file after error: ${tempFilePath}`);
+        console.log('Deleted temporary file after error', { importJobId });
       }
     } catch (deleteError) {
-      console.error(`Failed to delete temp file ${tempFilePath}:`, deleteError);
+      logSafeError('Failed to delete a temporary file', deleteError, { importJobId });
     }
 
     // エラーログを記録 & processedFilesをインクリメント（完了判定のため）
@@ -167,7 +163,7 @@ export async function processFile(
       processedFiles: FieldValue.increment(1), // エラー時もカウントを増やす
     });
 
-    console.log(`Marked file as error and incremented processedFiles: ${fileName}`);
+    console.log('Marked file as error and incremented processedFiles', { importJobId });
 
     // エラー情報は既にFirestoreに記録済みなのでthrowしない
     // これによりCloud Tasksがリトライせず、次のタスクに進む
@@ -241,7 +237,6 @@ async function processImageFile(
   if (isEmulator) {
     // エミュレーター環境: localhost URLを使用
     imageUrl = `http://localhost:9199/v0/b/${bucket.name}/o/${encodeURIComponent(imagePath)}?alt=media`;
-    console.log(`🔧 Emulator Storage URL: ${imageUrl}`);
   } else {
     // 本番環境: 公開URLを使用
     await imageFile.makePublic();
@@ -304,7 +299,7 @@ async function processPdfFile(
 
   // エミュレーター環境ではPDF処理をスキップ
   if (isEmulator) {
-    console.warn(`⚠️ PDF processing skipped in emulator mode: ${fileName}`);
+    console.warn('⚠️ PDF processing skipped in emulator mode');
     console.warn('PDF processing requires GraphicsMagick which is not available in Windows emulator environment');
     console.warn('PDF processing will work in production (Cloud Functions with Linux environment)');
     throw new Error('PDF processing is not supported in emulator mode. Please deploy to production to test PDF files, or test with image files instead.');
@@ -326,7 +321,6 @@ async function processPdfFile(
       height: 2404,
     };
 
-    console.log(`Using unique filename prefix: ${uniquePrefix}`);
     const converter = pdf2pic.fromBuffer(pdfBuffer, convertOptions);
 
     let pages;
@@ -334,7 +328,7 @@ async function processPdfFile(
       pages = await converter.bulk(-1);
     } catch (conversionError) {
       // GraphicsMagick/Ghostscriptのクラッシュを検出
-      console.error(`PDF conversion failed (possible segfault or corrupt PDF): ${fileName}`, conversionError);
+      logSafeError('PDF conversion failed', conversionError);
       throw new Error(`PDF conversion failed. The PDF may be corrupt, encrypted, or too complex for processing: ${conversionError instanceof Error ? conversionError.message : String(conversionError)}`);
     }
 
@@ -346,7 +340,6 @@ async function processPdfFile(
     console.log(`Processing PDF with ${pages.length} pages...`);
     if (pages.length > 0) {
       console.log(`Page 0 keys:`, Object.keys(pages[0]));
-      console.log(`Page 0 structure:`, JSON.stringify(pages[0]).substring(0, 200));
     }
 
     for (let i = 0; i < pages.length; i++) {
@@ -360,7 +353,7 @@ async function processPdfFile(
         continue;
       }
 
-      console.log(`Processing page ${pageNumber}/${pages.length} from ${page.path}...`);
+      console.log(`Processing PDF page ${pageNumber}/${pages.length}`);
 
       // 一時ファイルから画像を読み込み
       const fs = require('fs');
@@ -456,14 +449,14 @@ async function processPdfFile(
 
       processedImages.push(imageData);
 
-      console.log(`✅ Page ${pageNumber} processed: ${imageUrl}`);
+      console.log(`✅ PDF page ${pageNumber} processed`);
 
       // 一時ファイルを削除
       try {
         fs.unlinkSync(page.path);
-        console.log(`Deleted temp file: ${page.path}`);
+        console.log('Deleted temporary PDF page');
       } catch (err) {
-        console.warn(`Failed to delete temp file ${page.path}:`, err);
+        console.warn('Failed to delete a temporary PDF page', { errorCode: getSafeErrorCode(err) });
       }
     }
 
@@ -471,7 +464,7 @@ async function processPdfFile(
     return processedImages;
 
   } catch (error) {
-    console.error('PDF processing error:', error);
+    logSafeError('PDF processing error', error);
     throw new Error(`Failed to process PDF: ${error}`);
   }
 }
@@ -501,7 +494,7 @@ export async function processMultipleFiles(
   const storage = admin.storage();
   const bucket = storage.bucket();
 
-  console.log(`Processing ${files.length} files for ${studentName}...`);
+  console.log('Processing submission files', { importJobId, fileCount: files.length });
 
   const artworksCollection = db.collection('artworks');
   const isOverwrite = Boolean(existingArtworkId);
@@ -521,7 +514,7 @@ export async function processMultipleFiles(
       const [exists] = await tempFile.exists();
 
       if (!exists) {
-        console.error(`File not found: ${file.tempFilePath}`);
+        console.error('Temporary file not found', { importJobId, errorCode: 'file_not_found' });
         await db.collection('importJobs').doc(importJobId).update({
           errorFiles: FieldValue.arrayUnion(file.name),
           processedFiles: FieldValue.increment(1),
@@ -534,7 +527,11 @@ export async function processMultipleFiles(
 
       // ファイルサイズチェック
       if (fileBuffer.length > MAX_FILE_SIZE) {
-        console.error(`File too large: ${file.name} (${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB)`);
+        console.error('File exceeds size limit', {
+          importJobId,
+          errorCode: 'file_too_large',
+          sizeBytes: fileBuffer.length,
+        });
         await db.collection('importJobs').doc(importJobId).update({
           errorFiles: FieldValue.arrayUnion(file.name),
           processedFiles: FieldValue.increment(1),
@@ -575,15 +572,18 @@ export async function processMultipleFiles(
       // 一時ファイルを削除
       try {
         await tempFile.delete();
-        console.log(`Deleted temp file: ${file.tempFilePath}`);
+        console.log('Deleted temporary file', { importJobId });
       } catch (deleteError) {
-        console.warn(`Failed to delete temp file ${file.tempFilePath}:`, deleteError);
+        console.warn('Failed to delete a temporary file', {
+          importJobId,
+          errorCode: getSafeErrorCode(deleteError),
+        });
       }
     }
 
     if (allImages.length === 0) {
       // 画像が1つも処理できなかった場合、エラー作品として保存
-      console.error(`No images processed for ${studentName} - creating error artwork`);
+      console.error('No images processed; creating error artwork', { importJobId });
 
       const errorArtwork = {
         id: artworkId,
@@ -608,9 +608,10 @@ export async function processMultipleFiles(
       };
 
       await artworkRef.set(errorArtwork);
-      console.log(
-        `⚠️ ${isOverwrite ? 'Updated existing error artwork' : 'Error artwork created'} for ${studentName} (unsupported format)`
-      );
+      console.log(`⚠️ ${isOverwrite ? 'Updated existing error artwork' : 'Error artwork created'} (unsupported format)`, {
+        importJobId,
+        artworkId,
+      });
 
       // ギャラリーのカウントを更新
       const galleryUpdate: Record<string, unknown> = {
@@ -651,9 +652,12 @@ export async function processMultipleFiles(
     };
 
     await artworkRef.set(artwork);
-    console.log(
-      `${isOverwrite ? '🔄 Updated artwork for' : '✅ Artwork created for'} ${studentName} with ${allImages.length} images from ${files.length} files`
-    );
+    console.log(isOverwrite ? '🔄 Updated artwork' : '✅ Artwork created', {
+      importJobId,
+      artworkId,
+      imageCount: allImages.length,
+      fileCount: files.length,
+    });
 
     // galleryのartworkCountをインクリメント（再利用時はカウント維持）
     const galleryUpdate: Record<string, unknown> = {
@@ -670,7 +674,7 @@ export async function processMultipleFiles(
     });
 
   } catch (error) {
-    console.error(`Error processing files for ${studentName}:`, error);
+    logSafeError('Error processing submission files', error, { importJobId });
 
     // エラーが発生した場合もエラー作品として保存
     try {
@@ -703,9 +707,10 @@ export async function processMultipleFiles(
       };
 
       await artworkRef.set(errorArtwork);
-      console.log(
-        `⚠️ ${isOverwrite ? 'Updated existing error artwork' : 'Error artwork created'} for ${studentName} (processing error)`
-      );
+      console.log(`⚠️ ${isOverwrite ? 'Updated existing error artwork' : 'Error artwork created'} (processing error)`, {
+        importJobId,
+        artworkId: artworkRef.id,
+      });
 
       // ギャラリーのカウントを更新
       const galleryUpdate: Record<string, unknown> = {
@@ -716,7 +721,7 @@ export async function processMultipleFiles(
       }
       await db.collection('galleries').doc(galleryId).update(galleryUpdate);
     } catch (saveError) {
-      console.error(`Failed to save error artwork for ${studentName}:`, saveError);
+      logSafeError('Failed to save an error artwork', saveError, { importJobId });
     }
 
     await db.collection('importJobs').doc(importJobId).update({
@@ -725,6 +730,6 @@ export async function processMultipleFiles(
     });
 
     // エラーをthrowせずに正常終了（処理は継続）
-    console.log(`Continuing import process after error for ${studentName}`);
+    console.log('Continuing import process after submission error', { importJobId });
   }
 }

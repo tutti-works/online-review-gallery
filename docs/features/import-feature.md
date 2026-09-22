@@ -4,9 +4,32 @@
 📝 **ステータス**: 本番環境デプロイ済み
 📄 **機能ID**: F-02-07, F-02-08, F-02-09
 
+> **2026-09-22 認証更新（ローカル実装、未デプロイ）:** Functions の `Authorization` は Firebase ID token 専用とする。Google Classroom / Drive の OAuth access token は `X-Google-OAuth-Token` で別送し、本文の email は認可に使用しない。`getImportStatus` を含む管理系 endpoint は Firebase ID token と admin role を必須とする。
+
 ---
 
 ## 1. 概要
+
+### HTTP 認証境界
+
+```typescript
+const firebaseIdToken = await auth.currentUser?.getIdToken();
+
+await fetch(`${functionsBaseUrl}/importClassroomSubmissions`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${firebaseIdToken}`,
+    'X-Google-OAuth-Token': googleAccessToken,
+  },
+  body: JSON.stringify({ galleryId, classroomId, assignmentId }),
+});
+```
+
+- Firebase ID token: 呼出者本人の検証と admin 認可に使用する。
+- Google OAuth token: Classroom / Drive API の呼出しだけに使用する。
+- `userEmail` を request body / query で送っても認可根拠にはしない。
+- `getImportStatus` は Firebase ID token を付け、UI 用の進捗4項目だけを受け取る。
 
 ### 1.1. 機能の目的
 

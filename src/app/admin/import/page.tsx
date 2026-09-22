@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { ClassroomCourse, CourseAssignment } from '@/types';
 import { CLASSROOM_INCREMENTAL_SCOPES } from '@/lib/firebase';
 import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
+import { getFunctionAuthorizationHeader } from '@/lib/functionAuth';
 
 const CONSENT_MESSAGE = 'Google Classroom APIへのアクセス許可が必要です。下のボタンから許可してください。';
 const TOKEN_MESSAGE = 'Google Classroom APIのトークンを取得できませんでした。ログアウト後に再度ログインしてください。';
@@ -326,21 +327,19 @@ function AdminImportPage() {
       }
 
       const functionsBaseUrl = getFunctionsBaseUrl();
-
-      console.log('読み込まれたFunctionsのURL:', functionsBaseUrl);
-      console.log('Access Token being sent:', accessToken);
+      const authorization = await getFunctionAuthorizationHeader();
 
       const response = await fetch(`${functionsBaseUrl}/importClassroomSubmissions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: authorization,
+          'X-Google-OAuth-Token': accessToken,
         },
         body: JSON.stringify({
           galleryId,
           classroomId: selectedCourse,
           assignmentId: selectedAssignment,
-          userEmail: user.email,
         }),
       });
 

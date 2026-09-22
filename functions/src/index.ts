@@ -6,6 +6,15 @@ import { google } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
 import { initializeImport, checkImportCompletion } from './importController';
 import { processFile } from './fileProcessor';
+import {
+  ALLOWED_CORS_ORIGINS,
+  HttpAuthError,
+  getSafeErrorCode,
+  requireAdmin,
+  requireGoogleOAuthToken,
+  toImportStatusResponse,
+} from './httpSecurity';
+import type { Response } from 'express';
 
 // エミュレーター環境の設定（initializeApp前に設定）
 if (process.env.FUNCTIONS_EMULATOR === 'true') {
@@ -18,6 +27,19 @@ if (process.env.FUNCTIONS_EMULATOR === 'true') {
 admin.initializeApp();
 
 const tasksClient = new CloudTasksClient();
+
+const sendAuthError = (response: Response, error: unknown): boolean => {
+  if (!(error instanceof HttpAuthError)) {
+    return false;
+  }
+
+  response.status(error.status).json({ error: error.code });
+  return true;
+};
+
+const logSafeError = (operation: string, error: unknown, context: Record<string, unknown> = {}) => {
+  console.error(operation, { ...context, errorCode: getSafeErrorCode(error) });
+};
 
 // Google Classroom & Drive API設定
 // Firebase Functions のデフォルトサービスアカウントを使用
@@ -36,93 +58,48 @@ export const importClassroomSubmissions = onRequest(
     memory: '1GiB', // 1GB以上のメモリ
     timeoutSeconds: 540, // 9分
     maxInstances: 100,
-    cors: true, // CORS を有効化
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (request, response) => {
-    // CORS ヘッダーを明示的に設定
-    response.set('Access-Control-Allow-Origin', '*');
-    response.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    // プリフライトリクエストへの対応
-    if (request.method === 'OPTIONS') {
-      response.status(204).send('');
-      return;
-    }
-
     try {
       if (request.method !== 'POST') {
         response.status(405).send('Method Not Allowed');
         return;
       }
 
-        // ユーザーのアクセストークンをヘッダーから取得
-        const authHeader = request.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          response.status(401).send('Unauthorized: Missing or invalid token');
-          return;
-        }
-        const accessToken = authHeader.split(' ')[1];
+      const requester = await requireAdmin(request);
+      const accessToken = requireGoogleOAuthToken(request);
 
-        // ユーザーのトークンでOAuth2クライアントを作成
-        const userAuth = new google.auth.OAuth2();
-        userAuth.setCredentials({ access_token: accessToken });
+      // ユーザーのトークンでOAuth2クライアントを作成
+      const userAuth = new google.auth.OAuth2();
+      userAuth.setCredentials({ access_token: accessToken });
 
-        const { galleryId, classroomId, assignmentId, userEmail } = request.body;
+      const { galleryId, classroomId, assignmentId } = request.body;
 
-        if (!galleryId || !classroomId || !assignmentId || !userEmail) {
-          response.status(400).json({
-            error: 'Missing required parameters',
-          });
-          return;
-        }
+      if (!galleryId || !classroomId || !assignmentId) {
+        response.status(400).json({
+          error: 'Missing required parameters',
+        });
+        return;
+      }
 
-        // ユーザー権限チェック
-        let userDoc = await admin
-          .firestore()
-          .collection('userRoles')
-          .doc(userEmail)
-          .get();
-
-        // 開発環境またはエミュレータ：ユーザーロールが存在しない場合、自動的に作成
-        if (!userDoc.exists || !userDoc.data()?.role) {
-          console.log(`Auto-creating admin role for ${userEmail} (emulator mode)`);
-          await admin.firestore().collection('userRoles').doc(userEmail).set({
-            role: 'admin',
-            createdAt: new Date(),
-          });
-          // 再度取得して確認
-          userDoc = await admin
-            .firestore()
-            .collection('userRoles')
-            .doc(userEmail)
-            .get();
-        }
-
-        if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
-          console.error(`Permission denied for ${userEmail}. Role: ${userDoc.data()?.role}`);
-          response.status(403).json({
-            error: 'Insufficient permissions',
-          });
-          return;
-        }
-
-        // インポート処理を開始（非同期）
-        const importJobId = await initializeImport(
-          galleryId,
-          classroomId,
-          assignmentId,
-          userEmail,
-          userAuth, // ユーザー自身の認証情報を使用
-          tasksClient
-        );
+      // インポート処理を開始（非同期）
+      const importJobId = await initializeImport(
+        galleryId,
+        classroomId,
+        assignmentId,
+        requester.email,
+        userAuth, // ユーザー自身の認証情報を使用
+        tasksClient
+      );
 
       response.status(200).json({
         importJobId,
         message: 'Import job started',
       });
     } catch (error) {
-      console.error('Import function error:', error);
+      if (sendAuthError(response, error)) return;
+      logSafeError('Import function error', error);
       response.status(500).json({
         error: 'Internal server error',
       });
@@ -156,7 +133,7 @@ const processFileTaskFunction = onTaskDispatched(
       submittedAt,
     } = req.data;
 
-    console.log(`Processing file: ${fileName} (${fileType})`);
+    console.log('Processing queued file', { importJobId, fileType });
 
     try {
       await processFile(
@@ -171,18 +148,18 @@ const processFileTaskFunction = onTaskDispatched(
         submittedAt
       );
 
-      console.log(`File processed successfully: ${fileName}`);
+      console.log('Queued file processed successfully', { importJobId });
 
       // ファイル処理完了後、インポート全体の完了状態をチェック
       await checkImportCompletion(importJobId);
     } catch (error) {
-      console.error(`File processing error for ${fileName}:`, error);
+      logSafeError('Queued file processing error', error, { importJobId });
 
       // エラー時もインポート完了状態をチェック（他のファイルは完了している可能性があるため）
       try {
         await checkImportCompletion(importJobId);
       } catch (checkError) {
-        console.error('Error checking import completion:', checkError);
+        logSafeError('Error checking import completion', checkError, { importJobId });
       }
 
       // エラーハンドリングはprocessFile内で行われる
@@ -204,46 +181,42 @@ export const getImportStatus = onRequest(
     region: 'asia-northeast1',
     memory: '512MiB',
     timeoutSeconds: 30,
-    cors: true, // CORS を有効化
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (request, response) => {
-    // CORS ヘッダーを明示的に設定
-    response.set('Access-Control-Allow-Origin', '*');
-    response.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    // プリフライトリクエストへの対応
-    if (request.method === 'OPTIONS') {
-      response.status(204).send('');
-      return;
-    }
-
     try {
+      if (request.method !== 'GET') {
+        response.status(405).send('Method Not Allowed');
+        return;
+      }
+
+      await requireAdmin(request);
       const { importJobId } = request.query;
 
-        if (!importJobId) {
-          response.status(400).json({
-            error: 'Missing importJobId parameter',
-          });
-          return;
-        }
+      if (!importJobId) {
+        response.status(400).json({
+          error: 'Missing importJobId parameter',
+        });
+        return;
+      }
 
-        const importJobDoc = await admin
-          .firestore()
-          .collection('importJobs')
-          .doc(importJobId as string)
-          .get();
+      const importJobDoc = await admin
+        .firestore()
+        .collection('importJobs')
+        .doc(importJobId as string)
+        .get();
 
-        if (!importJobDoc.exists) {
-          response.status(404).json({
-            error: 'Import job not found',
-          });
-          return;
-        }
+      if (!importJobDoc.exists) {
+        response.status(404).json({
+          error: 'Import job not found',
+        });
+        return;
+      }
 
-        response.status(200).json(importJobDoc.data());
+      response.status(200).json(toImportStatusResponse(importJobDoc.data() || {}));
     } catch (error) {
-      console.error('Get import status error:', error);
+      if (sendAuthError(response, error)) return;
+      logSafeError('Get import status error', error);
       response.status(500).json({
         error: 'Internal server error',
       });
@@ -257,10 +230,16 @@ export const getClassroomCourses = onRequest(
     region: 'asia-northeast1',
     memory: '512MiB',
     timeoutSeconds: 60,
-    cors: true,
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (request, response) => {
     try {
+      if (request.method !== 'GET') {
+        response.status(405).send('Method Not Allowed');
+        return;
+      }
+      await requireAdmin(request);
+
       // 環境変数チェック
       if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && process.env.NODE_ENV !== 'development') {
         console.log('No Google credentials found, using mock data');
@@ -310,7 +289,8 @@ export const getClassroomCourses = onRequest(
       console.log(`Found ${courses.length} courses`);
       response.status(200).json({ courses });
     } catch (error) {
-      console.error('Get courses error:', error);
+      if (sendAuthError(response, error)) return;
+      logSafeError('Get courses error', error);
 
       // エラーが発生した場合はモックデータにフォールバック
       console.log('API call failed, falling back to mock data');
@@ -346,10 +326,16 @@ export const getCourseAssignments = onRequest(
     region: 'asia-northeast1',
     memory: '512MiB',
     timeoutSeconds: 60,
-    cors: true,
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (request, response) => {
     try {
+      if (request.method !== 'GET') {
+        response.status(405).send('Method Not Allowed');
+        return;
+      }
+      await requireAdmin(request);
+
       const { courseId } = request.query;
 
       if (!courseId) {
@@ -413,7 +399,8 @@ export const getCourseAssignments = onRequest(
 
       response.status(200).json({ assignments });
     } catch (error) {
-      console.error('Get assignments error:', error);
+      if (sendAuthError(response, error)) return;
+      logSafeError('Get assignments error', error);
       response.status(500).json({
         error: 'Failed to fetch assignments',
       });
@@ -427,46 +414,21 @@ export const deleteArtwork = onRequest(
     region: 'asia-northeast1',
     memory: '512MiB',
     timeoutSeconds: 60,
-    cors: true,
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (request, response) => {
-    // CORS ヘッダーを明示的に設定
-    response.set('Access-Control-Allow-Origin', '*');
-    response.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    // プリフライトリクエストへの対応
-    if (request.method === 'OPTIONS') {
-      response.status(204).send('');
-      return;
-    }
-
     try {
       if (request.method !== 'POST') {
         response.status(405).send('Method Not Allowed');
         return;
       }
 
-        const { artworkId, userEmail } = request.body;
+        await requireAdmin(request);
+        const { artworkId } = request.body;
 
-        if (!artworkId || !userEmail) {
+        if (!artworkId) {
           response.status(400).json({
             error: 'Missing required parameters',
-          });
-          return;
-        }
-
-        // ユーザー権限チェック
-        const userDoc = await admin
-          .firestore()
-          .collection('userRoles')
-          .doc(userEmail)
-          .get();
-
-        if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
-          console.error(`Permission denied for ${userEmail}. Role: ${userDoc.data()?.role}`);
-          response.status(403).json({
-            error: 'Insufficient permissions',
           });
           return;
         }
@@ -585,7 +547,8 @@ export const deleteArtwork = onRequest(
         deletedFiles: deletePromises.length,
       });
     } catch (error) {
-      console.error('Delete artwork error:', error);
+      if (sendAuthError(response, error)) return;
+      logSafeError('Delete artwork error', error);
       response.status(500).json({
         error: 'Internal server error',
       });
@@ -646,39 +609,24 @@ export const deleteGalleryData = onRequest(
     region: 'asia-northeast1',
     memory: '1GiB',
     timeoutSeconds: 540,
-    cors: true,
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (request, response) => {
-    response.set('Access-Control-Allow-Origin', '*');
-    response.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    if (request.method === 'OPTIONS') {
-      response.status(204).send('');
-      return;
-    }
-
     try {
       if (request.method !== 'POST') {
         response.status(405).send('Method Not Allowed');
         return;
       }
 
-      const { userEmail, galleryId } = request.body;
+      await requireAdmin(request);
+      const { galleryId } = request.body;
 
-      if (!userEmail || !galleryId) {
-        response.status(400).send('Bad Request: Missing userEmail or galleryId in request body.');
+      if (!galleryId) {
+        response.status(400).send('Bad Request: Missing galleryId in request body.');
         return;
       }
 
-      const userDoc = await admin.firestore().collection('userRoles').doc(userEmail).get();
-      if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
-        console.error(`Permission denied for ${userEmail}. Role: ${userDoc.data()?.role}`);
-        response.status(403).json({ error: 'Insufficient permissions' });
-        return;
-      }
-
-      console.log(`Gallery data deletion initiated by admin: ${userEmail} for gallery: ${galleryId}`);
+      console.log('Gallery data deletion initiated', { galleryId });
 
       const db = admin.firestore();
       const bucket = admin.storage().bucket();
@@ -743,11 +691,10 @@ export const deleteGalleryData = onRequest(
       });
 
     } catch (error) {
-      console.error('Detailed error in deleteGalleryData:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (sendAuthError(response, error)) return;
+      logSafeError('deleteGalleryData failed', error);
       response.status(500).json({
         error: 'Failed to delete gallery data.',
-        details: errorMessage,
       });
     }
   }
@@ -793,41 +740,17 @@ export const deleteAllData = onRequest(
     region: 'asia-northeast1',
     memory: '1GiB',
     timeoutSeconds: 540, // 9分
-    cors: true,
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (request, response) => {
-    response.set('Access-Control-Allow-Origin', '*');
-    response.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    if (request.method === 'OPTIONS') {
-      response.status(204).send('');
-      return;
-    }
-
     try {
       if (request.method !== 'POST') {
         response.status(405).send('Method Not Allowed');
         return;
       }
 
-      // 警告: この方法はセキュリティリスクを伴います。
-      // IDトークンを検証せず、リクエストボディのメールアドレスを信頼します。
-      const { userEmail } = request.body;
-
-      if (!userEmail) {
-        response.status(400).send('Bad Request: Missing userEmail in request body.');
-        return;
-      }
-
-      const userDoc = await admin.firestore().collection('userRoles').doc(userEmail).get();
-      if (!userDoc.exists || userDoc.data()?.role !== 'admin') {
-        console.error(`Permission denied for ${userEmail}. Role: ${userDoc.data()?.role}`);
-        response.status(403).json({ error: 'Insufficient permissions' });
-        return;
-      }
-
-      console.log(`Data reset initiated by admin: ${userEmail}`);
+      await requireAdmin(request);
+      console.log('Data reset initiated');
 
       const db = admin.firestore();
       const bucket = admin.storage().bucket();
@@ -851,11 +774,10 @@ export const deleteAllData = onRequest(
       response.status(200).json({ message });
 
     } catch (error) {
-      console.error('Detailed error in deleteAllData:', error); // より詳細なログを出力
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (sendAuthError(response, error)) return;
+      logSafeError('deleteAllData failed', error);
       response.status(500).json({
         error: 'Failed to delete all data.',
-        details: errorMessage, // エラー詳細をレスポンスに含める
       });
     }
   }
@@ -867,60 +789,18 @@ export const syncGalleryArtworkCount = onRequest(
     region: 'asia-northeast1',
     memory: '512MiB',
     timeoutSeconds: 300,
-    cors: true,
+    cors: ALLOWED_CORS_ORIGINS,
   },
   async (request, response) => {
-    response.set('Access-Control-Allow-Origin', '*');
-    response.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    response.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    if (request.method === 'OPTIONS') {
-      response.status(204).send('');
-      return;
-    }
-
     try {
       if (request.method !== 'POST') {
         response.status(405).send('Method Not Allowed');
         return;
       }
 
-      const { userEmail, galleryId } = request.body;
-
-      // 管理者チェック
-      if (!userEmail) {
-        response.status(401).json({ error: 'Authentication required' });
-        return;
-      }
-
-      const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+      await requireAdmin(request);
+      const { galleryId } = request.body;
       const db = admin.firestore();
-
-      if (!isEmulator) {
-        // 本番環境のみ厳密な認証チェック
-        try {
-          // userRolesコレクションから役割を確認
-          const roleDoc = await db.collection('userRoles').doc(userEmail).get();
-
-          if (!roleDoc.exists) {
-            response.status(403).json({ error: 'Admin access required' });
-            return;
-          }
-
-          const userData = roleDoc.data();
-          if (userData?.role !== 'admin') {
-            response.status(403).json({ error: 'Admin access required' });
-            return;
-          }
-        } catch (authError) {
-          console.error('Auth error:', authError);
-          response.status(403).json({ error: 'Invalid user or insufficient permissions' });
-          return;
-        }
-      } else {
-        // エミュレーター環境では簡易チェック
-        console.log(`[Emulator] Allowing sync request from ${userEmail}`);
-      }
       const results: Array<{
         galleryId: string;
         galleryTitle: string;
@@ -1007,11 +887,10 @@ export const syncGalleryArtworkCount = onRequest(
       });
 
     } catch (error) {
-      console.error('Error in syncGalleryArtworkCount:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (sendAuthError(response, error)) return;
+      logSafeError('syncGalleryArtworkCount failed', error);
       response.status(500).json({
         error: 'Failed to sync gallery artwork count',
-        details: errorMessage,
       });
     }
   }

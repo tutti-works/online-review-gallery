@@ -18,6 +18,7 @@ import type { SortOption } from './types';
 import { extractLinesFromStageJSON } from '@/utils/annotations';
 import { sortBySubmissionDate, sortByStudentId, isIncomplete, filterCompleteArtworks, getStudentId } from '@/lib/artworkUtils';
 import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
+import { getFunctionAuthorizationHeader } from '@/lib/functionAuth';
 
 const removePageFromMap = <T,>(
   map: Record<string, T> | undefined,
@@ -274,14 +275,15 @@ function GalleryPage() {
 
     try {
       const functionsBaseUrl = getFunctionsBaseUrl();
+      const authorization = await getFunctionAuthorizationHeader();
       const response = await fetch(`${functionsBaseUrl}/deleteArtwork`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: authorization,
         },
         body: JSON.stringify({
           artworkId,
-          userEmail: user.email,
         }),
       });
 

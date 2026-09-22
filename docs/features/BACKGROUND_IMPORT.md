@@ -72,7 +72,10 @@ Cloud Functions: バックグラウンド処理開始（継続）✅
 
      // 進捗を監視（3秒ごと）
      const checkProgress = setInterval(async () => {
-       const response = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`);
+       const idToken = await auth.currentUser?.getIdToken();
+       const response = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`, {
+         headers: { Authorization: `Bearer ${idToken}` },
+       });
        // ... 進捗を更新
      }, 3000);
    };
@@ -188,7 +191,10 @@ if (Date.now() - startTime > 30 * 60 * 1000) {
 **3秒ごとにポーリング:**
 ```typescript
 setInterval(async () => {
-  const response = await fetch(`/getImportStatus?importJobId=${importJobId}`);
+  const idToken = await auth.currentUser?.getIdToken();
+  const response = await fetch(`/getImportStatus?importJobId=${importJobId}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
   const data = await response.json();
   setImportProgress(data);
 }, 3000);
@@ -246,7 +252,10 @@ localStorage.setItem('importJobs', JSON.stringify([
 **対策:**
 ```typescript
 try {
-  const response = await fetch(`/getImportStatus?importJobId=${importJobId}`);
+  const idToken = await auth.currentUser?.getIdToken();
+  const response = await fetch(`/getImportStatus?importJobId=${importJobId}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
   // ...
 } catch (err) {
   console.error('Progress check error:', err);

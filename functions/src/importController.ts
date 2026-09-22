@@ -3,6 +3,11 @@ import { google, Auth, classroom_v1 } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
 import { FieldValue } from 'firebase-admin/firestore';
 import { processMultipleFiles } from './fileProcessor';
+import { getSafeErrorCode } from './httpSecurity';
+
+const logSafeError = (operation: string, error: unknown, context: Record<string, unknown> = {}) => {
+  console.error(operation, { ...context, errorCode: getSafeErrorCode(error) });
+};
 
 type ArtworkStatus = 'submitted' | 'not_submitted' | 'error';
 
@@ -150,26 +155,15 @@ export async function initializeImport(
         });
       }
 
-      console.log(`  Existing: ${email} -> ${normalized} (${status})`);
     });
 
     console.log(`📋 Existing artworks: ${existingArtworksByEmail.size} students`);
-    console.log(
-      `📋 Existing emails: ${Array.from(existingArtworksByEmail.entries())
-        .map(([email, info]) => `${email}:${info.status}`)
-        .join(', ')}`
-    );
 
     // 課題の提出物を取得（全ステータスを対象にページング取得）
     const submissions = await listStudentSubmissions(classroom, classroomId, assignmentId);
 
-    // デバッグ: submissions 全体をログ出力
     console.log(`📊 Total submissions count: ${submissions.length}`);
-    if (submissions.length > 0) {
-      console.log('=== FIRST SUBMISSION OBJECT ===');
-      console.log(JSON.stringify(submissions[0], null, 2));
-      console.log('================================');
-    } else {
+    if (submissions.length === 0) {
       console.log('⚠️ No submissions found');
     }
 
@@ -201,11 +195,6 @@ export async function initializeImport(
 
     // 各提出物からファイル情報を収集
     for (const submission of submissions) {
-      // デバッグ: submission オブジェクト全体をログ出力
-      console.log('=== SUBMISSION OBJECT ===');
-      console.log(JSON.stringify(submission, null, 2));
-      console.log('========================');
-
       // 提出状態を確認（TURNED_INまたはRETURNEDのみ処理）
       const submissionState = submission.state;
       const isTurnedIn = submissionState === 'TURNED_IN' || submissionState === 'RETURNED';
@@ -231,7 +220,7 @@ export async function initializeImport(
             studentId = extractStudentIdFromEmail(studentEmail);
           }
         } catch (error) {
-          console.warn(`Failed to fetch user profile for ${submission.userId}:`, error);
+          logSafeError('Failed to fetch a user profile', error);
           studentName = submission.userId || 'Unknown Student';
           studentId = submission.userId;
         }
@@ -242,19 +231,18 @@ export async function initializeImport(
       const submittedAt = submission.updateTime || submission.creationTime || new Date().toISOString();
       const isLate = submission.late || false;
       const existingArtwork = existingArtworksByEmail.get(normalizedEmail);
-      console.log(`  Checking: ${studentEmail} -> ${normalizedEmail}`);
       if (existingArtwork) {
         if (existingArtwork.status === 'submitted') {
-          console.log(`⏭️ Skipping ${studentEmail} - already submitted`);
+          console.log('⏭️ Skipping an already submitted artwork');
           skippedCount++;
           continue;
         }
         if (!submissionsByStudent.has(normalizedEmail)) {
           overwriteCount++;
-          console.log(`  🔄 Overwriting ${studentEmail} (current status: ${existingArtwork.status})`);
+          console.log(`  🔄 Overwriting an artwork (current status: ${existingArtwork.status})`);
         }
       } else {
-        console.log(`  ✅ New student: ${studentEmail}`);
+        console.log('  ✅ New student submission');
       }
 
       // 学生ごとにグループ化（正規化したメールアドレスをキーに使用して重複防止）
@@ -318,7 +306,7 @@ export async function initializeImport(
           });
 
         } catch (err) {
-          console.error(`Failed to download file ${file.name} from Drive:`, err);
+          logSafeError('Failed to download a file from Drive', err, { importJobId: importJobRef.id });
           await importJobRef.update({
             errorFiles: FieldValue.arrayUnion(file.id),
           });
@@ -361,7 +349,7 @@ export async function initializeImport(
         validTasks.push(submission);
       } else {
         // サポートされていないファイルのみの場合はリストに追加（後でエラー作品を作成）
-        console.log(`⚠️ Student ${submission.studentName} has only unsupported files`);
+        console.log('⚠️ A submission has only unsupported files');
         studentsWithUnsupportedFilesOnly.push({
           studentName: submission.studentName,
           studentEmail: submission.studentEmail,
@@ -420,11 +408,9 @@ export async function initializeImport(
           processedFiles: FieldValue.increment(1),
         });
 
-        console.log(
-          `⚠️ ${isOverwrite ? 'Updated existing error artwork' : 'Created error artwork'} for ${student.studentName} (unsupported_format)`
-        );
+        console.log(`⚠️ ${isOverwrite ? 'Updated existing error artwork' : 'Created error artwork'} (unsupported_format)`);
       } catch (error) {
-        console.error(`Failed to create error artwork for ${student.studentName}:`, error);
+        logSafeError('Failed to create an error artwork', error, { importJobId: importJobRef.id });
       }
     }
 
@@ -456,7 +442,7 @@ export async function initializeImport(
             task.existingArtworkId
           );
         } catch (error) {
-          console.error(`❌ Failed to process submission for ${task.studentName}:`, error);
+          logSafeError('Failed to process a submission', error, { importJobId: importJobRef.id });
           await importJobRef.update({
             errorFiles: FieldValue.arrayUnion(...task.files.map(f => f.tempFilePath)),
           });
@@ -508,7 +494,7 @@ export async function initializeImport(
         try {
           await tasksClient.createTask(request);
         } catch (error) {
-          console.error(`Failed to create task for ${task.studentName}:`, error);
+          logSafeError('Failed to create a processing task', error, { importJobId: importJobRef.id });
           await importJobRef.update({
             errorFiles: FieldValue.arrayUnion(...task.files.map(f => f.tempFilePath)),
           });
@@ -525,7 +511,6 @@ export async function initializeImport(
     );
 
     console.log(`📊 Submitted students: ${submittedEmails.size}`);
-    console.log(`📊 Submitted emails: ${Array.from(submittedEmails).join(', ')}`);
 
     const studentsToMarkNotSubmitted: Array<{
       artworkId: string;
@@ -550,19 +535,10 @@ export async function initializeImport(
         });
       }
 
-      if (normalizedEmail) {
-        console.log(
-          `  Student ${normalizedEmail}: submitted=${hasSubmission}, existingStatus=${existingArtwork?.status ?? 'none'}, placeholder=${shouldCreatePlaceholder}`
-        );
-      }
-
       return shouldCreatePlaceholder;
     });
 
     console.log(`📝 Creating ${notSubmittedStudents.length} not-submitted placeholders`);
-    notSubmittedStudents.forEach(student => {
-      console.log(`  - ${student.profile?.name?.fullName} (${student.profile?.emailAddress})`);
-    });
 
     for (const student of notSubmittedStudents) {
       try {
@@ -589,14 +565,14 @@ export async function initializeImport(
           importedBy: userEmail,
         });
 
-        console.log(`  ✅ Created placeholder ${docRef.id} for ${student.profile?.emailAddress}`);
+        console.log(`  ✅ Created placeholder ${docRef.id}`);
 
         // galleryのartworkCountをインクリメント
         await db.collection('galleries').doc(galleryId).update({
           artworkCount: FieldValue.increment(1),
         });
       } catch (error) {
-        console.error(`  ❌ Failed to create not-submitted placeholder for ${student.profile?.emailAddress}:`, error);
+        logSafeError('Failed to create a not-submitted placeholder', error, { importJobId: importJobRef.id });
       }
     }
 
@@ -628,9 +604,12 @@ export async function initializeImport(
           errorReason: FieldValue.delete(),
         }, { merge: true });
 
-        console.log(`  🔄 Updated artwork ${student.artworkId} (${student.studentEmail}) to not_submitted`);
+        console.log(`  🔄 Updated artwork ${student.artworkId} to not_submitted`);
       } catch (error) {
-        console.error(`  ⚠️ Failed to revert ${student.studentEmail} to not_submitted:`, error);
+        logSafeError('Failed to revert an artwork to not_submitted', error, {
+          importJobId: importJobRef.id,
+          artworkId: student.artworkId,
+        });
       }
     }
 
@@ -663,7 +642,7 @@ export async function initializeImport(
     }
 
   } catch (error) {
-    console.error('Import initialization error:', error);
+    logSafeError('Import initialization error', error, { importJobId: importJobRef.id });
     await importJobRef.update({
       status: 'error',
       errorMessage: error instanceof Error ? error.message : 'Unknown error during initialization',
@@ -712,7 +691,7 @@ export async function checkImportCompletion(importJobId: string): Promise<void> 
       console.log(`⏳ Import progress updated: ${progress}%`);
     }
   } catch (error) {
-    console.error('Error checking import completion:', error);
+    logSafeError('Error checking import completion', error, { importJobId });
   }
 }
 
@@ -727,7 +706,7 @@ async function finalizeGallery(galleryId: string, importJobId: string): Promise<
     });
     console.log(`Gallery ${galleryId} finalized for import job ${importJobId}`);
   } catch (error) {
-    console.error('Error finalizing gallery:', error);
+    logSafeError('Error finalizing gallery', error, { galleryId, importJobId });
   }
 }
 
@@ -772,7 +751,7 @@ async function ensureGalleryExists(
         });
         console.log(`Gallery ${galleryId} updated with course/assignment names`);
       } catch (error) {
-        console.error(`Failed to fetch course/assignment info for ${galleryId}:`, error);
+        logSafeError('Failed to fetch course/assignment info', error, { galleryId });
         await galleryRef.update({
           updatedAt: FieldValue.serverTimestamp(),
         });
@@ -820,7 +799,7 @@ async function ensureGalleryExists(
 
     console.log(`✅ Gallery created: ${courseName} > ${assignmentName}`);
   } catch (error) {
-    console.error('Failed to fetch course/assignment info from Google Classroom:', error);
+    logSafeError('Failed to fetch course/assignment info from Google Classroom', error, { galleryId });
 
     // API取得失敗時はデフォルト値で作成
     await galleryRef.set({
@@ -861,7 +840,7 @@ async function processStudentSubmission(
   assignmentId: string,
   existingArtworkId?: string
 ): Promise<void> {
-  console.log(`Processing submission for ${studentName} with ${files.length} files`);
+  console.log('Processing submission', { importJobId, fileCount: files.length });
 
   await processMultipleFiles(
     importJobId,

@@ -4,9 +4,9 @@ import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import withAuth from '@/components/withAuth';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Gallery } from '@/types';
 import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
+import { getFunctionAuthorizationHeader } from '@/lib/functionAuth';
 
 interface SyncResult {
   galleryId: string;
@@ -47,13 +47,15 @@ function DashboardPage() {
 
           const functionsBaseUrl = getFunctionsBaseUrl();
           const deleteAllDataUrl = `${functionsBaseUrl}/deleteAllData`;
+          const authorization = await getFunctionAuthorizationHeader();
           
           const response = await fetch(deleteAllDataUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              Authorization: authorization,
             },
-            body: JSON.stringify({ userEmail: user.email }),
+            body: JSON.stringify({}),
           });
 
           if (!response.ok) {
@@ -97,12 +99,14 @@ function DashboardPage() {
       }
 
       const functionsBaseUrl = getFunctionsBaseUrl();
+      const authorization = await getFunctionAuthorizationHeader();
       const response = await fetch(`${functionsBaseUrl}/syncGalleryArtworkCount`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: authorization,
         },
-        body: JSON.stringify({ userEmail: user.email }),
+        body: JSON.stringify({}),
       });
 
       if (!response.ok) {
@@ -182,13 +186,15 @@ function DashboardPage() {
 
           const functionsBaseUrl = getFunctionsBaseUrl();
           const deleteGalleryDataUrl = `${functionsBaseUrl}/deleteGalleryData`;
+          const authorization = await getFunctionAuthorizationHeader();
 
           const response = await fetch(deleteGalleryDataUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              Authorization: authorization,
             },
-            body: JSON.stringify({ userEmail: user.email, galleryId: selectedGalleryId }),
+            body: JSON.stringify({ galleryId: selectedGalleryId }),
           });
 
           if (!response.ok) {

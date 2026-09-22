@@ -4,17 +4,18 @@
 
 最新の `origin/main`、コミット `a2ea0104cbcc06651c94e84ddcaf8f90e5bd033f` を基準にリポジトリ全体を再監査した。詳細な根拠、既存項目の再判定、実行確認、次に切る実装 Issue の順序は [`docs/audit-2026-09-22.md`](docs/audit-2026-09-22.md) に記録する。
 
-この再監査でも、HTTP認証、Storage公開、インポート進捗・冪等性・504、削除整合性の主要問題は未解消だった。加えて、2026-09時点の依存監査でルート13件、Functions 29件の production vulnerability が報告され、Cloud Run の Dockerfile だけが Node.js 18 のまま残っていることを確認した。
+再監査時点で確認した HTTP 認証の問題は、Issue #4 のローカル実装で修正した。全管理系 HTTP endpoint は Firebase ID token と検証済み email の admin role を要求し、Google OAuth token は別ヘッダーへ分離した。`getImportStatus` の返却項目制限と機密ログ除去も実施済みである。本番 Functions へのデプロイと実ユーザーでの回帰確認はまだ行っていない。
+
+Storage公開、インポート進捗・冪等性・504、削除整合性の主要問題は引き続き未解消である。加えて、2026-09時点の依存監査でルート13件、Functions 29件の production vulnerability が報告され、Cloud Run の Dockerfile だけが Node.js 18 のまま残っていることを確認した。
 
 現在の推奨順序は次のとおり。
 
-1. HTTP Functions の Firebase ID トークン認証、本文メール認可廃止、機密ログ除去
-2. Next.js / Functions 依存の安全な更新と Cloud Run ランタイム更新
-3. Storage Rules、`makePublic()`、既存公開オブジェクトを一体で扱う非公開化
-4. 学生提出単位の進捗、安定 student key、冪等な Task / artwork ID
-5. インポート入口の504、Google API N+1、PDF上限判定
-6. 削除・like・index の整合性
-7. 認証・Rules・インポートの最小テスト、Functions CI、文書同期
+1. Next.js / Functions 依存の安全な更新と Cloud Run ランタイム更新
+2. Storage Rules、`makePublic()`、既存公開オブジェクトを一体で扱う非公開化
+3. 学生提出単位の進捗、安定 student key、冪等な Task / artwork ID
+4. インポート入口の504、Google API N+1、PDF上限判定
+5. 削除・like・index の整合性
+6. Rules・インポートの最小テスト、Functions CI、文書同期
 
 通常ギャラリーは常時 Firestore listener を使わず、一覧では thumbnail を利用し、Konva もモーダル側へ隔離されている。現在の70〜100人規模では、一覧仮想化、即時サブコレクション化、Showcase集約キャッシュ、全面的なアーキテクチャ変更は引き続き優先しない。
 
@@ -38,10 +39,10 @@
 
 | ID | 重要度 | 問題 | 現行コード上の根拠 | 改善方針 | 確信度 |
 |---|---|---|---|---|---|
-| SEC-HTTP-01 | Critical | Firebase IDトークン未検証、本文メール認可、本番管理者自動作成が結合したHTTP認証境界の欠落 | `functions/src/index.ts` | 共通IDトークン検証、本文メール認可廃止、自動管理者作成廃止 | High |
+| SEC-HTTP-01 | 修正済み（Issue #4、未デプロイ） | Firebase IDトークン未検証、本文メール認可、本番管理者自動作成が結合したHTTP認証境界の欠落 | `functions/src/httpSecurity.ts`、`functions/src/index.ts` | 共通IDトークン検証、本文メール認可廃止、自動管理者作成廃止を実装 | High |
 | SEC-STORAGE-01 | High | `unprocessed/`匿名アクセス、画像の公開読み取り、`makePublic()`による公開ACL | `storage.rules`、`functions/src/fileProcessor.ts` | Rules、公開ACL、既存オブジェクトを一体で非公開化 | High |
-| SEC-STATUS-01 | High | `getImportStatus`が認証なしでジョブ文書を返す | `functions/src/index.ts` | Firebase IDトークンと管理者ロールを検証し、レスポンス項目も限定 | High |
-| SEC-LOG-01 | High | Google OAuthトークン、提出オブジェクト、学生メール一覧のログ出力 | `src/app/admin/import/page.tsx`、`functions/src/importController.ts` | 生トークンを除去し、件数・job ID・エラーコードだけを記録 | High |
+| SEC-STATUS-01 | 修正済み（Issue #4、未デプロイ） | `getImportStatus`が認証なしでジョブ文書を返していた | `functions/src/index.ts`、`functions/src/httpSecurity.ts` | admin 認証必須・進捗4項目だけの返却へ変更 | High |
+| SEC-LOG-01 | 修正済み（Issue #4、未デプロイ） | Google OAuthトークン、提出オブジェクト、学生メール一覧をログ出力していた | `src/app/admin/import/page.tsx`、`functions/src/importController.ts` | 件数・job ID・error code 中心のログへ変更 | High |
 | PRIV-REPO-01 | High | 公開GitHubリポジトリで`users.json`が追跡され、認証エクスポート情報を含む | `users.json`、GitHub visibility=`PUBLIC`を確認済み | 追跡停止、公開履歴・データ実在性を確認し、必要なら履歴除去と通知 | High |
 | IMP-STATE-01 | High | 進捗の学生・ファイル単位混在と`processedFiles + errorFiles.length`による二重計上 | `functions/src/fileProcessor.ts`、`functions/src/importController.ts` | 学生提出ごとの終端状態だけで完了判定 | High |
 | IMP-ID-01 | High | プロフィール取得失敗時に空文字Mapキーで複数学生が統合され得る | `functions/src/importController.ts` | `email > Classroom userId > submission ID`の安定キーを使用し、空文字禁止 | High |
@@ -76,15 +77,16 @@
 
 現時点では実装しない。将来改善を開始する場合は、以下を最初の作業単位とする。
 
-### 1. HTTP認証境界
+### 1. HTTP認証境界（Issue #4 で修正済み、未デプロイ）
 
-- 全HTTP FunctionsでFirebase IDトークンを検証する。
-- `Authorization`にはFirebase IDトークンを送り、Google OAuthトークンは別の入力として扱う。
-- 管理者権限は検証済みIDトークンのメールから判定する。
-- 本文の`userEmail`を認可判断から削除する。
-- 本番・開発共通経路から管理者自動作成を削除する。
-- `getImportStatus`も管理者認証必須とし、必要な進捗項目だけを返す。
-- CORSは本番Hostingドメインとローカル開発元だけを許可する。
+- 全HTTP FunctionsでFirebase IDトークンを検証する。**実装済み**
+- `Authorization`にはFirebase IDトークンを送り、Google OAuthトークンは別の入力として扱う。**実装済み**
+- 管理者権限は検証済みIDトークンのメールから判定する。**実装済み**
+- 本文の`userEmail`を認可判断から削除する。**実装済み**
+- 本番・開発共通経路から管理者自動作成を削除する。**実装済み**
+- `getImportStatus`も管理者認証必須とし、必要な進捗項目だけを返す。**実装済み**
+- CORSは本番Hostingドメインとローカル開発元だけを許可する。**実装済み**
+- Firebase / Google の実 token を使う本番回帰確認と Functions デプロイは未実施。
 
 ### 2. Storage非公開化
 

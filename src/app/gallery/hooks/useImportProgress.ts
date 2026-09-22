@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
+import { getFunctionAuthorizationHeader } from '@/lib/functionAuth';
 
 export type ImportProgress = {
   importJobId: string;
@@ -55,7 +56,10 @@ export const useImportProgress = ({
       const functionsBaseUrl = getFunctionsBaseUrl();
       const checkProgress = setInterval(async () => {
         try {
-          const response = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`);
+          const authorization = await getFunctionAuthorizationHeader();
+          const response = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`, {
+            headers: { Authorization: authorization },
+          });
           if (response.ok) {
             const data = await response.json();
             setImportProgress({
