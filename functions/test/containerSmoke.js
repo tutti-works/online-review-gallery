@@ -63,7 +63,9 @@ async function main() {
   fs.rmSync(pdfPath, { force: true });
   fs.rmSync(page.path, { force: true });
   require('@google-cloud/functions-framework');
-  console.log('Container smoke test passed: GraphicsMagick, Ghostscript, Sharp, PDF and WebP');
+  const { processFileTask } = require('../lib/cloudrun');
+  assert.equal(typeof processFileTask, 'function');
+  console.log('Container smoke test passed: GraphicsMagick, Ghostscript, Sharp, PDF, WebP and Cloud Run entry point');
 }
 
 main().catch((error) => {

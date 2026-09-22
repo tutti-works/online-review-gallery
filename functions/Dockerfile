@@ -31,8 +31,10 @@ COPY lib/fileProcessor.js ./lib/
 COPY lib/fileProcessor.js.map ./lib/
 COPY lib/importController.js ./lib/
 COPY lib/importController.js.map ./lib/
+COPY lib/httpSecurity.js ./lib/
+COPY lib/httpSecurity.js.map ./lib/
 
-# ネイティブ依存と画像・PDF変換をビルド時に検証
+# ネイティブ依存、画像・PDF変換、Cloud Runエントリーポイントをビルド時に検証
 COPY test/containerSmoke.js ./test/
 RUN npm run smoke:container
 
