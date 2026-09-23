@@ -31,6 +31,8 @@ COPY lib/fileProcessor.js ./lib/
 COPY lib/fileProcessor.js.map ./lib/
 COPY lib/importController.js ./lib/
 COPY lib/importController.js.map ./lib/
+COPY lib/importState.js ./lib/
+COPY lib/importState.js.map ./lib/
 COPY lib/httpSecurity.js ./lib/
 COPY lib/httpSecurity.js.map ./lib/
 
