@@ -20,5 +20,5 @@ Next.js integration はルート `package.json` を生成物の基礎として�
 - 既存 `node_modules/re2/build/Release/re2.node` が使用中で、作業ツリー直下の `npm ci` は `EPERM unlink` で中断。依存を `npm install` で復旧した後、ルートの `package.json` と lockfile を隔離一時ディレクトリへコピーして `npm ci` は成功。ルートでの `npm run build` は成功（既存の React Hooks lint 警告4件）。
 - Firebase CLI `15.30.2` が生成した `.firebase/online-review-gallery/functions/package.json` は `engines.node: "22"`。通常 Functions の `firebase.json` 設定は `nodejs22` のまま。
 - `firebase deploy --only hosting --project online-review-gallery --non-interactive` が成功。生成 SSR Function `ssronlinereviewgallery` は `asia-northeast1` の第2世代で更新され、`gcloud functions describe` にて `state: ACTIVE` / `buildConfig.runtime: nodejs22` / `updateTime: 2026-09-23T10:48:04Z` を確認。Hosting live チャネルの最終リリースは 2026-09-23 19:48:11 JST。Node.js 20 の期限警告は今回のデプロイ出力に出ていない。
-- 生成 SSR codebase の `firebase-functions` が古いという別警告は出た。今回のNode.js期限対応とは分けて扱い、依存更新は行っていない。
-- 本番サイト表示、Googleログイン、ギャラリー、Classroomインポートは未操作。ユーザーによる確認後に Issue #9 の Close を判断する。
+- 生成 SSR codebase の `firebase-functions` が古いという別警告は残っている。Node.js 20の期限警告とは別件であり、今回の対応では依存更新を行っていない。
+- Codexは本番サイト操作・ログイン・インポートを実施していない。ユーザーが本番サイトでClassroomインポートを確認し、Issue #9はClose済み。

@@ -11,7 +11,7 @@
 | #6 | Storage非公開化を本番移行。Firestore path 1,193件補完、Rules・ACL・download token対応後のdry-runで未対応・欠損0件。未参照26 objectは保持。 |
 | #7 | `users.json` の追跡停止をcommit・push済み。旧Git履歴への対応判断は未了。 |
 | #8 | 学生提出単位の進捗、安定ID、Task冪等化、生成画像の補償削除を実装。2026-09-23にCloud Run → Firebase Functions → Hostingの順で本番反映し、ユーザーが本番インポートを確認。IssueはClose済み。 |
-| #9 | Hosting生成SSR FunctionのNode.js 22化と未使用Actions 2本の削除を実施。Hostingのみ本番反映し、SSR Functionの`nodejs22`/`ACTIVE`とliveチャネル更新を確認。サイト操作・ログイン・インポートはユーザー確認待ち。詳細は[実装記録](docs/implementation/hosting-ssr-node22.md)。 |
+| #9 | Hosting生成SSR FunctionのNode.js 22化と未使用Actions 2本の削除を実施。Hostingのみ本番反映し、SSR Functionの`nodejs22`/`ACTIVE`とliveチャネル更新を確認。Node.js 20の期限警告は解消し、ユーザーが本番サイトでClassroomインポートを確認。IssueはClose済み。詳細は[実装記録](docs/implementation/hosting-ssr-node22.md)。 |
 
 Issue #8の本番インポート確認は、強制終了・Task再送・部分失敗の全ケースを実地検証したことを意味しない。これらの制約は[実装詳細](docs/implementation/import-idempotency.md)に記す。
 
@@ -36,6 +36,7 @@ Issue #8の本番インポート確認は、強制終了・Task再送・部分�
 
 - Issue #8のプロセス強制終了時はメモリ内の補償削除が走らない。停止ジョブ・孤立objectを監視し、Task再送の制約を[インポート実装詳細](docs/implementation/import-idempotency.md)で確認する。
 - Issue #5後もproduction依存のaudit警告はroot 3件、Functions 4件残る。上流の修正版と互換性を確認してから更新する（[再監査](docs/audit-2026-09-22.md)）。
+- Issue #9のHostingデプロイ時、生成SSR codebaseの`firebase-functions`が古いという警告は残った。Node.js 20期限警告とは別件で、依存更新は未実施（[実装記録](docs/implementation/hosting-ssr-node22.md)）。
 - 70〜100人規模では、ギャラリー仮想化、Showcase集約キャッシュ、コメント・注釈の即時サブコレクション化、全面的な構成変更は実測問題が出るまで優先しない。
 
 優先順は、入口504とPDF負荷、CI・安全な配布、削除・集計整合性、文書と通常保守を基本とする。個人情報の旧履歴と未参照objectは、技術実装より先に所有者の判断が必要。
