@@ -12,6 +12,8 @@ Google Classroomの課題提出物を自動取得し、レスポンシブCSS Gri
 - **[docs/setup/cloud-run-deployment.md](docs/setup/cloud-run-deployment.md)** - Cloud Runデプロイガイド
 - **[docs/setup/production-deployment.md](docs/setup/production-deployment.md)** - 本番環境デプロイガイド
 - **[docs/changelog.md](docs/changelog.md)** - 変更履歴
+- **[PLAN.md](PLAN.md)** - 現在の残課題と完了済みIssue
+- **[docs/audit-2026-09-22.md](docs/audit-2026-09-22.md)** - 2026-09-22時点の再監査記録
 
 ## 🚀 クイックスタート
 
@@ -78,4 +80,4 @@ npm run dev
 
 ## 🙋 サポート
 
-質問や問題がある場合は、[Issues](../../issues)で報告してください。
+質問や問題がある場合は、[Issues](https://github.com/tutti-works/online-review-gallery/issues)で報告してください。

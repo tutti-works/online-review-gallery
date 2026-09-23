@@ -5,6 +5,8 @@
 ## 📋 目次
 
 ### コアドキュメント
+- [../PLAN.md](../PLAN.md) - 現在の残課題・Issue #4〜#8の状態（現在状態の入口）
+- [audit-2026-09-22.md](audit-2026-09-22.md) - 当時の監査条件・根拠・判断（歴史的スナップショット）
 - [requirements.md](requirements.md) - システム要件定義書
 - [changelog.md](changelog.md) - 開発履歴と変更ログ
 - [GLOSSARY.md](GLOSSARY.md) - 用語集・命名規則
@@ -22,6 +24,9 @@
 
 ### 実装詳細
 - [implementation/import-implementation.md](implementation/import-implementation.md) - インポート実装
+- [implementation/import-idempotency.md](implementation/import-idempotency.md) - Issue #8の実装・本番反映と制約
+- [implementation/storage-privacy-migration.md](implementation/storage-privacy-migration.md) - Issue #6のStorage非公開化と移行手順
+- [implementation/users-json-history.md](implementation/users-json-history.md) - Issue #7のGit履歴調査と未決事項
 - [implementation/data-migration.md](implementation/data-migration.md) - データマイグレーション
 
 ### セットアップガイド

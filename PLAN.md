@@ -1,328 +1,41 @@
-# Online Review Gallery 改善計画
-
-## 2026-09-22 再監査による更新
-
-最新の `origin/main`、コミット `a2ea0104cbcc06651c94e84ddcaf8f90e5bd033f` を基準にリポジトリ全体を再監査した。詳細な根拠、既存項目の再判定、実行確認、次に切る実装 Issue の順序は [`docs/audit-2026-09-22.md`](docs/audit-2026-09-22.md) に記録する。
-
-再監査時点で確認した HTTP 認証の問題は、Issue #4 で修正し、本番デプロイ済みである。全管理系 HTTP endpoint は Firebase ID token と検証済み email の admin role を要求し、Google OAuth token は別ヘッダーへ分離した。`getImportStatus` の返却項目制限と機密ログ除去も実施済みで、実 token を使った管理者ログインと Classroom インポートの成功を本番で確認した。
-
-Issue #6 では Storage Rules、`makePublic()`、フロントの公開URL依存を修正し、本番バックアップ取得後、Cloud Run → Functions → Hosting、Firestore path 1,193件補完、Storage Rules、既存 public ACL / download token 解除を段階的に実施した。最終 dry-run は public ACL 0件、download token 0件、path補完必要 0件、欠損object 0件。参照されない26 objectは削除していない。Issue #7 では `users.json` の実行時参照がないことを確認し、ローカルコピーを保持したまま Git の追跡を停止した。履歴上の2ユーザー分の情報への対応は要判断。Issue #8 では学生提出単位の進捗・安定識別・Task冪等化・補償削除を実装し、2026-09-23に Cloud Run → Functions → Hosting の順で本番反映した。本番インポート・再送・画面確認はユーザー確認待ち。504と削除整合性は引き続き未解消である。Issue #5 では Functions / Cloud Run を Node.js 22 に統一し、直接依存と未使用依存を整理した。production vulnerability はルート13件から3件、Functions 29件から4件へ減少した。root / Functions の build・test は成功している。さらに `processfiletask` imageのDocker build、GraphicsMagick、Ghostscript、Sharp、PDF→JPEG→WebPとCloud Runエントリーポイントのbuild-time smoke test、実コンテナでのFunctions FrameworkのHTTP待受も成功した。
-
-Issue #8 の状態モデルと再送時の制約は [`docs/implementation/import-idempotency.md`](docs/implementation/import-idempotency.md) に記録する。
-
-現在の推奨順序は次のとおり。
-
-1. Issue #7 の公開履歴と実データ性を判断し、必要なら別途承認のうえ履歴除去・対象者対応
-2. Issue #8 の実環境相当の再送・部分失敗確認と段階的なデプロイ判断
-3. インポート入口の504、Google API N+1、PDF上限判定
-4. 削除・like・index の整合性
-5. Rules・インポートの統合テスト、Functions CI、文書同期
-
-通常ギャラリーは常時 Firestore listener を使わず、一覧では thumbnail を利用し、Konva もモーダル側へ隔離されている。現在の70〜100人規模では、一覧仮想化、即時サブコレクション化、Showcase集約キャッシュ、全面的なアーキテクチャ変更は引き続き優先しない。
-
-## 2026-02-10 監査時点の結論（履歴）
-
-本リポジトリは、70人規模の大学講評会で運用中のMVPとして、機能面は十分に成立している。現時点でアプリは問題なく運用できているため、この計画の作成時点ではコード、設定、Security Rules、データ構造、CI、デプロイ構成を変更しない。
-
-将来改善を実施する場合は、保守性や大規模化への備えよりも、次の順で現在の運用リスクを優先する。
-
-1. HTTP APIの認証境界
-2. Storage上の匿名アクセスと公開状態
-3. インポート進捗の正確性
-4. 学生識別と処理の冪等性
-5. 上記を守る最小限の自動テスト
-
-全面的なアーキテクチャ変更は行わず、認証、Storage、インポート、削除整合性の高リスク部分だけを段階的に改善する。
-
-以下の節の調査基準は`main`ブランチのコミット`132c65d`（2026年2月10日）である。現在の判定は上記の2026-09再監査レポートを優先する。
-
-## 確定した問題一覧
-
-| ID | 重要度 | 問題 | 現行コード上の根拠 | 改善方針 | 確信度 |
-|---|---|---|---|---|---|
-| SEC-HTTP-01 | 修正・本番デプロイ済み（Issue #4） | Firebase IDトークン未検証、本文メール認可、本番管理者自動作成が結合したHTTP認証境界の欠落 | `functions/src/httpSecurity.ts`、`functions/src/index.ts` | 共通IDトークン検証、本文メール認可廃止、自動管理者作成廃止を実装し、管理者ログインとインポート成功を確認 | High |
-| SEC-STORAGE-01 | 本番移行済み（Issue #6） | `unprocessed/`匿名アクセス、画像の公開読み取り、`makePublic()`による公開ACL | `storage.rules`、`functions/src/fileProcessor.ts`、`src/hooks/useAuthenticatedStorageUrl.ts` | 本番 Rules、Firestore path 1,193件、ACL / token解除済み。最終 dry-run の未対応・欠損は0件 | High |
-| SEC-STATUS-01 | 修正・本番デプロイ済み（Issue #4） | `getImportStatus`が認証なしでジョブ文書を返していた | `functions/src/index.ts`、`functions/src/httpSecurity.ts` | admin 認証必須・進捗4項目だけの返却へ変更し、認証済みインポートで確認 | High |
-| SEC-LOG-01 | 修正・本番デプロイ済み（Issue #4） | Google OAuthトークン、提出オブジェクト、学生メール一覧をログ出力していた | `src/app/admin/import/page.tsx`、`functions/src/importController.ts` | 件数・job ID・error code 中心のログへ変更 | High |
-| PRIV-REPO-01 | 追跡停止済み・履歴対応要判断（Issue #7） | 公開GitHubリポジトリで`users.json`が追跡され、認証エクスポート情報を含む | `.gitignore`、Git追跡停止、GitHub visibility=`PUBLIC`を確認済み | 2ユーザー分の情報は旧履歴から取得可能。実データ性、履歴除去、対象者対応は要判断 | High |
-| IMP-STATE-01 | Issue #8 本番反映済み・実インポート未確認 | 旧処理の学生・ファイル単位混在と二重計上 | `functions/src/importState.ts`、`functions/src/importController.ts` | 新規ジョブは提出終端状態のみで完了判定 | High |
-| IMP-ID-01 | Issue #8 本番反映済み・実インポート未確認 | profile失敗時の空文字Mapキー | `functions/src/importState.ts`、`functions/src/importController.ts` | email > Classroom userId > submission ID、空文字拒否 | High |
-| IMP-QUEUE-01 | Issue #8 本番反映済み・実インポート未確認 | Task投入失敗でジョブが停止 | `functions/src/importState.ts`、`functions/src/importController.ts` | 投入失敗を提出のfailedへ終端し、全投入後に完了判定 | High |
-| IMP-IDEMP-01 | Issue #8 本番反映済み・実再送未確認 | 再送時の重複作品・集計 | `functions/src/importState.ts`、`functions/src/fileProcessor.ts` | 確定artworkId、決定的Task名、終端guardとtransaction | High |
-| IMP-TIMEOUT-01 | High | インポート入口がDrive取得まで同期実行し、540秒504が実運用で発生 | `initializeImport`、2026-02-08障害分析 | N+1削減と計測後、60秒を超える場合は初期化処理もバックグラウンド化 | High |
-| TEST-CI-01 | High | 認証、Rules、進捗、重送の自動テストがなく、CIもFunctionsを検査しない | `package.json`、`.github/workflows` | 高リスク経路だけを守る最小テストを先行追加 | High |
-| DATA-DELETE-01 | Medium | 削除が部分成功し得て、`showcaseGalleries`と`showcase/`も対象外 | `functions/src/index.ts` | 削除順序、対象、失敗結果、再実行可能性を整理。直ちにキュー化はしない | High |
-| DATA-ORPHAN-01 | Issue #8 本番反映済み・実障害未確認 | 画像生成後の後段失敗で孤立し得る | `functions/src/fileProcessor.ts` | 今回生成した画像pathのみを追跡・補償削除。プロセス強制終了時の完全回収は別途運用確認 | High |
-| DATA-LIKE-01 | Medium | like文書と`likeCount`が別更新 | `src/app/gallery/page.tsx` | Firestoreトランザクション化 | High |
-| CFG-INDEX-01 | Medium | `galleryId + createdAt`の複合インデックスがリポジトリにない | `useGalleryArtworks.ts`、`firestore.indexes.json` | 本番状態を確認し、必要な定義を構成管理 | Medium |
-| DOC-DRIFT-01 | Medium | 完全バックグラウンド等、現行実装と異なる説明が残る | `docs/features/BACKGROUND_IMPORT.md`等 | 高リスク改修後に現行動作へ合わせる | High |
-| OPS-BACKUP-01 | Medium・未確認 | GCP側のバックアップ・復旧設定はコードから確認不能 | リポジトリ外設定 | 認証・削除改修前にエクスポート状態を確認し、なければ手動取得 | Medium |
-| DATA-SCALE-01 | Low・条件付き | コメント・注釈を作品文書へ埋め込む将来の肥大化 | `src/types/index.ts` | 実測で遅延・競合・数百KB化が確認された場合のみ分離 | High |
-| ARC-01 | Low | 巨大ファイルと重複処理 | `functions/src/index.ts`等 | 認証、進捗、削除の変更箇所だけを小さく分離 | High |
-| QA-01 | Low | Hooks依存配列のLint警告4件 | 現行環境でLint実行済み | 高リスク対応後に通常保守で修正 | High |
-
-## 削除・統合・重要度変更した旧項目
-
-- 旧`SEC-01`と`SEC-02`を`SEC-HTTP-01`へ統合する。
-- 旧`REL-02`と`REL-03`を、`IMP-STATE-01`、`IMP-ID-01`、`IMP-QUEUE-01`、`IMP-IDEMP-01`へ再整理する。
-- 通常のアプリケーションエラーは多くがHTTP 200で終端するため、「常にCloud Tasksで再試行される」という説明は削除する。
-- 旧`SEC-04`はRules修正だけでなく、`makePublic()`、既存public ACL、Firebase download tokenの扱いまで含む`SEC-STORAGE-01`へ拡張する。
-- 旧`DATA-01`はHighからMediumへ下げ、即時の削除ジョブ化を撤回する。
-- 旧`DATA-02`はLow・条件付きへ下げ、現在はサブコレクション化しない。
-- 旧`ARC-01`はLowへ下げ、全面的な責務分割を行わない。
-- 旧`OPS-01`は「バックアップがない」という断定を削除し、外部設定の確認事項へ変更する。
-- 旧`PRIV-01`はLowからHighへ上げる。
-- `getImportStatus`、空文字学生キー、Task投入失敗、Showcase削除漏れ、孤立公開画像を新規追加する。
-
-## 今すぐ対応する項目
-
-現時点では実装しない。将来改善を開始する場合は、以下を最初の作業単位とする。
-
-### 1. HTTP認証境界（Issue #4 で修正・本番デプロイ済み）
-
-- 全HTTP FunctionsでFirebase IDトークンを検証する。**実装済み**
-- `Authorization`にはFirebase IDトークンを送り、Google OAuthトークンは別の入力として扱う。**実装済み**
-- 管理者権限は検証済みIDトークンのメールから判定する。**実装済み**
-- 本文の`userEmail`を認可判断から削除する。**実装済み**
-- 本番・開発共通経路から管理者自動作成を削除する。**実装済み**
-- `getImportStatus`も管理者認証必須とし、必要な進捗項目だけを返す。**実装済み**
-- CORSは本番Hostingドメインとローカル開発元だけを許可する。**実装済み**
-- 実 token を使った管理者ログインと Google Classroom / Drive インポートの成功を本番で確認済み。未認証・非管理者を含む全 endpoint の網羅確認は継続課題。
-
-### 2. Storage非公開化（Issue #6 本番移行済み）
-
-- `unprocessed/`のクライアント全面拒否、`galleries/`の認証必須、`showcase/`の学内ドメイン制限をRulesへ実装済み。
-- `fileProcessor.ts`の全`makePublic()`を廃止し、新規画像はStorage pathを保存する。
-- フロントは共通hookからFirebase Storage Web SDKの認証付き`getBlob()`で取得し、Object URLを破棄する。
-- 既存URLからpathを復元する後方互換と、ACL / download token / Firestore参照 / 孤立objectのdry-run棚卸しを追加済み。
-- 本番でpath補完、Rules反映、ACL解除、token解除を別々の明示操作として段階実行済み。最終 dry-run の未対応・欠損は0件。参照されない26 objectは保持する。
-
-### 3. 機密情報と公開リポジトリ
-
-- OAuthアクセストークンのconsole出力を削除する。
-- Classroom提出物全文、学生メール一覧、個人名を通常ログから除く。
-- `users.json`を追跡対象から外す。**Issue #7 でローカルコピーを保持して実施し、コミット・push済み**
-- 内容が実データの場合は、Git履歴上の露出範囲、Google識別子・写真URLの扱い、対象者への連絡要否を確認する。
-- 履歴除去や強制pushは別途明示承認を得て実施する。
-
-### 4. 変更前の運用保護
-
-- GCP側のFirestore・Storageバックアップ設定を確認する。
-- 復元可能なエクスポートがなければ、認証・Storage・削除変更前に手動取得する。
-- 現在の管理者ロール一覧と、意図せず作成されたロールの有無を確認する。
-
-## 次回リリースまたはMVP完成までに対応する項目
-
-### 学生提出単位の進捗
-
-新規ジョブは以下のフィールドを使用する。
-
-- `totalSubmissions`
-- `completedSubmissions`
-- `succeededSubmissions`
-- `failedSubmissions`
-- `failedFileCount`
-
-学生提出ごとに`queued / processing / succeeded / failed`を管理する。部分的なファイル失敗でも画像が1件以上生成できた場合は`succeeded`とし、`failedFileCount`と警告を残す。画像が0件の場合だけ`failed`とする。
-
-終端状態への初回遷移をトランザクションで行い、その時だけジョブの集計値を1増やす。`errorFiles.length`を完了判定に使わない。
-
-既存ジョブ表示のため旧フィールドは読み取りフォールバックだけ残し、新規ジョブの完了判定には使用しない。
-
-### 学生識別と冪等性
-
-- 学生キーは`正規化メール > Classroom userId > submission ID`の優先順とする。
-- 空文字キーを拒否する。
-- Classroom user IDを作品メタデータへ保持する。
-- 初期化時に学生提出ごとの処理レコードと`artworkId`を一度だけ作る。
-- Cloud Task名も`importJobId + studentKey`から決定する。
-- 同じタスクが再度呼ばれた場合、終端済みなら成功レスポンスを返して何も変更しない。
-- 通常の処理エラーはHTTP 200で終端可能だが、必ず学生提出を`failed`へ遷移させる。
-- Task投入失敗も`failed`へ遷移させ、全投入後に完了判定を実行する。
-
-### 既知の504
-
-- `assignedStudents`からプロフィールMapを作り、提出ごとの`userProfiles.get()`を削減する。
-- Drive処理は少数の限定並列にする。
-- 提出一覧、プロフィール、Drive取得、Storage保存、Task投入の所要時間をjob ID付きで計測する。
-- 70人規模の代表データで入口処理が60秒を超える、または504が再発する場合は、提出走査と一時保存を初期化Taskへ移し、入口を数秒で202応答させる。
-- 現在421秒・540秒の実績があるため、計測だけで改善を先送りしない。同一リリース内でバックグラウンド化へ進める準備を含める。
-
-### 削除・公開画像の整合性
-
-- ギャラリー削除で対応する`showcaseGalleries/{galleryId}`と`showcase/{galleryId}/`も削除する。
-- 作品削除では`curatedArtworkIds`と`featuredArtworkId`を更新する。
-- Storage削除やギャラリー更新の失敗を握りつぶさず、失敗対象をレスポンスと構造化ログへ残す。
-- 削除操作自体を冪等化し、同じ要求を再実行できるようにする。
-- 現段階では削除キューは導入しない。
-- 画像生成後の後段失敗では、今回作成した画像パスだけを補償削除する。
-
-### 最小限の自動テストとCI
-
-- 未認証、viewer、adminのHTTP認可マトリクス
-- 任意Bearer・本文メール改変で管理者作成や削除ができないこと
-- `getImportStatus`の未認証拒否
-- `unprocessed/`匿名読み書き拒否
-- 通常画像・Showcase画像の想定公開範囲
-- 複数ファイルの一部失敗でも学生1件として集計されること
-- プロフィール取得失敗した複数学生が統合されないこと
-- 同一学生タスクを2回実行しても作品とカウントが増えないこと
-- Task全投入失敗でジョブが終端すること
-- Functionsの型検査・ビルド
-- Security Rulesテスト
-- `firestore.indexes.json`を含む設定検証
-
-## 将来必要になった場合のみ検討する項目
-
-- 作品文書が数百KBへ増加した場合のコメント・注釈サブコレクション化
-- 実測で一覧表示が遅くなった場合のカード用軽量文書
-- 削除失敗が運用上頻発した場合の非同期削除ジョブ
-- リポジトリ層、DDD、全面的なモジュール再構成
-- 複数プロジェクト対応の環境抽象化
-- Showcaseの集約キャッシュ
-- Cloud Runを含む完全自動デプロイ
-- Node統一、CLI固定、Lint、命名整理などの通常保守
-
-## フェーズ別ロードマップ
-
-### Phase 0: 緊急な認証・公開停止
-
-対象は`SEC-HTTP-01`、`SEC-STORAGE-01`、`SEC-STATUS-01`、`SEC-LOG-01`、`PRIV-REPO-01`。
-
-#### 完了条件
-
-- 任意Bearerで管理者ロールを作れない。
-- 本文メールを変更しても権限が変わらない。
-- 未認証で管理APIとジョブ情報を取得できない。
-- 未認証で`unprocessed/`へアクセスできない。
-- 既存作品のpublic ACL移行結果を確認できる。
-- ログにOAuthトークンや提出物全文がない。
-- `users.json`の公開対応方針が決まっている。
-
-#### 必要なテスト
-
-- 認証ロールマトリクス
-- 期限切れ・不正トークン
-- Storage Rules
-- 既存公開URL
-- 管理者自動作成回帰
-
-### Phase 1: インポート正確性
-
-対象は`IMP-STATE-01`、`IMP-ID-01`、`IMP-QUEUE-01`、`IMP-IDEMP-01`、`DATA-ORPHAN-01`。
-
-#### 完了条件
-
-- 複数ファイルでも学生1件として進捗が増える。
-- 一部失敗で早期100%にならない。
-- メール取得失敗した学生が統合されない。
-- Task投入全失敗でもジョブが終端する。
-- 同一タスクを2回送っても作品・カウントが1件。
-- 後段失敗で今回作成した画像が孤立しない。
-
-#### 必要なテスト
-
-- 複数ファイル、一部欠落、サイズ超過
-- プロフィールAPI失敗
-- Task作成失敗
-- 同一Task重送
-- 応答消失後の再送
-- `not_submitted/error → submitted`
-
-### Phase 2: インポート入口の安定化
-
-対象は`IMP-TIMEOUT-01`。
-
-#### 完了条件
-
-- 70人規模で入口が設定した60秒上限を満たすか、初期化Task化されて数秒で202を返す。
-- 504が再現しない。
-- 起票済みジョブは画面離脱後も継続する。
-- 入口再送が重複ジョブ・作品を作らない。
-
-#### 必要なテスト
-
-- 70人、複数PDF、最大サイズ付近
-- Google API遅延・部分失敗
-- OAuthトークン失効
-- 同一リクエスト再送
-
-### Phase 3: 削除・集計整合性
-
-対象は`DATA-DELETE-01`、`DATA-LIKE-01`、`CFG-INDEX-01`。
-
-#### 完了条件
-
-- ギャラリー削除後にShowcase文書・画像が残らない。
-- 作品削除後に選定IDが残らない。
-- 部分失敗の対象を確認して再実行できる。
-- like文書数と`likeCount`が一致する。
-- 新規環境でも必要なクエリがインデックス不足で失敗しない。
-
-#### 必要なテスト
-
-- Storage削除失敗
-- Firestore更新失敗
-- Showcase選定作品削除
-- 同時いいね
-- 削除要求の再実行
-
-### Phase 4: 開発基盤と文書
-
-対象は`TEST-CI-01`、`DOC-DRIFT-01`と通常保守。
-
-#### 完了条件
-
-- PRでフロント、Functions、認証・Rulesテストが実行される。
-- Background Import資料が実装と一致する。
-- 高リスク処理だけが小さな責務へ分離されている。
-- セットアップ資料から本番相当テストまで再現できる。
-
-#### 必要なテスト
-
-- ルートとFunctionsの型検査・ビルド
-- Security Rulesテスト
-- 主要な認証・インポート統合テスト
-- ドキュメント内パスとコマンドの検証
-
-## 変更しないほうがよい箇所
-
-- Next.js、Firebase、Cloud Tasks、Cloud Runという技術構成
-- PDF変換をCloud Runへ分離した設計
-- `submitted / not_submitted / error`を同一作品モデルで扱う仕様
-- 提出済み作品を再インポートで保護する仕様
-- 注釈UIの現在の分割と画像キャッシュ
-- Rulesで保護できるコメント・ラベル等のFirestore直接操作
-- Showcaseの独立コレクション構成
-- 現在問題が計測されていない注釈・コメント保存方式
-
-## 未確認事項
-
-- 本番デプロイと`main`の一致
-- Cloud Runの現在のIAM、invoker、未認証アクセス設定
-- 既存Storageオブジェクトのpublic ACLとdownload token
-- 通常ギャラリーとShowcaseをどこまで匿名公開する製品要件か
-- 本番の複合インデックス
-- Firestore・Storageのバックアップ、保持期間、復元実績
-- 2026年2月以降の504件数
-- 停止ジョブ、Task再送、孤立画像の実数
-- `users.json`の情報が実在人物か、テストデータか
-- Git履歴からの`users.json`除去や対象者通知の必要性
-- Google OAuthトークンを初期化Taskへ渡す場合の保管・失効方針
-- Showcase画像を大学ドメイン外へ公開する意図
-
-## 最優先改善トップ5
-
-1. Firebase IDトークンによるHTTP認証境界を構築し、本文メール認可と管理者自動作成を廃止する。
-2. Issue #6 は本番移行済み。今後は参照されない26 objectを別途判断する。
-3. インポート進捗を学生提出単位の終端状態へ統一する。
-4. 安定した学生識別キーと冪等な処理・作品IDを導入する。
-5. 認証、Storage、進捗、Task重送を守る最小限の自動テストとCIを追加する。
-
-## この計画の前提
-
-- 運用中MVP、個人開発、70人規模の大学講評会を基準とする。
-- 認証、漏えい、破損、既知障害をコード整理より優先する。
-- 初版作成時は実装しない前提だったが、Issue #4〜#6 の対応状況は冒頭の2026-09更新を正とする。
-- 実装開始時には、対象フェーズと完了条件を改めて確認する。
-- 本番変更は各Issueの制約と承認に従い、コード実装と本番移行を分ける。
+# 現在の残課題と改善計画
+
+更新: 2026-09-23。この文書を**現在の状態と今後の作業**の入口とする。調査時点の根拠・旧優先順位は[2026-09-22再監査](docs/audit-2026-09-22.md)、実装・移行の詳細は[インポート](docs/implementation/import-idempotency.md)、[Storage非公開化](docs/implementation/storage-privacy-migration.md)、[Git履歴](docs/implementation/users-json-history.md)を参照。監査記録の「次に実施」などは当時の判断であり、この一覧を更新しない。
+
+## 完了済み Issue
+
+| Issue | 現在の状態 |
+|---|---|
+| #4 | HTTP管理APIのFirebase ID token / admin認証、status応答制限、機密ログ除去を本番反映。管理者ログイン・Classroomインポート確認済み。 |
+| #5 | `functions/` のFirebase FunctionsとCloud RunをNode.js 22へ更新。依存整理、Docker build、画像・PDF変換とHTTP待受のsmoke test、本番反映済み。Hosting生成のSSR Functionは対象外。 |
+| #6 | Storage非公開化を本番移行。Firestore path 1,193件補完、Rules・ACL・download token対応後のdry-runで未対応・欠損0件。未参照26 objectは保持。 |
+| #7 | `users.json` の追跡停止をcommit・push済み。旧Git履歴への対応判断は未了。 |
+| #8 | 学生提出単位の進捗、安定ID、Task冪等化、生成画像の補償削除を実装。2026-09-23にCloud Run → Firebase Functions → Hostingの順で本番反映し、ユーザーが本番インポートを確認。IssueはClose済み。 |
+
+Issue #8の本番インポート確認は、強制終了・Task再送・部分失敗の全ケースを実地検証したことを意味しない。これらの制約は[実装詳細](docs/implementation/import-idempotency.md)に記す。
+
+## 未対応課題
+
+| ID | 優先度 | 次に行うこと |
+|---|---|---|
+| IMP-TIMEOUT-01 | High | インポート入口の同期Drive取得・既知504を解消。N+1と所要時間を計測し、必要なら初期化を非同期化する。 |
+| IMP-PDF-01 | Medium | PDFの50ページ上限と20MB制限を重い変換・downloadより前に判定する。 |
+| TEST-CI-01 | High | 認証・Rules・進捗・重送のテストを拡充し、Functions build/testをCIに組み込む。 |
+| DEPLOY-BUILD-01 | Medium | Functionsのpredeploy/buildを必須にし、未生成・古い`lib`の手動配布を防ぐ。 |
+| DATA-DELETE-01 | Medium | Gallery/Artwork削除の部分成功、Showcase文書・画像・選定IDの削除漏れを解消する。 |
+| DATA-LIKE-01 | Medium | like文書と`likeCount`の更新をトランザクション化する。 |
+| CFG-INDEX-01 | Medium | `galleryId + createdAt`複合indexの本番状態を確認し、必要な定義を構成管理する。 |
+| API-DEAD-01 | Medium | 未使用のClassroom course/assignment APIとmock応答の利用実績を確認し、削除または分離する。 |
+| DOC-DRIFT-01 | Medium | Background Importなど、現在の認証・同期初期化とずれる機能説明を修正する。 |
+| QA-01 | Low | Hooks依存配列のlint警告4件を通常保守で解消する。 |
+| SSR-NODE-01 | Medium | 現在のFirebase Hosting + Next.js構成で、Hosting生成SSR FunctionをNode.js 22へ上げる方法を調査する。現状は`functions/`側のFunctions / Cloud RunがNode.js 22、Hosting生成SSR FunctionがNode.js 20で、デプロイ時にサポート期限の警告が出る。実変更やApp Hosting移行の判断は別作業。 |
+| PRIV-REPO-01 | High・要判断 | `users.json`は現行Git追跡から除外済み。旧Git履歴に残る2ユーザー分の情報について、実データ性、履歴除去・対象者対応の要否を判断する。履歴rewrite / force pushは別承認。 |
+| SEC-STORAGE-ORPHAN | 要判断 | 本番dry-runで未参照と判定されたStorage object 26件を保持中。用途・復旧可能性を確認し、削除は別承認とする。 |
+
+## 運用上の既知事項
+
+- Issue #8のプロセス強制終了時はメモリ内の補償削除が走らない。停止ジョブ・孤立objectを監視し、Task再送の制約を[インポート実装詳細](docs/implementation/import-idempotency.md)で確認する。
+- Issue #5後もproduction依存のaudit警告はroot 3件、Functions 4件残る。上流の修正版と互換性を確認してから更新する（[再監査](docs/audit-2026-09-22.md)）。
+- 70〜100人規模では、ギャラリー仮想化、Showcase集約キャッシュ、コメント・注釈の即時サブコレクション化、全面的な構成変更は実測問題が出るまで優先しない。
+
+優先順は、入口504とPDF負荷、CI・安全な配布、削除・集計整合性、文書と通常保守を基本とする。個人情報の旧履歴と未参照objectは、技術実装より先に所有者の判断が必要。
