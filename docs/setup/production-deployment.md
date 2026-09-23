@@ -122,27 +122,9 @@ NEXT_PUBLIC_FUNCTIONS_BASE_URL=https://asia-northeast1-online-review-gallery.clo
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
 ```
 
-## GitHub Actionsによるデプロイ
+## Hosting の手動デプロイ
 
-本番の自動デプロイは無効化し、PRのプレビューのみGitHub Actionsで実行します。  
-本番デプロイは手動で実行してください。
-
-### ワークフロー
-
-- `.github/workflows/firebase-hosting-pull-request.yml`  
-  PRごとにPreviewチャネル（`pr-<番号>`）へデプロイ。
-- `.github/workflows/firebase-hosting-deploy.yml`  
-  手動実行（`workflow_dispatch`）で本番（live）へデプロイ。
-
-### 手動デプロイの実行手順
-
-GitHub の Actions タブから `Deploy to Firebase Hosting (manual)` を選び、`Run workflow` を実行します。
-
-### 必要なシークレット
-
-GitHub リポジトリの Settings > Secrets and variables > Actions に以下を設定：
-
-- `FIREBASE_TOKEN`: Firebase CLIトークン（`firebase login:ci`で発行）
+Issue #9 で未使用の Hosting 用 GitHub Actions 2本を削除したため、本番・PRプレビューの自動デプロイはありません。本番 Hosting は上記の CLI 手順で手動反映してください。framework-aware Hosting が生成する SSR Function の Node.js runtime は、ルート `package.json` の `engines.node` で 22 に固定します。決定元と確認方法は[Issue #9 の記録](../implementation/hosting-ssr-node22.md)を参照してください。
 
 ## デプロイ後の確認事項
 

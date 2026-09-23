@@ -25,6 +25,7 @@
 ### 実装詳細
 - [implementation/import-implementation.md](implementation/import-implementation.md) - インポート実装
 - [implementation/import-idempotency.md](implementation/import-idempotency.md) - Issue #8の実装・本番反映と制約
+- [implementation/hosting-ssr-node22.md](implementation/hosting-ssr-node22.md) - Issue #9のHosting SSR Node.js 22化
 - [implementation/storage-privacy-migration.md](implementation/storage-privacy-migration.md) - Issue #6のStorage非公開化と移行手順
 - [implementation/users-json-history.md](implementation/users-json-history.md) - Issue #7のGit履歴調査と未決事項
 - [implementation/data-migration.md](implementation/data-migration.md) - データマイグレーション

@@ -174,7 +174,7 @@
 - **外部API連携:** Google Drive API, Google Classroom API（データインポート機能でのみ利用）
 - **ホスティング/デプロイ:**
   - **Firebase Hosting:** SSR対応、asia-northeast1リージョン
-    - **GitHub Actions:** PRプレビュー用デプロイ
+    - **デプロイ:** Firebase CLIによる手動デプロイ。旧PRプレビュー用GitHub ActionsはIssue #9で削除
 - **モニタリング:** Google Analytics（有効化済み）
 
 ---
@@ -203,7 +203,7 @@
 - ✅ **未提出/エラー作品フィルター**（チェックボックスで非表示切り替え）
 - ✅ **特殊な並び替えロジック**（提出日時順・学籍番号順で未提出/エラーを適切に配置）
 - ✅ 一時ファイルの自動クリーンアップ
-- ✅ GitHub ActionsによるPRプレビュー環境デプロイ
+- ✅ Firebase CLIによるHostingの手動デプロイ（旧PRプレビュー用GitHub ActionsはIssue #9で削除）
 - ✅ **ハイブリッド方式によるギャラリー管理**（2段階ドロップダウン、URL・localStorage同期）
 
 ### 6.2. 範囲内（実装済み）

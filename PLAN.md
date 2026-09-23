@@ -11,6 +11,7 @@
 | #6 | Storage非公開化を本番移行。Firestore path 1,193件補完、Rules・ACL・download token対応後のdry-runで未対応・欠損0件。未参照26 objectは保持。 |
 | #7 | `users.json` の追跡停止をcommit・push済み。旧Git履歴への対応判断は未了。 |
 | #8 | 学生提出単位の進捗、安定ID、Task冪等化、生成画像の補償削除を実装。2026-09-23にCloud Run → Firebase Functions → Hostingの順で本番反映し、ユーザーが本番インポートを確認。IssueはClose済み。 |
+| #9 | Hosting生成SSR FunctionのNode.js 22化と未使用Actions 2本の削除を実施。Hostingのみ本番反映し、SSR Functionの`nodejs22`/`ACTIVE`とliveチャネル更新を確認。サイト操作・ログイン・インポートはユーザー確認待ち。詳細は[実装記録](docs/implementation/hosting-ssr-node22.md)。 |
 
 Issue #8の本番インポート確認は、強制終了・Task再送・部分失敗の全ケースを実地検証したことを意味しない。これらの制約は[実装詳細](docs/implementation/import-idempotency.md)に記す。
 
@@ -28,7 +29,6 @@ Issue #8の本番インポート確認は、強制終了・Task再送・部分�
 | API-DEAD-01 | Medium | 未使用のClassroom course/assignment APIとmock応答の利用実績を確認し、削除または分離する。 |
 | DOC-DRIFT-01 | Medium | Background Importなど、現在の認証・同期初期化とずれる機能説明を修正する。 |
 | QA-01 | Low | Hooks依存配列のlint警告4件を通常保守で解消する。 |
-| SSR-NODE-01 | Medium | 現在のFirebase Hosting + Next.js構成で、Hosting生成SSR FunctionをNode.js 22へ上げる方法を調査する。現状は`functions/`側のFunctions / Cloud RunがNode.js 22、Hosting生成SSR FunctionがNode.js 20で、デプロイ時にサポート期限の警告が出る。実変更やApp Hosting移行の判断は別作業。 |
 | PRIV-REPO-01 | High・要判断 | `users.json`は現行Git追跡から除外済み。旧Git履歴に残る2ユーザー分の情報について、実データ性、履歴除去・対象者対応の要否を判断する。履歴rewrite / force pushは別承認。 |
 | SEC-STORAGE-ORPHAN | 要判断 | 本番dry-runで未参照と判定されたStorage object 26件を保持中。用途・復旧可能性を確認し、削除は別承認とする。 |
 
