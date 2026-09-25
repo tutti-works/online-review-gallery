@@ -34,6 +34,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // archivedCourses: 授業の表示区分だけを管理する
+    match /archivedCourses/{courseId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
     // artworks コレクション: 管理者のみ作成・更新・削除可能、認証済みユーザーは読み取り可能
     match /artworks/{artworkId} {
       allow read: if isAuthenticated();

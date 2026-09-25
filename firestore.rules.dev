@@ -30,6 +30,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /archivedCourses/{courseId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
     match /artworks/{artworkId} {
       allow read: if isAuthenticated();
       allow create: if isAdmin();

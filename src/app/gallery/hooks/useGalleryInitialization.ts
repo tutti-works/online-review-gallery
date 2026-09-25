@@ -1,139 +1,76 @@
 'use client';
 
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { filterGalleriesByMode, galleryPath, lastViewedKey, resolveGallerySelection, type GalleryMode } from '@/lib/courseArchive';
+import { fetchArchivedCourseIds, fetchGalleries } from '@/lib/galleryData';
+import type { Gallery } from '@/types';
 
-type UseGalleryInitializationResult = {
-  currentGalleryId: string | null;
-  setCurrentGalleryId: Dispatch<SetStateAction<string | null>>;
-  hasGalleries: boolean;
-  isInitialized: boolean;
-};
-
-export const useGalleryInitialization = (): UseGalleryInitializationResult => {
+export const useGalleryInitialization = (mode: GalleryMode) => {
   const searchParams = useSearchParams();
   const [currentGalleryId, setCurrentGalleryId] = useState<string | null>(null);
-  const [hasGalleries, setHasGalleries] = useState<boolean>(true);
+  const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
-  const shouldDebugReads =
-    process.env.NEXT_PUBLIC_FIRESTORE_READ_DEBUG === 'true' ||
-    process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    const initializeGalleryId = async () => {
-      if (typeof window === 'undefined') return;
-
-      // URL パラメータを優先してギャラリーを決定
-      const params = new URLSearchParams(window.location.search);
-      const urlGalleryId = params.get('galleryId');
-
-      if (urlGalleryId) {
-        try {
-          const { doc, getDoc } = await import('firebase/firestore');
-          const { db } = await import('@/lib/firebase');
-          const galleryDoc = await getDoc(doc(db, 'galleries', urlGalleryId));
-          if (shouldDebugReads) {
-            console.log('[Gallery][Reads]', {
-              source: 'url',
-              galleryId: urlGalleryId,
-              galleryDoc: 1,
-              total: 1,
-            });
-          }
-
-          if (galleryDoc.exists()) {
-            setCurrentGalleryId(urlGalleryId);
-            localStorage.setItem('lastViewedGalleryId', urlGalleryId);
-            setIsInitialized(true);
-            return;
-          }
-
-          localStorage.removeItem('lastViewedGalleryId');
-          window.history.replaceState({}, '', '/gallery');
-        } catch (error) {
-          console.error('[Gallery] Failed to check URL gallery:', error);
-          localStorage.removeItem('lastViewedGalleryId');
-          window.history.replaceState({}, '', '/gallery');
-        }
-      }
-
-      // URL に無ければ localStorage を参照
-      const savedGalleryId = localStorage.getItem('lastViewedGalleryId');
-      if (savedGalleryId) {
-        try {
-          const { doc, getDoc } = await import('firebase/firestore');
-          const { db } = await import('@/lib/firebase');
-          const galleryDoc = await getDoc(doc(db, 'galleries', savedGalleryId));
-          if (shouldDebugReads) {
-            console.log('[Gallery][Reads]', {
-              source: 'saved',
-              galleryId: savedGalleryId,
-              galleryDoc: 1,
-              total: 1,
-            });
-          }
-
-          if (galleryDoc.exists()) {
-            setCurrentGalleryId(savedGalleryId);
-            window.history.replaceState({}, '', `/gallery?galleryId=${savedGalleryId}`);
-            setIsInitialized(true);
-            return;
-          }
-
-          localStorage.removeItem('lastViewedGalleryId');
-        } catch (error) {
-          console.error('[Gallery] Failed to check saved gallery:', error);
-          localStorage.removeItem('lastViewedGalleryId');
-        }
-      }
-
-      // ギャラリーが存在するかを確認
+    let active = true;
+    const initialize = async () => {
       try {
-        const { collection, query, getDocs, limit } = await import('firebase/firestore');
-        const { db } = await import('@/lib/firebase');
-        const galleriesQuery = query(collection(db, 'galleries'), limit(1));
-        const galleriesSnapshot = await getDocs(galleriesQuery);
-        if (shouldDebugReads) {
-          console.log('[Gallery][Reads]', {
-            source: 'presence-check',
-            galleryDocs: galleriesSnapshot.size,
-            total: galleriesSnapshot.size,
-          });
+        const [allGalleries, archivedCourseIds] = await Promise.all([
+          fetchGalleries(), fetchArchivedCourseIds(),
+        ]);
+        if (!active) return;
+        const available = filterGalleriesByMode(allGalleries, archivedCourseIds, mode);
+        setGalleries(available);
+        const path = galleryPath(mode);
+        const key = lastViewedKey(mode);
+        const urlId = new URLSearchParams(window.location.search).get('galleryId');
+        const savedId = localStorage.getItem(key);
+        const selection = resolveGallerySelection(available, urlId, savedId);
+        setCurrentGalleryId(selection.galleryId);
+        if (urlId && selection.galleryId === urlId) localStorage.setItem(key, urlId);
+        if (selection.restoreSaved && selection.galleryId) {
+          window.history.replaceState({}, '', `${path}?galleryId=${encodeURIComponent(selection.galleryId)}`);
         }
-
-        if (galleriesSnapshot.empty) {
-          setHasGalleries(false);
-          setCurrentGalleryId(null);
-        } else {
-          setHasGalleries(true);
-          setCurrentGalleryId(null);
-        }
+        if (selection.clearSaved) localStorage.removeItem(key);
+        if (selection.clearUrl) window.history.replaceState({}, '', path);
       } catch (error) {
-        console.error('[Gallery] Failed to check galleries:', error);
-        setHasGalleries(false);
+        if (!active) return;
+        console.error('[Gallery] Failed to load galleries or archives:', error);
+        setLoadError('ギャラリーの一覧を読み込めませんでした。再読み込みしてください。');
         setCurrentGalleryId(null);
       } finally {
-        setIsInitialized(true);
+        if (active) setIsInitialized(true);
       }
     };
-
-    void initializeGalleryId();
-  }, []);
+    void initialize();
+    return () => { active = false; };
+  }, [mode]);
 
   useEffect(() => {
-    if (!isInitialized) return;
-
-    const urlGalleryId = searchParams.get('galleryId');
-    if (urlGalleryId && urlGalleryId !== currentGalleryId) {
-      setCurrentGalleryId(urlGalleryId);
-      localStorage.setItem('lastViewedGalleryId', urlGalleryId);
+    if (!isInitialized || loadError) return;
+    const urlId = new URLSearchParams(window.location.search).get('galleryId');
+    if (!urlId) {
+      if (currentGalleryId) setCurrentGalleryId(null);
+      return;
     }
-  }, [searchParams, isInitialized, currentGalleryId]);
+    if (galleries.some((gallery) => gallery.id === urlId)) {
+      if (urlId !== currentGalleryId) {
+        setCurrentGalleryId(urlId);
+        localStorage.setItem(lastViewedKey(mode), urlId);
+      }
+    } else {
+      setCurrentGalleryId(null);
+      window.history.replaceState({}, '', galleryPath(mode));
+    }
+  }, [searchParams, isInitialized, currentGalleryId, galleries, mode, loadError]);
 
   return {
     currentGalleryId,
-    setCurrentGalleryId,
-    hasGalleries,
+    galleries,
+    hasGalleries: galleries.length > 0,
     isInitialized,
+    loadError,
   };
 };

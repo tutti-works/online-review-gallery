@@ -5,7 +5,7 @@ const {
   assertSucceeds,
   initializeTestEnvironment,
 } = require('@firebase/rules-unit-testing');
-const { doc, setDoc } = require('firebase/firestore');
+const { doc, setDoc, getDoc, getDocs, collection, updateDoc, deleteDoc } = require('firebase/firestore');
 const { getBytes, ref, uploadBytes } = require('firebase/storage');
 
 // Storage Rules の firestore.get() は Emulator Hub の project ID を使うため、
@@ -42,6 +42,25 @@ beforeEach(async () => {
 
 after(async () => {
   await testEnv?.cleanup();
+});
+
+describe('archivedCourses Firestore rules', () => {
+  const course = 'archivedCourses/course-1';
+
+  test('認証済みユーザーだけが読み取れる', async () => {
+    await assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), course)));
+    await assertSucceeds(getDoc(doc(viewer().firestore(), course)));
+    await assertSucceeds(getDocs(collection(viewer().firestore(), 'archivedCourses')));
+  });
+
+  test('admin のみ作成・更新・削除できる', async () => {
+    await assertFails(setDoc(doc(viewer().firestore(), course), { archivedAt: new Date() }));
+    await assertSucceeds(setDoc(doc(admin().firestore(), course), { archivedAt: new Date() }));
+    await assertFails(updateDoc(doc(viewer().firestore(), course), { archivedAt: new Date() }));
+    await assertSucceeds(updateDoc(doc(admin().firestore(), course), { archivedAt: new Date() }));
+    await assertFails(deleteDoc(doc(viewer().firestore(), course)));
+    await assertSucceeds(deleteDoc(doc(admin().firestore(), course)));
+  });
 });
 
 describe('galleries', () => {

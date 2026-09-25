@@ -12,6 +12,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:review-labels": "node --experimental-strip-types --test test/reviewLabels.test.mjs",
+    "test:course-archive": "node --experimental-strip-types --test test/courseArchive.test.mjs",
     "test:storage-rules": "firebase emulators:exec --only auth,firestore,storage --config firebase.emulators.json \"node --test test/storage.rules.test.js\"",
     "emulators": "firebase emulators:start --config firebase.emulators.json",
     "cleanup:showcase": "node scripts/cleanup-showcase.js",

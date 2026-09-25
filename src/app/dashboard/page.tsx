@@ -7,6 +7,7 @@ import withAuth from '@/components/withAuth';
 import type { Gallery } from '@/types';
 import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
 import { getFunctionAuthorizationHeader } from '@/lib/functionAuth';
+import { fetchArchivedCourseIds, fetchGalleries } from '@/lib/galleryData';
 
 interface SyncResult {
   galleryId: string;
@@ -25,6 +26,11 @@ function DashboardPage() {
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<string>('');
   const [selectedGalleryId, setSelectedGalleryId] = useState<string>('');
+  const [selectedArchiveCourseId, setSelectedArchiveCourseId] = useState('');
+  const [archivedCourseIds, setArchivedCourseIds] = useState<Set<string>>(new Set());
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [isArchiveLoaded, setIsArchiveLoaded] = useState(false);
+  const [isUpdatingArchive, setIsUpdatingArchive] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -74,6 +80,7 @@ function DashboardPage() {
 
           // localStorageをクリア
           localStorage.removeItem('lastViewedGalleryId');
+          localStorage.removeItem('lastViewedArchivedGalleryId');
         } catch (error) {
           console.error('Data reset error:', error);
           const message = error instanceof Error ? error.message : '不明なエラーが発生しました。';
@@ -131,41 +138,63 @@ function DashboardPage() {
 
   // ギャラリー一覧を取得（マウント時のみ）
   useEffect(() => {
-    const fetchGalleries = async () => {
+    const loadGalleries = async () => {
       try {
-        const { collection, getDocs, orderBy, query } = await import('firebase/firestore');
-        const { db } = await import('@/lib/firebase');
-
-        const galleriesQuery = query(
-          collection(db, 'galleries'),
-          orderBy('createdAt', 'desc')
-        );
-
-        const querySnapshot = await getDocs(galleriesQuery);
-        const fetchedGalleries: Gallery[] = querySnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            courseName: data.courseName || 'コース名未設定',
-            assignmentName: data.assignmentName || '課題名未設定',
-            courseId: data.courseId || '',
-            assignmentId: data.assignmentId || '',
-            classroomId: data.classroomId || data.courseId || '',
-            artworkCount: data.artworkCount || 0,
-            createdBy: data.createdBy || '',
-            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
-            updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : data.updatedAt,
-          };
-        });
-
-        setGalleries(fetchedGalleries);
+        setGalleries(await fetchGalleries());
       } catch (err) {
         console.error('Failed to fetch galleries:', err);
+        setArchiveError('授業一覧を読み込めませんでした。再読み込みしてください。');
+      }
+      try {
+        setArchivedCourseIds(await fetchArchivedCourseIds());
+        setIsArchiveLoaded(true);
+      } catch (err) {
+        console.error('Failed to fetch archived courses:', err);
+        setArchiveError('アーカイブ状態を読み込めませんでした。再読み込みしてください。');
       }
     };
 
-    fetchGalleries();
+    void loadGalleries();
   }, []);
+
+  const archiveCourses = Array.from(new Map(galleries.filter((gallery) => gallery.courseId).map((gallery) =>
+    [gallery.courseId, gallery.courseName])).entries());
+  const selectedArchiveName = archiveCourses.find(([id]) => id === selectedArchiveCourseId)?.[1];
+  const isSelectedArchived = archivedCourseIds.has(selectedArchiveCourseId);
+
+  const handleArchiveChange = async () => {
+    if (user?.role !== 'admin' || !selectedArchiveCourseId || !selectedArchiveName || !isArchiveLoaded || isUpdatingArchive || archiveError) return;
+    const action = isSelectedArchived ? 'アーカイブを解除' : 'アーカイブ';
+    if (!window.confirm(`「${selectedArchiveName}」の${action}をしますか？`)) return;
+
+    setIsUpdatingArchive(true);
+    try {
+      const { doc, setDoc, deleteDoc, serverTimestamp } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
+      const archiveRef = doc(db, 'archivedCourses', selectedArchiveCourseId);
+      if (isSelectedArchived) {
+        await deleteDoc(archiveRef);
+      } else {
+        await setDoc(archiveRef, { archivedAt: serverTimestamp() });
+      }
+      setArchivedCourseIds((previous) => {
+        const next = new Set(previous);
+        if (isSelectedArchived) next.delete(selectedArchiveCourseId);
+        else next.add(selectedArchiveCourseId);
+        return next;
+      });
+      const sourceKey = isSelectedArchived ? 'lastViewedArchivedGalleryId' : 'lastViewedGalleryId';
+      const savedId = localStorage.getItem(sourceKey);
+      if (galleries.some((gallery) => gallery.id === savedId && gallery.courseId === selectedArchiveCourseId)) {
+        localStorage.removeItem(sourceKey);
+      }
+    } catch (error) {
+      console.error('Archive update error:', error);
+      alert(`授業の${action}に失敗しました。`);
+    } finally {
+      setIsUpdatingArchive(false);
+    }
+  };
 
   const handleDeleteGallery = async () => {
     if (!selectedGalleryId) {
@@ -215,6 +244,9 @@ function DashboardPage() {
           const savedGalleryId = localStorage.getItem('lastViewedGalleryId');
           if (savedGalleryId === selectedGalleryId) {
             localStorage.removeItem('lastViewedGalleryId');
+          }
+          if (localStorage.getItem('lastViewedArchivedGalleryId') === selectedGalleryId) {
+            localStorage.removeItem('lastViewedArchivedGalleryId');
           }
 
           // ギャラリー一覧を再取得
@@ -332,9 +364,36 @@ function DashboardPage() {
                         href="/gallery"
                         className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
                       >
-                        ギャラリー表示
+                        ギャラリーを見る
+                      </a>
+                      <a href="/archive" className="ml-2 inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        アーカイブを見る
                       </a>
                     </div>
+                  </div>
+
+                  <div className="mt-8 border-t border-gray-200 pt-6 text-left">
+                    <h5 className="text-sm font-semibold text-gray-800 mb-2">授業アーカイブ管理</h5>
+                    <p className="text-sm text-gray-500 mb-4">授業の表示先を切り替えます。課題・作品・画像は移動しません。</p>
+                    {archiveError && <p role="alert" className="mb-3 text-sm text-red-700">{archiveError}</p>}
+                    <select
+                      value={selectedArchiveCourseId}
+                      onChange={(event) => setSelectedArchiveCourseId(event.target.value)}
+                      aria-label="アーカイブする授業を選択"
+                      className="mb-2 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    >
+                      <option value="">授業を選択</option>
+                      {archiveCourses.map(([courseId, courseName]) => (
+                        <option key={courseId} value={courseId}>{courseName}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleArchiveChange}
+                      disabled={!selectedArchiveCourseId || !isArchiveLoaded || isUpdatingArchive || Boolean(archiveError)}
+                      className="w-full inline-flex justify-center items-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {isUpdatingArchive ? '更新中...' : isSelectedArchived ? 'アーカイブを解除' : '選択した授業をアーカイブ'}
+                    </button>
                   </div>
 
                   {/* データ削除機能 */}
@@ -480,7 +539,10 @@ function DashboardPage() {
                       href="/gallery"
                       className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
                     >
-                      ギャラリー表示
+                      ギャラリーを見る
+                    </a>
+                    <a href="/archive" className="ml-2 inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                      アーカイブを見る
                     </a>
                   </div>
                 </div>

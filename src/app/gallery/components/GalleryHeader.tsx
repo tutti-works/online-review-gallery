@@ -6,10 +6,15 @@ import LabelBadge from '@/components/labels/LabelBadge';
 import { LABEL_DEFINITIONS } from '@/constants/labels';
 import { getVisibleLabelFilterOptions } from '@/lib/reviewLabels';
 import type { LabelType } from '@/types';
+import type { Gallery } from '@/types';
+import type { GalleryMode } from '@/lib/courseArchive';
 
 import type { SortOption } from '../types';
 
 type GalleryHeaderProps = {
+  galleries: Gallery[];
+  currentGalleryId: string | null;
+  mode: GalleryMode;
   userRole?: string;
   selectedLabels: LabelType[];
   availableLabels: ReadonlySet<LabelType>;
@@ -27,6 +32,9 @@ type GalleryHeaderProps = {
 };
 
 const GalleryHeader = ({
+  galleries,
+  currentGalleryId,
+  mode,
   userRole,
   selectedLabels,
   availableLabels,
@@ -57,10 +65,10 @@ const GalleryHeader = ({
       <div className="w-full px-4 sm:px-6 lg:px-8">
         {/* 1行レイアウト (1651px以上) */}
         <div className="hidden layout-2xl:flex h-16 items-center justify-between">
-          <h1 className="text-xl font-semibold text-gray-900">作品ギャラリー</h1>
+          <h1 className="text-xl font-semibold text-gray-900">{mode === 'archive' ? '過去授業のギャラリー' : '作品ギャラリー'}</h1>
           <div className="flex items-center gap-4">
             <Suspense fallback={<div className="text-sm text-gray-500">読み込み中...</div>}>
-              <GallerySwitcher />
+              <GallerySwitcher galleries={galleries} currentGalleryId={currentGalleryId} mode={mode} />
             </Suspense>
 
             {isAdmin && (
@@ -178,7 +186,7 @@ const GalleryHeader = ({
         <div className="hidden layout-lg:block layout-2xl:hidden">
           {/* 1行目: タイトル + アクションボタン */}
           <div className="flex h-14 items-center justify-between border-b border-gray-200">
-            <h1 className="text-lg font-semibold text-gray-900">作品ギャラリー</h1>
+            <h1 className="text-lg font-semibold text-gray-900">{mode === 'archive' ? '過去授業のギャラリー' : '作品ギャラリー'}</h1>
             <div className="flex items-center gap-2">
               {isGuest ? (
                 <button
@@ -223,7 +231,7 @@ const GalleryHeader = ({
           <div className="flex h-14 items-center justify-between">
             <div className="flex items-center gap-3">
               <Suspense fallback={<div className="text-sm text-gray-500">読み込み中...</div>}>
-                <GallerySwitcher />
+                <GallerySwitcher galleries={galleries} currentGalleryId={currentGalleryId} mode={mode} />
               </Suspense>
             </div>
 
@@ -307,7 +315,7 @@ const GalleryHeader = ({
         <div className="layout-lg:hidden">
           {/* 1行目: タイトル + アクションボタン */}
           <div className="flex h-14 items-center justify-between border-b border-gray-200">
-            <h1 className="text-lg font-semibold text-gray-900">作品ギャラリー</h1>
+            <h1 className="text-lg font-semibold text-gray-900">{mode === 'archive' ? '過去授業のギャラリー' : '作品ギャラリー'}</h1>
             <div className="flex items-center gap-2">
               {!isGuest && (
                 <a
@@ -353,7 +361,7 @@ const GalleryHeader = ({
           <div className="flex h-14 items-center justify-between">
             <div className="flex items-center gap-2">
               <Suspense fallback={<div className="text-xs text-gray-500">読み込み中...</div>}>
-                <GallerySwitcher />
+                <GallerySwitcher galleries={galleries} currentGalleryId={currentGalleryId} mode={mode} />
               </Suspense>
             </div>
 
