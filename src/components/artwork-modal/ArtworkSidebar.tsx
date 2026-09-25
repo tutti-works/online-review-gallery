@@ -98,20 +98,19 @@ const ArtworkSidebar = ({
 
   return (
     <>
+      {/* Toggle Button */}
       <button
         onClick={onToggle}
-        className="absolute right-0 top-1/2 z-20 flex h-11 w-8 -translate-y-1/2 items-center justify-center rounded-l-lg bg-white p-2 shadow-lg hover:bg-gray-50"
+        className="absolute right-0 top-1/2 z-20 flex h-12 w-8 -translate-y-1/2 items-center justify-center rounded-l-xl bg-[#121826]/95 border-l border-t border-b border-white/10 text-slate-400 hover:text-white shadow-xl backdrop-blur-md transition-colors"
         style={{
-          transform: `translateY(-50%) translateX(${isOpen ? '-311px' : '0px'})`,
-          transition: 'transform 300ms ease-in-out',
+          transform: `translateY(-50%) translateX(${isOpen ? '-320px' : '0px'})`,
+          transition: 'transform 300ms cubic-bezier(0.16, 1, 0.3, 1)',
         }}
         title={isOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
         aria-expanded={isOpen}
       >
         <svg
-          className={`h-5 w-5 text-gray-600 transition-transform duration-300 ease-in-out ${
-            isOpen ? 'rotate-0' : '-rotate-180'
-          }`}
+          className={`h-4 w-4 transition-transform duration-300 ${isOpen ? 'rotate-0' : '-rotate-180'}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -120,32 +119,46 @@ const ArtworkSidebar = ({
         </svg>
       </button>
 
+      {/* Sidebar Drawer */}
       <div
-        className="absolute right-0 top-0 z-10 flex h-full w-[310px] flex-col border-l border-gray-200 bg-white transition-transform duration-300 ease-in-out"
+        className="absolute right-0 top-0 z-10 flex h-full w-[320px] flex-col border-l border-white/[0.08] bg-[#0c101b]/95 backdrop-blur-2xl shadow-2xl transition-transform duration-300"
         style={{
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+          transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
-        <div className="border-b border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900">{artwork.studentName}</h3>
-          <p className="mt-1 text-sm text-gray-600">{currentFileName}</p>
-          <p className="mt-1 text-xs text-gray-400">{artwork.studentEmail}</p>
-          <p className="mt-1 text-xs text-gray-400">
-            提出日: {toDate(artwork.submittedAt).toLocaleString('ja-JP')}
-          </p>
-          <p className="mt-1 text-xs text-gray-400">ページ: {currentPageNumber}</p>
+        {/* Header */}
+        <div className="border-b border-white/[0.08] p-5">
+          <div className="text-[10px] font-bold tracking-[0.2em] uppercase font-mono text-orange-400 mb-1">
+            Artwork Details
+          </div>
+          <h3 className="text-base font-bold text-white tracking-tight">{artwork.studentName}</h3>
+          <p className="mt-1 text-xs text-slate-300 truncate font-mono">{currentFileName}</p>
+          <div className="mt-3 space-y-1 text-[11px] text-slate-400">
+            <p className="truncate">{artwork.studentEmail}</p>
+            <div className="flex items-center justify-between text-slate-500 font-mono">
+              <span>提出: {toDate(artwork.submittedAt).toLocaleDateString('ja-JP')}</span>
+              <span>P.{currentPageNumber}</span>
+            </div>
+          </div>
         </div>
 
-        <div className="flex-1 space-y-6 overflow-y-auto p-6">
+        {/* Content */}
+        <div className="flex-1 space-y-6 overflow-y-auto p-5">
+          {/* Actions: Like & Delete */}
           <div className="space-y-3">
             {isAdmin && (
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={handleLike}
-                  className="flex flex-1 items-center justify-center space-x-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all active:scale-95 ${
+                    liked
+                      ? 'border-rose-500/40 bg-rose-500/20 text-rose-300'
+                      : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-slate-200'
+                  }`}
                 >
                   <svg
-                    className={`h-5 w-5 ${liked ? 'text-red-500' : 'text-gray-600'}`}
+                    className={`h-4 w-4 ${liked ? 'text-rose-400' : 'text-slate-400'}`}
                     fill={liked ? 'currentColor' : 'none'}
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -162,7 +175,7 @@ const ArtworkSidebar = ({
                 <button
                   onClick={handleDelete}
                   disabled={isDeleting}
-                  className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 px-3.5 py-2 text-xs font-semibold transition active:scale-95 disabled:opacity-40"
                 >
                   {isDeleting ? '削除中...' : '削除'}
                 </button>
@@ -170,9 +183,9 @@ const ArtworkSidebar = ({
             )}
 
             {isViewer && (
-              <div className="flex items-center space-x-2 rounded-md bg-gray-50 p-3 text-gray-600">
+              <div className="flex items-center gap-2 rounded-xl bg-slate-900/60 border border-white/10 p-3 text-xs text-slate-300">
                 <svg
-                  className={`h-5 w-5 ${liked ? 'text-red-500' : 'text-gray-500'}`}
+                  className={`h-4 w-4 ${liked ? 'text-rose-400' : 'text-slate-400'}`}
                   fill={liked ? 'currentColor' : 'none'}
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -189,10 +202,11 @@ const ArtworkSidebar = ({
             )}
           </div>
 
+          {/* Labels Selection */}
           {isAdmin && onToggleLabel && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold text-gray-900">ラベル</h4>
-              <div className="grid grid-cols-5 gap-x-2 gap-y-3">
+            <div className="space-y-2.5">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">レビューラベル</h4>
+              <div className="grid grid-cols-5 gap-2 p-2 rounded-xl bg-slate-900/60 border border-white/10">
                 {LABEL_DEFINITIONS.map((label) => {
                   const isActive = artwork.labels?.includes(label.type);
                   return (
@@ -202,11 +216,13 @@ const ArtworkSidebar = ({
                       title={label.type}
                       aria-label={`${label.type.split('-')[0]} ${label.symbol}点を${isActive ? '解除' : '選択'}`}
                       aria-pressed={isActive}
-                      className={`flex h-8 w-8 items-center justify-center rounded border transition-colors ${
-                        isActive ? `${label.bgColor} border-gray-300` : 'border-gray-300 bg-white hover:bg-gray-50'
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-all ${
+                        isActive
+                          ? `${label.bgColor} border-white shadow-md scale-105`
+                          : 'border-white/5 bg-slate-800/40 hover:border-white/20 text-slate-400'
                       }`}
                     >
-                      <LabelBadge label={label.type} isActive={isActive} className="h-5 w-5 text-sm" />
+                      <LabelBadge label={label.type} isActive={isActive} className="h-5 w-5" />
                     </button>
                   );
                 })}
@@ -214,18 +230,19 @@ const ArtworkSidebar = ({
             </div>
           )}
 
+          {/* Annotation Mode */}
           {isAdmin && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold text-gray-900">注釈</h4>
+            <div className="space-y-2.5">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">画面注釈ツール</h4>
               <button
                 onClick={() => void onToggleAnnotationMode()}
-                className={`flex w-full items-center justify-center space-x-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all active:scale-95 shadow-md ${
                   showAnnotation
-                    ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
-                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                    ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-orange-500/25 ring-2 ring-orange-500/40'
+                    : 'bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 text-slate-200'
                 }`}
               >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -233,54 +250,58 @@ const ArtworkSidebar = ({
                     d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
                   />
                 </svg>
-                <span>{showAnnotation ? '注釈モード終了' : '注釈モード開始'}</span>
+                <span>{showAnnotation ? '注釈モード終了' : 'ペンで画面に注釈を描く'}</span>
               </button>
               {currentAnnotation && !showAnnotation && (
-                <p className="text-xs text-gray-500">このページには注釈があります。</p>
+                <p className="text-[11px] text-orange-400/80 font-mono">✓ このページには注釈があります</p>
               )}
               {annotationDirty && showAnnotation && (
-                <p className="text-xs text-orange-600">未保存の変更があります。</p>
+                <p className="text-[11px] text-amber-400 font-mono animate-pulse">● 未保存の描画があります</p>
               )}
             </div>
           )}
 
-          <div className="space-y-4">
-            <h4 className="text-sm font-semibold text-gray-900">コメント</h4>
+          {/* Comments Section */}
+          <div className="space-y-3.5">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">コメント</h4>
+              <span className="text-xs text-slate-500 font-mono">{artwork.comments.length}件</span>
+            </div>
 
             {isAdmin && onComment && (
-              <form onSubmit={handleCommentSubmit} className="space-y-3">
+              <form onSubmit={handleCommentSubmit} className="space-y-2">
                 <textarea
                   value={commentText}
                   onChange={(event) => setCommentText(event.target.value)}
-                  placeholder="コメントを入力してください..."
-                  rows={4}
-                  className="block w-full resize-none rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                  placeholder="講評コメントを入力..."
+                  rows={3}
+                  className="block w-full resize-none rounded-xl border border-white/10 bg-[#121826] px-3.5 py-2.5 text-xs text-slate-200 placeholder-slate-500 shadow-inner focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
                 />
                 <button
                   type="submit"
                   disabled={!commentText.trim() || isSubmittingComment}
-                  className="w-full rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full rounded-xl bg-orange-500 hover:bg-orange-600 px-4 py-2 text-xs font-semibold text-white transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 shadow-md"
                 >
-                  {isSubmittingComment ? '送信中...' : 'コメントを投稿'}
+                  {isSubmittingComment ? '送信中...' : 'コメントを送信'}
                 </button>
               </form>
             )}
 
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {artwork.comments.length > 0 ? (
                 artwork.comments.map((comment) => (
-                  <div key={comment.id} className="rounded-lg bg-gray-50 p-3">
-                    <div className="mb-1 flex items-center space-x-2">
-                      <span className="text-sm font-medium text-gray-900">{comment.authorName}</span>
-                      <span className="text-xs text-gray-500">
-                        {toDate(comment.createdAt).toLocaleString('ja-JP')}
+                  <div key={comment.id} className="rounded-xl bg-[#121826]/70 border border-white/[0.06] p-3 text-xs space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-orange-400">{comment.authorName}</span>
+                      <span className="text-slate-500 font-mono">
+                        {toDate(comment.createdAt).toLocaleDateString('ja-JP')}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-700">{comment.content}</p>
+                    <p className="text-slate-300 leading-relaxed whitespace-pre-wrap">{comment.content}</p>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-gray-500">まだコメントはありません。</p>
+                <p className="text-xs text-slate-500 font-mono text-center py-4">まだコメントはありません</p>
               )}
             </div>
           </div>

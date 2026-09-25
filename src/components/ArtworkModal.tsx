@@ -12,6 +12,7 @@ import ArtworkSidebar from './artwork-modal/ArtworkSidebar';
 import { convertLinesToStageJSON } from '@/utils/annotations';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { isIncomplete, getStatusText } from '@/lib/artworkUtils';
+import { isReadOnlyMode, dispatchReadOnlyToast } from '@/lib/readOnlyMode';
 
 interface ArtworkModalProps {
   artwork: Artwork;
@@ -220,6 +221,11 @@ const ArtworkModal = ({
   const handleDelete = async () => {
     if (!onDelete) return;
 
+    if (isReadOnlyMode()) {
+      dispatchReadOnlyToast('【本番データ保護】プレビューモードのため作品の削除は無効化されています');
+      return;
+    }
+
     const confirmMessage = incomplete
       ? `${artwork.studentName}の作品を削除してもよろしいですか？\n\nこの操作は取り消せません。`
       : `${artwork.studentName}の作品「${artwork.title}」を削除してもよろしいですか？\n\nこの操作は取り消せません。`;
@@ -248,26 +254,24 @@ const ArtworkModal = ({
   const incomplete = isIncomplete(artwork);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black bg-opacity-90">
-      <div className="flex h-full w-full p-4">
-        <div className="relative flex h-full w-full overflow-hidden rounded-lg bg-white shadow-2xl flex-col">
+    <div className="fixed inset-0 z-50 bg-[#06080e]/95 backdrop-blur-xl animate-fade-in">
+      <div className="flex h-full w-full p-2 sm:p-4">
+        <div className="relative flex h-full w-full overflow-hidden rounded-2xl bg-[#0b0f17] border border-white/[0.08] shadow-2xl flex-col">
           {!isOnline && (
-            <div className="border-b border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900">
-              <div className="rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-amber-900">
-                オフラインモードです。注釈の保存はオンライン復帰後に再実行してください。
-              </div>
+            <div className="border-b border-amber-500/20 bg-amber-950/40 px-4 py-2 text-xs text-amber-200">
+              オフラインモードです。注釈の保存はオンライン復帰後に再実行してください。
             </div>
           )}
           <div className="flex flex-1 overflow-hidden">
             {incomplete ? (
-              <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 p-8 relative">
+              <div className="flex-1 flex flex-col items-center justify-center bg-[#0b0f17] p-8 relative">
                 {/* 閉じるボタン */}
                 <button
                   onClick={onClose}
-                  className="absolute left-4 top-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white bg-opacity-90 text-gray-800 shadow-lg transition-all hover:bg-opacity-100 hover:shadow-xl"
+                  className="absolute left-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-white/10 shadow-lg backdrop-blur-md transition-all active:scale-95"
                   title="閉じる"
                 >
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -276,45 +280,45 @@ const ArtworkModal = ({
                 {userRole === 'admin' && onDelete && (
                   <button
                     onClick={handleDelete}
-                    className="absolute top-4 right-4 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-all hover:bg-red-700 hover:shadow-xl"
+                    className="absolute top-4 right-4 z-10 flex h-11 w-11 items-center justify-center rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 shadow-lg backdrop-blur-md transition-all active:scale-95"
                     title="この作品を削除"
                   >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
                 )}
 
                 <div className="max-w-md text-center">
-                  <div className="mb-4 inline-flex items-center justify-center w-20 h-20 rounded-full bg-gray-200">
-                    <svg className="h-10 w-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <div className="mb-4 inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-slate-900 border border-white/10 text-orange-400">
+                    <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">{getStatusText(artwork)}</h2>
-                  <p className="text-gray-600 mb-6">
+                  <h2 className="text-xl font-bold text-white mb-2">{getStatusText(artwork)}</h2>
+                  <p className="text-sm text-slate-400 mb-6">
                     {artwork.status === 'not_submitted'
                       ? 'この学生は課題を提出していません。'
                       : artwork.status === 'error' && artwork.errorReason === 'unsupported_format'
                       ? 'サポートされていないファイル形式が提出されました。'
                       : 'ファイル処理中にエラーが発生しました。'}
                   </p>
-                  <div className="bg-white rounded-lg p-4 shadow-sm text-left">
-                    <dl className="space-y-2">
+                  <div className="bg-[#121826] rounded-xl p-5 border border-white/10 text-left">
+                    <dl className="space-y-3">
                       <div>
-                        <dt className="text-sm font-medium text-gray-500">学生名</dt>
-                        <dd className="text-base text-gray-900">{artwork.studentName}</dd>
+                        <dt className="text-xs font-semibold text-slate-500 uppercase tracking-wider font-mono">学生名</dt>
+                        <dd className="text-sm font-medium text-slate-200 mt-0.5">{artwork.studentName}</dd>
                       </div>
                       <div>
-                        <dt className="text-sm font-medium text-gray-500">メールアドレス</dt>
-                        <dd className="text-base text-gray-900">{artwork.studentEmail}</dd>
+                        <dt className="text-xs font-semibold text-slate-500 uppercase tracking-wider font-mono">メールアドレス</dt>
+                        <dd className="text-sm font-medium text-slate-200 mt-0.5">{artwork.studentEmail}</dd>
                       </div>
                       {artwork.status === 'error' && artwork.files && artwork.files.length > 0 && (
                         <div>
-                          <dt className="text-sm font-medium text-gray-500">提出ファイル</dt>
-                          <dd className="text-base text-gray-900">
+                          <dt className="text-xs font-semibold text-slate-500 uppercase tracking-wider font-mono">提出ファイル</dt>
+                          <dd className="text-sm text-slate-300 mt-0.5">
                             {artwork.files.map((file, i) => (
-                              <div key={i} className="text-sm">{file.name}</div>
+                              <div key={i} className="text-xs font-mono">{file.name}</div>
                             ))}
                           </dd>
                         </div>
@@ -324,24 +328,24 @@ const ArtworkModal = ({
                 </div>
 
                 {/* 下部コントロールバー */}
-                <div className="absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center space-x-4 rounded-full bg-gray-700 bg-opacity-70 px-3 py-1 backdrop-blur-sm transition-all duration-300 ease-in-out">
+                <div className="absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center space-x-3 rounded-full bg-[#121826]/90 border border-white/10 px-4 py-2 backdrop-blur-md shadow-2xl">
                   <button
                     onClick={() => handleArtworkChange('prev')}
                     disabled={currentIndex === 0}
-                    className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                    className="rounded-lg p-1.5 text-slate-300 hover:text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-20"
                     title="前の作品"
                   >
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
                     </svg>
                   </button>
-                  <span className="min-w-[70px] text-center text-xs font-medium text-white">
-                    作品 {currentIndex + 1}/{artworks.length}
+                  <span className="min-w-[80px] text-center text-xs font-mono font-medium text-slate-300">
+                    作品 {currentIndex + 1} / {artworks.length}
                   </span>
                   <button
                     onClick={() => handleArtworkChange('next')}
                     disabled={currentIndex === artworks.length - 1}
-                    className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                    className="rounded-lg p-1.5 text-slate-300 hover:text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-20"
                     title="次の作品"
                   >
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

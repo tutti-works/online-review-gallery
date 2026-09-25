@@ -21,6 +21,7 @@ import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
 import { getFunctionAuthorizationHeader } from '@/lib/functionAuth';
 import { getGalleryLabelOptions, getLabelTotal, matchesAnyLabel, toggleColorLabel } from '@/lib/reviewLabels';
 import type { GalleryMode } from '@/lib/courseArchive';
+import { isReadOnlyMode, dispatchReadOnlyToast } from '@/lib/readOnlyMode';
 
 const removePageFromMap = <T,>(
   map: Record<string, T> | undefined,
@@ -166,6 +167,10 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
 
   const handleLike = async (artworkId: string) => {
     if (user?.role !== 'admin' || !user?.email) return;
+    if (isReadOnlyMode()) {
+      dispatchReadOnlyToast('【本番データ保護】プレビューモードのため「いいね」の保存は無効化されています');
+      return;
+    }
 
     try {
       const { doc, getDoc, setDoc, deleteDoc, collection, updateDoc, increment } = await import('firebase/firestore');
@@ -235,6 +240,10 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
 
   const handleComment = async (artworkId: string, comment: string) => {
     if (user?.role !== 'admin' || !user?.email) return;
+    if (isReadOnlyMode()) {
+      dispatchReadOnlyToast('【本番データ保護】プレビューモードのためコメントの投稿は無効化されています');
+      return;
+    }
 
     try {
       const { doc, updateDoc, arrayUnion } = await import('firebase/firestore');
@@ -270,6 +279,10 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
 
   const handleDelete = async (artworkId: string) => {
     if (user?.role !== 'admin' || !user?.email) return;
+    if (isReadOnlyMode()) {
+      dispatchReadOnlyToast('【本番データ保護】プレビューモードのため作品の削除は無効化されています');
+      return;
+    }
 
     try {
       const functionsBaseUrl = getFunctionsBaseUrl();
@@ -307,6 +320,10 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
 
   const handleToggleLabel = async (artworkId: string, label: LabelType) => {
     if (user?.role !== 'admin') return;
+    if (isReadOnlyMode()) {
+      dispatchReadOnlyToast('【本番データ保護】プレビューモードのためラベルの変更は無効化されています');
+      return;
+    }
 
     try {
       const { doc, runTransaction } = await import('firebase/firestore');
@@ -339,6 +356,10 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
     annotation: AnnotationSavePayload | null,
   ) => {
     if (user?.role !== 'admin' || !user?.email) return;
+    if (isReadOnlyMode()) {
+      dispatchReadOnlyToast('【本番データ保護】プレビューモードのため注釈の保存は無効化されています');
+      return;
+    }
 
     const pageKey = String(pageNumber);
 
@@ -475,17 +496,20 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
 
   if (loading || !isInitialized) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="inline-block h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600" />
-          <p className="mt-4 text-gray-600">ギャラリーを読み込み中...</p>
+      <div className="flex min-h-screen items-center justify-center bg-[#0b0f17] architectural-bg">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-12 h-12">
+            <div className="absolute inset-0 rounded-full border-2 border-orange-500/20 animate-ping"></div>
+            <div className="w-12 h-12 rounded-full border-2 border-orange-500 border-t-transparent animate-spin"></div>
+          </div>
+          <p className="text-xs uppercase tracking-widest text-slate-400 font-mono">ギャラリーを読み込み中...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0b0f17] architectural-bg text-slate-100 flex flex-col">
       <GalleryHeader
         galleries={galleries}
         currentGalleryId={currentGalleryId}
@@ -506,20 +530,40 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
         onLoginClick={handleLoginClick}
       />
 
-      <main className="w-full px-4 py-6 sm:px-6 lg:px-8">
+      <main className="w-full flex-1 px-4 py-8 sm:px-6 lg:px-10 max-w-[1920px] mx-auto">
         <GalleryImportProgress importProgress={importProgress} />
 
-        {loadError && <div className="mb-6 rounded border border-red-200 bg-red-50 px-4 py-3 text-red-700">{loadError}</div>}
+        {loadError && (
+          <div className="mb-6 rounded-xl border border-rose-500/30 bg-rose-950/40 backdrop-blur-md px-5 py-4 text-rose-200 text-sm flex items-center gap-3">
+            <span className="text-rose-400">⚠️</span>
+            <span>{loadError}</span>
+          </div>
+        )}
         {error && (
-          <div className="mb-6 rounded border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-            {error}
+          <div className="mb-6 rounded-xl border border-rose-500/30 bg-rose-950/40 backdrop-blur-md px-5 py-4 text-rose-200 text-sm flex items-center gap-3">
+            <span className="text-rose-400">⚠️</span>
+            <span>{error}</span>
           </div>
         )}
 
         {loadError ? null : mode === 'archive' && !hasGalleries ? (
-          <p className="py-12 text-center text-gray-600">アーカイブされた授業はありません</p>
+          <div className="py-24 text-center">
+            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-slate-800/80 border border-white/10 flex items-center justify-center text-slate-400">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-slate-400">アーカイブされた授業はありません</p>
+          </div>
         ) : mode === 'active' && !hasGalleries ? (
-          <p className="py-12 text-center text-gray-600">表示できる授業はありません</p>
+          <div className="py-24 text-center">
+            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-slate-800/80 border border-white/10 flex items-center justify-center text-slate-400">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-slate-400">表示できる授業はありません</p>
+          </div>
         ) : filteredArtworks.length === 0 ? (
           <GalleryEmptyState
             hasGalleries={hasGalleries}

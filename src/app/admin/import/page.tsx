@@ -8,6 +8,8 @@ import { ClassroomCourse, CourseAssignment } from '@/types';
 import { CLASSROOM_INCREMENTAL_SCOPES } from '@/lib/firebase';
 import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
 import { getFunctionAuthorizationHeader } from '@/lib/functionAuth';
+import { isReadOnlyMode, dispatchReadOnlyToast } from '@/lib/readOnlyMode';
+import ReadOnlyBadge from '@/components/ui/ReadOnlyBadge';
 
 const CONSENT_MESSAGE = 'Google Classroom APIへのアクセス許可が必要です。下のボタンから許可してください。';
 const TOKEN_MESSAGE = 'Google Classroom APIのトークンを取得できませんでした。ログアウト後に再度ログインしてください。';
@@ -29,6 +31,8 @@ function AdminImportPage() {
   const [needsAdditionalConsent, setNeedsAdditionalConsent] = useState<boolean>(false);
   const [isRequestingScopes, setIsRequestingScopes] = useState<boolean>(false);
   const [scopeRequestError, setScopeRequestError] = useState<string | null>(null);
+
+  const readOnly = isReadOnlyMode();
 
   const incrementalScopes = useMemo(() => [...CLASSROOM_INCREMENTAL_SCOPES], []);
   const messageTimersRef = useRef<number[]>([]);
@@ -152,14 +156,17 @@ function AdminImportPage() {
     }
 
     setIsLoadingAssignments(true);
-    setStatusMessage('課題を読み込んでいます...');
+    setStatusMessage('課題一覧を読み込んでいます...');
 
     try {
-      const response = await fetch(`https://classroom.googleapis.com/v1/courses/${selectedCourse}/courseWork`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const response = await fetch(
+        `https://classroom.googleapis.com/v1/courses/${selectedCourse}/courseWork?courseWorkStates=PUBLISHED`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
 
       if (!response.ok) {
         let apiError = response.statusText;
@@ -253,6 +260,11 @@ function AdminImportPage() {
   }, [ensureClassroomScopes, getCurrentAccessToken]);
 
   const handleImport = async () => {
+    if (readOnly) {
+      dispatchReadOnlyToast('【本番データ保護】プレビューモードのためインポート実行は無効化されています');
+      return;
+    }
+
     if (!hasRequiredScopes) {
       alert('Google Classroom APIの権限が付与されていません。画面上のボタンから権限を付与してください。');
       return;
@@ -291,7 +303,7 @@ function AdminImportPage() {
       const selectedCourseName = courses.find((c) => c.id === selectedCourse)?.name || 'Unknown Course';
       const selectedAssignmentName = assignments.find((a) => a.id === selectedAssignment)?.title || 'Unknown Assignment';
 
-      // 既存のギャラリーを検索（同じclassroomId + assignmentIdの組み合わせ）
+      // 既存のギャラリーを検索
       const galleriesRef = collection(db, 'galleries');
       const q = query(
         galleriesRef,
@@ -304,13 +316,11 @@ function AdminImportPage() {
       let galleryRef;
 
       if (!existingGalleriesSnapshot.empty) {
-        // 既存のギャラリーが見つかった場合は再利用
         const existingGallery = existingGalleriesSnapshot.docs[0];
         galleryId = existingGallery.id;
         galleryRef = doc(db, 'galleries', galleryId);
         console.log(`Using existing gallery: ${galleryId}`);
       } else {
-        // 新規ギャラリーを作成
         galleryRef = doc(collection(db, 'galleries'));
         galleryId = galleryRef.id;
 
@@ -338,190 +348,201 @@ function AdminImportPage() {
         },
         body: JSON.stringify({
           galleryId,
-          classroomId: selectedCourse,
-          assignmentId: selectedAssignment,
+          courseId: selectedCourse,
+          courseWorkId: selectedAssignment,
         }),
       });
 
       if (!response.ok) {
-        clearMessageTimers();
-        const data = await response.json();
-        throw new Error(data?.error || 'インポートのリクエストに失敗しました');
+        let apiError = response.statusText;
+        try {
+          const body = await response.json();
+          apiError = body?.error || apiError;
+        } catch {
+          // ignore
+        }
+        throw new Error(apiError);
       }
 
-      const data = await response.json();
-      const importJobId = data.importJobId;
+      const result = await response.json();
+      const jobQuery = result.importJobId ? `&importJobId=${encodeURIComponent(result.importJobId)}` : '';
 
-      localStorage.setItem('activeImportJob', JSON.stringify({
-        importJobId,
-        startedAt: new Date().toISOString(),
-        galleryId,
-      }));
-
-      // バックエンドに処理が渡ったので、ギャラリーページにリダイレクト
       clearMessageTimers();
-      setStatusMessage('インポート処理を開始しました。ギャラリーページへ移動します...');
-
-      // beforeunloadイベントを無効化してからリダイレクト
-      window.onbeforeunload = null;
+      setStatusMessage('インポート処理がキューに追加されました。ギャラリーへ移動します...');
 
       setTimeout(() => {
-        router.push(`/gallery?galleryId=${galleryId}`);
-      }, 1500);
+        router.push(`/gallery?galleryId=${galleryId}${jobQuery}`);
+      }, 1000);
     } catch (error) {
-      console.error('Import error:', error);
-      setStatusMessage(`エラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
-    } finally {
-      setIsImporting(false);
+      console.error(error);
       clearMessageTimers();
+      const errorMessage = error instanceof Error ? error.message : '不明なエラー';
+      setStatusMessage(`インポート処理に失敗しました: ${errorMessage}`);
+      setIsImporting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
+    <div className="min-h-screen bg-[#0b0f17] architectural-bg text-slate-100 flex flex-col">
+      {/* Header */}
+      <header className="sticky top-0 z-40 backdrop-blur-xl bg-[#0b0f17]/90 border-b border-white/[0.08] shadow-2xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <h1 className="text-xl font-semibold text-gray-900">
-              データインポート
-            </h1>
-            <a href="/dashboard" className="text-sm text-blue-600 hover:underline">ダッシュボードに戻る</a>
+          <div className="flex justify-between items-center h-20">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center">
+                <svg className="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold tracking-[0.2em] uppercase font-mono text-orange-400">
+                    IMPORT PIPELINE
+                  </span>
+                  <ReadOnlyBadge />
+                </div>
+                <h1 className="text-base font-bold text-white tracking-tight">データインポート</h1>
+              </div>
+            </div>
+
+            <a
+              href="/dashboard"
+              className="text-xs font-medium text-slate-400 hover:text-white px-3.5 py-2 rounded-xl border border-white/10 hover:border-white/20 bg-white/[0.04] transition-all"
+            >
+              ← ダッシュボードに戻る
+            </a>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="bg-white p-8 rounded-lg shadow">
-          <div className="max-w-xl mx-auto">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">インポート設定</h2>
-            <p className="text-sm text-gray-600 mb-6">
-              Google Classroomから作品をインポートする授業と課題を選択してください。
+      {/* Main Content */}
+      <main className="max-w-4xl w-full mx-auto py-10 px-4 sm:px-6 lg:px-8 flex-1">
+        {readOnly && (
+          <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-950/20 backdrop-blur-xl p-4 shadow-xl flex items-center gap-3">
+            <span className="text-amber-400">🔒</span>
+            <p className="text-xs text-amber-200">
+              本番データ保護モードが有効なため、Google Classroomからの実際のインポート実行は無効化されています。
             </p>
+          </div>
+        )}
 
-            <div className="space-y-6">
-              {needsAdditionalConsent && (
-                <div className="mb-6 rounded-md border border-yellow-300 bg-yellow-50 p-4">
-                  <p className="text-sm text-yellow-800">
-                    Google Classroom APIへのアクセス許可が必要です。下のボタンから追加のアクセス許可を付与してください。
-                  </p>
-                  {scopeRequestError && (
-                    <p className="mt-2 text-sm text-red-600">{scopeRequestError}</p>
-                  )}
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      onClick={handleRequestScopes}
-                      disabled={isRequestingScopes}
-                      className="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
-                    >
-                      {isRequestingScopes ? '権限を付与しています...' : 'Googleでアクセスを許可'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => router.back()}
-                      className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                      前のページに戻る
-                    </button>
-                  </div>
+        <div className="glass-panel rounded-2xl p-6 sm:p-10 shadow-2xl relative overflow-hidden">
+          <div className="text-[10px] font-bold tracking-[0.2em] uppercase font-mono text-orange-400 mb-2">
+            Classroom Sync
+          </div>
+          <h2 className="text-2xl font-bold text-white tracking-tight mb-2">インポート設定</h2>
+          <p className="text-xs sm:text-sm text-slate-400 mb-8 leading-relaxed">
+            Google Classroomから課題の提出物（PDF図面・画像）を取得し、新しいギャラリーを作成します。
+          </p>
+
+          <div className="space-y-6">
+            {needsAdditionalConsent && (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-950/30 p-5 backdrop-blur-md">
+                <p className="text-xs text-amber-200 leading-relaxed">
+                  Google Classroom APIへのアクセス許可が必要です。下のボタンから追加のアクセス許可を付与してください。
+                </p>
+                {scopeRequestError && (
+                  <p className="mt-2 text-xs text-rose-400 font-mono">{scopeRequestError}</p>
+                )}
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={handleRequestScopes}
+                    disabled={isRequestingScopes}
+                    className="inline-flex items-center rounded-xl bg-orange-500 hover:bg-orange-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-orange-500/20 transition active:scale-95 disabled:opacity-40"
+                  >
+                    {isRequestingScopes ? '権限を付与しています...' : 'Googleでアクセスを許可'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.back()}
+                    className="inline-flex items-center rounded-xl border border-white/10 px-4 py-2 text-xs font-medium text-slate-300 hover:text-white"
+                  >
+                    前のページに戻る
+                  </button>
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Step 1: Course Selection */}
-              <div>
-                <label htmlFor="course-select" className="block text-sm font-medium text-gray-700 mb-2">
-                  ステップ1: 授業を選択
+            {/* Step 1: Course Selection */}
+            <div className="space-y-2">
+              <label htmlFor="course-select" className="block text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
+                ステップ 1: 授業を選択
+              </label>
+              <select
+                id="course-select"
+                value={selectedCourse}
+                onChange={(e) => setSelectedCourse(e.target.value)}
+                disabled={isLoadingCourses || isImporting || isRequestingScopes || needsAdditionalConsent}
+                className="block w-full rounded-xl border border-white/10 bg-[#121826] px-4 py-3 text-sm font-medium text-slate-200 shadow-inner transition hover:border-white/20 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500 disabled:opacity-40 cursor-pointer"
+              >
+                <option value="">{isLoadingCourses ? '授業を読み込み中...' : '-- 授業を選択してください --'}</option>
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id} className="bg-[#121826]">
+                    {course.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Step 2: Assignment Selection */}
+            {selectedCourse && (
+              <div className="space-y-2 animate-slide-up">
+                <label htmlFor="assignment-select" className="block text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
+                  ステップ 2: 課題を選択
                 </label>
                 <select
-                  id="course-select"
-                  value={selectedCourse}
-                  onChange={(e) => setSelectedCourse(e.target.value)}
-                  disabled={isLoadingCourses || isImporting || isRequestingScopes || needsAdditionalConsent}
-                  className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100"
+                  id="assignment-select"
+                  value={selectedAssignment}
+                  onChange={(e) => setSelectedAssignment(e.target.value)}
+                  disabled={isLoadingAssignments || !selectedCourse || isImporting || isRequestingScopes || needsAdditionalConsent}
+                  className="block w-full rounded-xl border border-white/10 bg-[#121826] px-4 py-3 text-sm font-medium text-slate-200 shadow-inner transition hover:border-white/20 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500 disabled:opacity-40 cursor-pointer"
                 >
-                  <option value="">{isLoadingCourses ? '読み込み中...' : '-- 授業を選択してください --'}</option>
-                  {courses.map((course) => (
-                    <option key={course.id} value={course.id}>
-                      {course.name}
+                  <option value="">{isLoadingAssignments ? '課題を読み込み中...' : '-- 課題を選択してください --'}</option>
+                  {assignments.map((assignment) => (
+                    <option key={assignment.id} value={assignment.id} className="bg-[#121826]">
+                      {assignment.title}
                     </option>
                   ))}
                 </select>
               </div>
+            )}
 
-              {/* Step 2: Assignment Selection */}
-              {selectedCourse && (
-                <div>
-                  <label htmlFor="assignment-select" className="block text-sm font-medium text-gray-700 mb-2">
-                    ステップ2: 課題を選択
-                  </label>
-                  <select
-                    id="assignment-select"
-                    value={selectedAssignment}
-                    onChange={(e) => setSelectedAssignment(e.target.value)}
-                    disabled={isLoadingAssignments || !selectedCourse || isImporting || isRequestingScopes || needsAdditionalConsent}
-                    className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100"
-                  >
-                    <option value="">{isLoadingAssignments ? '読み込み中...' : '-- 課題を選択してください --'}</option>
-                    {assignments.map((assignment) => (
-                      <option key={assignment.id} value={assignment.id}>
-                        {assignment.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Step 3: Import Button */}
-              <div className="pt-4">
-                <button
-                  onClick={handleImport}
-                  disabled={!selectedAssignment || isImporting || isLoadingCourses || isLoadingAssignments || isRequestingScopes || needsAdditionalConsent}
-                  className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  {isImporting ? 'インポート処理中...' : 'インポートを開始'}
-                </button>
-              </div>
-
-              {/* 警告メッセージ（インポート中のみ表示） */}
-              {isImporting && (
-                <div className="space-y-4">
-                  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-                    <div className="flex">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm text-yellow-700">
-                          <strong className="font-bold">重要:</strong> インポート処理が完全に終わるまで、このページを閉じないでください。処理には数分かかる場合があります。
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ステータスメッセージ（スピナー付き） */}
-                  {statusMessage && (
-                    <div className="p-4 bg-indigo-50 rounded-md">
-                      <div className="flex items-center justify-center">
-                        <svg className="animate-spin h-5 w-5 text-indigo-600 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                        <p className="text-sm font-medium text-indigo-700">{statusMessage}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ステータスメッセージ（インポート中でない場合） */}
-              {!isImporting && statusMessage && (
-                <div className="mt-6 p-4 bg-gray-100 rounded-md text-center">
-                  <p className="text-sm text-gray-700">{statusMessage}</p>
-                </div>
-              )}
+            {/* Step 3: Import Button */}
+            <div className="pt-4">
+              <button
+                onClick={handleImport}
+                disabled={!selectedAssignment || isImporting || isLoadingCourses || isLoadingAssignments || isRequestingScopes || needsAdditionalConsent}
+                className="w-full flex justify-center py-3.5 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 font-semibold text-sm text-white shadow-xl shadow-orange-500/20 transition-all active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isImporting ? 'インポート処理中...' : 'インポートを開始'}
+              </button>
             </div>
+
+            {/* Warning Message during import */}
+            {isImporting && (
+              <div className="space-y-4 animate-slide-up">
+                <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
+                  <span className="text-amber-400 text-base">⚠️</span>
+                  <p className="text-xs text-amber-200 leading-relaxed">
+                    <strong className="font-bold text-amber-300">重要:</strong> インポート処理が完了するまでページを閉じないでください。ファイル数によっては数分かかる場合があります。
+                  </p>
+                </div>
+
+                {statusMessage && (
+                  <div className="p-4 rounded-xl bg-[#121826] border border-white/10 flex items-center justify-center gap-3">
+                    <div className="w-4 h-4 rounded-full border-2 border-orange-500 border-t-transparent animate-spin"></div>
+                    <p className="text-xs font-mono font-medium text-orange-400">{statusMessage}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isImporting && statusMessage && (
+              <div className="p-4 rounded-xl bg-[#121826] border border-white/10 text-center">
+                <p className="text-xs font-mono text-slate-300">{statusMessage}</p>
+              </div>
+            )}
           </div>
         </div>
       </main>

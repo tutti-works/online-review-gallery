@@ -8,7 +8,8 @@ Google Classroomの課題提出物を自動取得し、レスポンシブCSS Gri
 
 - **[docs/README.md](docs/README.md)** - ドキュメント索引
 - **[docs/requirements.md](docs/requirements.md)** - 要件定義書
-- **[docs/setup/local-development.md](docs/setup/local-development.md)** - ローカル開発環境セットアップ
+- **[docs/setup/local-development.md](docs/setup/local-development.md)** - ローカル開発環境セットアップ（エミュレータ）
+- **[docs/setup/ui-preview-with-production-data.md](docs/setup/ui-preview-with-production-data.md)** - 本番データ連携ローカルUIプレビュー（Read-Only Mode）
 - **[docs/setup/cloud-run-deployment.md](docs/setup/cloud-run-deployment.md)** - Cloud Runデプロイガイド
 - **[docs/setup/production-deployment.md](docs/setup/production-deployment.md)** - 本番環境デプロイガイド
 - **[docs/changelog.md](docs/changelog.md)** - 変更履歴

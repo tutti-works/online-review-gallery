@@ -10,13 +10,13 @@ const GalleryEmptyState = ({ hasGalleries, currentGalleryId, userRole }: Gallery
   const isAdmin = userRole === 'admin';
 
   return (
-    <div className="py-12 text-center">
-      <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-gray-100">
-        <svg className="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div className="py-20 text-center max-w-lg mx-auto">
+      <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-[#141b2a] border border-white/10 shadow-inner">
+        <svg className="h-9 w-9 text-orange-400/80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
-            strokeWidth="1"
+            strokeWidth="1.5"
             d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
           />
         </svg>
@@ -24,30 +24,46 @@ const GalleryEmptyState = ({ hasGalleries, currentGalleryId, userRole }: Gallery
 
       {!hasGalleries ? (
         <>
-          <h3 className="mb-2 text-lg font-medium text-gray-900">まだギャラリーがありません</h3>
-          <p className="mb-6 text-gray-600">
+          <div className="text-[10px] font-bold tracking-[0.2em] uppercase font-mono text-orange-400 mb-1">
+            No Galleries Found
+          </div>
+          <h3 className="mb-2 text-xl font-bold text-white">ギャラリーがありません</h3>
+          <p className="mb-8 text-sm text-slate-400 leading-relaxed">
             {isAdmin
-              ? 'Google Classroom からデータをインポートして課題を作成しましょう。'
+              ? 'Google Classroom から課題データをインポートしてギャラリーを作成してください。'
               : '管理者がデータをインポートするまでお待ちください。'}
           </p>
           {isAdmin && (
             <a
               href="/admin/import"
-              className="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition-all active:scale-95"
             >
-              データインポートを開く
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+              </svg>
+              <span>データインポートを開始</span>
             </a>
           )}
         </>
       ) : !currentGalleryId ? (
         <>
-          <h3 className="mb-2 text-lg font-medium text-gray-900">課題を選択してください</h3>
-          <p className="mb-6 text-gray-600">上部のドロップダウンから授業と課題を選択して作品を表示できます。</p>
+          <div className="text-[10px] font-bold tracking-[0.2em] uppercase font-mono text-orange-400 mb-1">
+            Selection Required
+          </div>
+          <h3 className="mb-2 text-xl font-bold text-white">課題を選択してください</h3>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            上部のドロップダウンから授業と課題を選択すると作品が表示されます。
+          </p>
         </>
       ) : (
         <>
-          <h3 className="mb-2 text-lg font-medium text-gray-900">まだ作品がありません</h3>
-          <p className="mb-6 text-gray-600">この課題にはまだ作品が登録されていません。</p>
+          <div className="text-[10px] font-bold tracking-[0.2em] uppercase font-mono text-orange-400 mb-1">
+            Empty Exhibition
+          </div>
+          <h3 className="mb-2 text-xl font-bold text-white">作品が登録されていません</h3>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            この課題にはまだ提出作品がインポートされていません。
+          </p>
         </>
       )}
     </div>

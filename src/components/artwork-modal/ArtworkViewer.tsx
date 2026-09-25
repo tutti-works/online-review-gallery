@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import {
   useCallback,
@@ -452,25 +452,25 @@ const ArtworkViewer = ({
             })()}
           </div>
         )}
-        <div className="absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center space-x-4 rounded-full bg-gray-700 bg-opacity-70 px-3 py-1 backdrop-blur-sm transition-all duration-300 ease-in-out">
+        <div className="absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center space-x-3 rounded-full bg-[#101624]/90 border border-white/10 px-4 py-1.5 backdrop-blur-md shadow-2xl transition-all duration-300 ease-in-out">
           {/* 作品間ナビゲーション */}
           <button
             onClick={() => void onArtworkChange('prev')}
             disabled={currentArtworkIndex === 0 || isSavingAnnotation}
-            className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+            className="rounded-lg p-1.5 text-slate-300 hover:text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-20 disabled:hover:bg-transparent"
             title="前の作品"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
             </svg>
           </button>
-          <span className="min-w-[70px] text-center text-xs font-medium text-white">
-            作品 {currentArtworkIndex + 1}/{totalArtworks}
+          <span className="min-w-[70px] text-center text-xs font-mono font-medium text-slate-200">
+            作品 {currentArtworkIndex + 1} / {totalArtworks}
           </span>
           <button
             onClick={() => void onArtworkChange('next')}
             disabled={currentArtworkIndex === totalArtworks - 1 || isSavingAnnotation}
-            className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+            className="rounded-lg p-1.5 text-slate-300 hover:text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-20 disabled:hover:bg-transparent"
             title="次の作品"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -480,24 +480,24 @@ const ArtworkViewer = ({
 
           {artwork.images.length > 1 && (
             <>
-              <div className="h-6 w-px bg-white bg-opacity-30" />
+              <div className="h-5 w-px bg-white/15" />
               <button
                 onClick={() => void onPageChange(Math.max(0, currentPage - 1))}
                 disabled={currentPage === 0 || isSavingAnnotation}
-                className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                className="rounded-lg p-1.5 text-slate-300 hover:text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-20 disabled:hover:bg-transparent"
                 title="前のページ"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <span className="min-w-[60px] text-center text-sm font-medium text-white">
-                {currentPage + 1} / {artwork.images.length}
+              <span className="min-w-[60px] text-center text-xs font-mono font-medium text-slate-200">
+                P.{currentPage + 1} / {artwork.images.length}
               </span>
               <button
                 onClick={() => void onPageChange(Math.min(artwork.images.length - 1, currentPage + 1))}
                 disabled={currentPage === artwork.images.length - 1 || isSavingAnnotation}
-                className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                className="rounded-lg p-1.5 text-slate-300 hover:text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-20 disabled:hover:bg-transparent"
                 title="次のページ"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -506,7 +506,7 @@ const ArtworkViewer = ({
               </button>
             </>
           )}
-          <div className="h-6 w-px bg-white bg-opacity-30" />
+          <div className="h-5 w-px bg-white/15" />
 
           {!showAnnotation && (
             <>
@@ -517,32 +517,32 @@ const ArtworkViewer = ({
                   }
                 }}
                 disabled={!hasOverlay}
-                className={`rounded-lg p-2 text-white transition-colors ${
+                className={`rounded-lg p-1.5 transition-colors ${
                   annotationOverlayVisible && hasOverlay
-                    ? 'bg-white bg-opacity-20'
-                    : 'hover:bg-white hover:bg-opacity-20'
-                } disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent`}
+                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                } disabled:cursor-not-allowed disabled:opacity-20 disabled:hover:bg-transparent`}
                 title={overlayToggleTitle}
                 aria-pressed={annotationOverlayVisible && hasOverlay}
               >
-                <span aria-hidden="true">📝</span>
+                <span aria-hidden="true" className="text-xs">📝</span>
               </button>
-              <div className="h-6 w-px bg-white bg-opacity-30" />
+              <div className="h-5 w-px bg-white/15" />
             </>
           )}
 
           <button
             onClick={handleZoomOut}
-            className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20"
+            className="rounded-lg p-1.5 text-slate-300 hover:text-white transition-colors hover:bg-white/10"
             title="縮小">
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" />
             </svg>
           </button>
-          <span className="min-w-[50px] text-center text-sm font-medium text-white">{Math.round(zoom * 100)}%</span>
+          <span className="min-w-[45px] text-center text-xs font-mono font-medium text-slate-200">{Math.round(zoom * 100)}%</span>
           <button
             onClick={handleZoomIn}
-            className="rounded-lg p-2 text-white transition-colors hover:bg-white hover:bg-opacity-20"
+            className="rounded-lg p-1.5 text-slate-300 hover:text-white transition-colors hover:bg-white/10"
             title="拡大"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -551,7 +551,7 @@ const ArtworkViewer = ({
           </button>
           <button
             onClick={resetZoom}
-            className="ml-2 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white hover:bg-opacity-20 whitespace-nowrap"
+            className="ml-1 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-300 hover:text-white transition-colors hover:bg-white/10 whitespace-nowrap"
             title="リセット"
           >
             リセット
@@ -560,7 +560,7 @@ const ArtworkViewer = ({
       </div>
 
       {artwork.images.length > 1 && (
-        <div className="border-t border-gray-200 bg-white p-3">
+        <div className="border-t border-white/[0.08] bg-[#0c101b] p-3">
           <div className="flex space-x-2 overflow-x-auto">
             {artwork.images.map((image, index) => {
               const pageNumber = image.pageNumber ?? index + 1;
@@ -575,8 +575,8 @@ const ArtworkViewer = ({
                   key={image.id}
                   onClick={() => void onPageChange(index)}
                   disabled={isSavingAnnotation}
-                  className={`relative h-14 w-20 flex-shrink-0 overflow-hidden rounded border-2 transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
-                    currentPage === index ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-gray-300'
+                  className={`relative h-14 w-20 flex-shrink-0 overflow-hidden rounded-xl border-2 transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                    currentPage === index ? 'border-orange-500 ring-2 ring-orange-500/30' : 'border-white/10 hover:border-white/20'
                   }`}
                 >
                   {imageHasAnnotation && (

@@ -4,6 +4,8 @@ import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/context/AuthContext';
 import Script from 'next/script';
 
+import ToastNotification from '@/components/ui/ToastNotification';
+
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
@@ -17,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ja">
+    <html lang="ja" className="dark">
       <head>
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-Z0GDWHZBPQ"
@@ -32,8 +34,11 @@ export default function RootLayout({
           `}
         </Script>
       </head>
-      <body className={inter.className}>
-        <AuthProvider>{children}</AuthProvider>
+      <body className={`${inter.className} min-h-screen bg-[#0b0f17] text-slate-100 antialiased selection:bg-orange-500/30 selection:text-orange-200`}>
+        <AuthProvider>
+          {children}
+          <ToastNotification />
+        </AuthProvider>
       </body>
     </html>
   );
