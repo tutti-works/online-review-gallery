@@ -192,13 +192,16 @@ const ArtworkSidebar = ({
           {isAdmin && onToggleLabel && (
             <div className="space-y-3">
               <h4 className="text-sm font-semibold text-gray-900">ラベル</h4>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-5 gap-x-2 gap-y-3">
                 {LABEL_DEFINITIONS.map((label) => {
                   const isActive = artwork.labels?.includes(label.type);
                   return (
                     <button
                       key={label.type}
                       onClick={() => onToggleLabel(label.type)}
+                      title={label.type}
+                      aria-label={`${label.type.split('-')[0]} ${label.symbol}点を${isActive ? '解除' : '選択'}`}
+                      aria-pressed={isActive}
                       className={`flex h-8 w-8 items-center justify-center rounded border transition-colors ${
                         isActive ? `${label.bgColor} border-gray-300` : 'border-gray-300 bg-white hover:bg-gray-50'
                       }`}

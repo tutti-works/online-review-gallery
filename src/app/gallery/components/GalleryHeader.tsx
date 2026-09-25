@@ -11,6 +11,8 @@ import type { SortOption } from '../types';
 type GalleryHeaderProps = {
   userRole?: string;
   selectedLabels: LabelType[];
+  availableLabels: ReadonlySet<LabelType>;
+  availableTotals: number[];
   isTotalLabelFilterActive: boolean;
   onToggleLabelFilter: (label: LabelType) => void;
   totalLabelFilter: number | null;
@@ -26,6 +28,8 @@ type GalleryHeaderProps = {
 const GalleryHeader = ({
   userRole,
   selectedLabels,
+  availableLabels,
+  availableTotals,
   isTotalLabelFilterActive,
   onToggleLabelFilter,
   totalLabelFilter,
@@ -42,6 +46,9 @@ const GalleryHeader = ({
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
 
   const activeFilterCount = selectedLabels.length + (isTotalLabelFilterActive ? 1 : 0) + (hideIncomplete ? 1 : 0);
+  const visibleLabels = LABEL_DEFINITIONS.filter((label) => availableLabels.has(label.type));
+  const startsColor = (index: number) => index > 0 &&
+    visibleLabels[index].type.split('-')[0] !== visibleLabels[index - 1].type.split('-')[0];
 
   return (
     <header className="bg-white shadow-sm">
@@ -59,7 +66,7 @@ const GalleryHeader = ({
                 <div className="flex items-center gap-2">
                   {/* <span className="text-sm font-medium text-gray-700">フィルター:</span> */}
                   <div className="flex items-center gap-1.5">
-                    {LABEL_DEFINITIONS.map((label) => {
+                    {visibleLabels.map((label, index) => {
                       const isSelected = selectedLabels.includes(label.type);
                       const buttonClasses = [
                         'flex items-center justify-center w-8 h-8 text-xs font-bold rounded-lg border-2 transition-all shadow-sm hover:shadow',
@@ -76,8 +83,10 @@ const GalleryHeader = ({
                           key={label.type}
                           onClick={() => onToggleLabelFilter(label.type)}
                           disabled={isTotalLabelFilterActive}
-                          className={buttonClasses}
+                          className={`${buttonClasses} ${startsColor(index) ? 'ml-2' : ''}`}
                           title={label.type}
+                          aria-label={`${label.type.split('-')[0]} ${label.symbol}点で絞り込み`}
+                          aria-pressed={isSelected}
                         >
                           <LabelBadge label={label.type} isActive={isSelected} className="h-5 w-5" />
                         </button>
@@ -91,8 +100,7 @@ const GalleryHeader = ({
                   className="rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">合計で絞り込み</option>
-                  {Array.from({ length: 10 }, (_, index) => {
-                    const totalValue = index + 1;
+                  {availableTotals.map((totalValue) => {
                     return (
                       <option key={totalValue} value={totalValue}>
                         {totalValue}
@@ -223,7 +231,7 @@ const GalleryHeader = ({
                   <div className="flex items-center gap-2">
                     {/* <span className="text-sm font-medium text-gray-700">フィルター:</span> */}
                     <div className="flex items-center gap-1.5">
-                      {LABEL_DEFINITIONS.map((label) => {
+                      {visibleLabels.map((label, index) => {
                         const isSelected = selectedLabels.includes(label.type);
                         const buttonClasses = [
                           'flex items-center justify-center w-8 h-8 text-xs font-bold rounded-lg border-2 transition-all shadow-sm hover:shadow',
@@ -240,8 +248,10 @@ const GalleryHeader = ({
                             key={label.type}
                             onClick={() => onToggleLabelFilter(label.type)}
                             disabled={isTotalLabelFilterActive}
-                            className={buttonClasses}
+                            className={`${buttonClasses} ${startsColor(index) ? 'ml-2' : ''}`}
                             title={label.type}
+                            aria-label={`${label.type.split('-')[0]} ${label.symbol}点で絞り込み`}
+                            aria-pressed={isSelected}
                           >
                             <LabelBadge label={label.type} isActive={isSelected} className="h-5 w-5" />
                           </button>
@@ -255,8 +265,7 @@ const GalleryHeader = ({
                     className="rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">合計で絞り込み</option>
-                    {Array.from({ length: 10 }, (_, index) => {
-                      const totalValue = index + 1;
+                    {availableTotals.map((totalValue) => {
                       return (
                         <option key={totalValue} value={totalValue}>
                           {totalValue}
@@ -380,7 +389,7 @@ const GalleryHeader = ({
                           <div>
                             <h3 className="mb-2 text-sm font-semibold text-gray-900">ラベルフィルター</h3>
                             <div className="grid grid-cols-5 gap-2">
-                              {LABEL_DEFINITIONS.map((label) => {
+                              {visibleLabels.map((label, index) => {
                                 const isSelected = selectedLabels.includes(label.type);
                                 const buttonClasses = [
                                   'flex flex-col items-center justify-center h-11 text-xs font-bold rounded-lg border-2 transition-all',
@@ -397,7 +406,10 @@ const GalleryHeader = ({
                                     key={label.type}
                                     onClick={() => onToggleLabelFilter(label.type)}
                                     disabled={isTotalLabelFilterActive}
-                                    className={buttonClasses}
+                                    className={`${buttonClasses} ${startsColor(index) ? 'ml-2' : ''}`}
+                                    title={label.type}
+                                    aria-label={`${label.type.split('-')[0]} ${label.symbol}点で絞り込み`}
+                                    aria-pressed={isSelected}
                                   >
                                     <LabelBadge label={label.type} isActive={isSelected} className="h-6 w-6" />
                                     {/* <span className="mt-1 text-[10px] text-gray-600">{label.symbol}</span> */}
@@ -414,8 +426,7 @@ const GalleryHeader = ({
                               className="w-full rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >
                               <option value="">選択してください</option>
-                              {Array.from({ length: 10 }, (_, index) => {
-                                const totalValue = index + 1;
+                              {availableTotals.map((totalValue) => {
                                 return (
                                   <option key={totalValue} value={totalValue}>
                                     {totalValue}

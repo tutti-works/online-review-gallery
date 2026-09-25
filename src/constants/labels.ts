@@ -19,6 +19,11 @@ export const LABEL_DEFINITIONS: LabelDefinition[] = [
   { type: 'blue-3', symbol: '3', color: 'text-blue-600', inactiveColor: 'text-blue-300', bgColor: 'bg-blue-100 hover:bg-blue-200' },
   { type: 'blue-4', symbol: '4', color: 'text-blue-600', inactiveColor: 'text-blue-300', bgColor: 'bg-blue-100 hover:bg-blue-200' },
   { type: 'blue-5', symbol: '5', color: 'text-blue-600', inactiveColor: 'text-blue-300', bgColor: 'bg-blue-100 hover:bg-blue-200' },
+  { type: 'green-1', symbol: '1', color: 'text-green-700', inactiveColor: 'text-green-300', bgColor: 'bg-green-100 hover:bg-green-200' },
+  { type: 'green-2', symbol: '2', color: 'text-green-700', inactiveColor: 'text-green-300', bgColor: 'bg-green-100 hover:bg-green-200' },
+  { type: 'green-3', symbol: '3', color: 'text-green-700', inactiveColor: 'text-green-300', bgColor: 'bg-green-100 hover:bg-green-200' },
+  { type: 'green-4', symbol: '4', color: 'text-green-700', inactiveColor: 'text-green-300', bgColor: 'bg-green-100 hover:bg-green-200' },
+  { type: 'green-5', symbol: '5', color: 'text-green-700', inactiveColor: 'text-green-300', bgColor: 'bg-green-100 hover:bg-green-200' },
 ];
 
 export const getLabelDefinition = (label: LabelType): LabelDefinition | undefined =>

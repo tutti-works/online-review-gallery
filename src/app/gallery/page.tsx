@@ -19,6 +19,7 @@ import { extractLinesFromStageJSON } from '@/utils/annotations';
 import { sortBySubmissionDate, sortByStudentId, isIncomplete, filterCompleteArtworks, getStudentId } from '@/lib/artworkUtils';
 import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
 import { getFunctionAuthorizationHeader } from '@/lib/functionAuth';
+import { getGalleryLabelOptions, getLabelTotal, matchesAnyLabel, toggleColorLabel } from '@/lib/reviewLabels';
 
 const removePageFromMap = <T,>(
   map: Record<string, T> | undefined,
@@ -53,6 +54,13 @@ function GalleryPage() {
   const [totalLabelFilter, setTotalLabelFilter] = useState<number | null>(null);
   const [hideIncomplete, setHideIncomplete] = useState<boolean>(false);
   const [likedArtworkIds, setLikedArtworkIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setSelectedLabels([]);
+    setTotalLabelFilter(null);
+  }, [currentGalleryId]);
+
+  const labelOptions = useMemo(() => getGalleryLabelOptions(artworks), [artworks]);
 
   useEffect(() => {
     if (!isInitialized || user?.role !== 'admin' || !user?.email) {
@@ -116,24 +124,13 @@ function GalleryPage() {
     // 合計ラベルフィルター
     if (totalLabelFilter !== null) {
       result = result.filter((artwork) => {
-        const labels = artwork.labels ?? [];
-        const total = labels
-          .map((label) => {
-            const match = /-(\d+)$/.exec(label);
-            return match ? Number(match[1]) : 0;
-          })
-          .reduce((sum, value) => sum + value, 0);
-
-        return total === totalLabelFilter;
+        return getLabelTotal(artwork.labels) === totalLabelFilter;
       });
     }
 
     // 個別ラベルフィルター
     if (selectedLabels.length > 0) {
-      result = result.filter((artwork) => {
-        const artworkLabels = artwork.labels || [];
-        return selectedLabels.some((label) => artworkLabels.includes(label));
-      });
+      result = result.filter((artwork) => matchesAnyLabel(artwork.labels, selectedLabels));
     }
 
     return result;
@@ -311,39 +308,24 @@ function GalleryPage() {
     if (user?.role !== 'admin') return;
 
     try {
-      const { doc, updateDoc, arrayUnion, arrayRemove } = await import('firebase/firestore');
+      const { doc, runTransaction } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase');
-
-      const artwork = artworks.find((item) => item.id === artworkId);
-      const currentLabels = artwork?.labels || [];
-      const hasLabel = currentLabels.includes(label);
-
       const artworkRef = doc(db, 'artworks', artworkId);
-      await updateDoc(artworkRef, {
-        labels: hasLabel ? arrayRemove(label) : arrayUnion(label),
+      const nextLabels = await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(artworkRef);
+        if (!snapshot.exists()) throw new Error('Artwork not found');
+        const updated = toggleColorLabel(snapshot.data().labels, label);
+        transaction.update(artworkRef, { labels: updated });
+        return updated;
       });
 
       setArtworks((prev) =>
         prev.map((item) =>
-          item.id === artworkId
-            ? {
-                ...item,
-                labels: hasLabel ? (item.labels || []).filter((entry) => entry !== label) : [...(item.labels || []), label],
-              }
-            : item,
+          item.id === artworkId ? { ...item, labels: nextLabels } : item,
         ),
       );
 
-      if (selectedArtwork?.id === artworkId) {
-        setSelectedArtwork((prev) =>
-          prev
-            ? {
-                ...prev,
-                labels: hasLabel ? (prev.labels || []).filter((entry) => entry !== label) : [...(prev.labels || []), label],
-              }
-            : null,
-        );
-      }
+      setSelectedArtwork((prev) => (prev?.id === artworkId ? { ...prev, labels: nextLabels } : prev));
     } catch (error) {
       console.error('Label toggle error:', error);
       alert('ラベルの更新に失敗しました');
@@ -506,6 +488,8 @@ function GalleryPage() {
       <GalleryHeader
         userRole={user?.role}
         selectedLabels={selectedLabels}
+        availableLabels={labelOptions.labels}
+        availableTotals={labelOptions.totals}
         isTotalLabelFilterActive={isTotalLabelFilterActive}
         onToggleLabelFilter={toggleLabelFilter}
         totalLabelFilter={totalLabelFilter}

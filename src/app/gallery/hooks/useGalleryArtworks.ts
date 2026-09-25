@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { Artwork, ArtworkAnnotationLine, ArtworkAnnotationPage } from '@/types';
 
 type UseGalleryArtworksResult = {
@@ -22,6 +22,8 @@ export const useGalleryArtworks = (
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const activeGalleryId = useRef(currentGalleryId);
+  activeGalleryId.current = currentGalleryId;
 
   const fetchArtworks = useCallback(async () => {
     try {
@@ -32,6 +34,7 @@ export const useGalleryArtworks = (
       }
 
       setLoading(true);
+      setArtworks([]);
       setError(null);
 
       const { collection, query, getDocs, orderBy, where } = await import('firebase/firestore');
@@ -142,14 +145,14 @@ export const useGalleryArtworks = (
         };
       });
 
-      setArtworks(fetchedArtworks);
+      if (activeGalleryId.current === currentGalleryId) setArtworks(fetchedArtworks);
     } catch (err) {
       console.error('[Gallery] Fetch artworks error:', err);
-      setError('作品の読み込みに失敗しました');
+      if (activeGalleryId.current === currentGalleryId) setError('作品の読み込みに失敗しました');
     } finally {
-      setLoading(false);
+      if (activeGalleryId.current === currentGalleryId) setLoading(false);
     }
-  }, [currentGalleryId]);
+  }, [currentGalleryId, shouldDebugReads]);
 
   useEffect(() => {
     if (!isInitialized) {
