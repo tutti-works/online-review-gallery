@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getGalleryLabelOptions, getLabelTotal, matchesAnyLabel, toggleColorLabel } from '../src/lib/reviewLabels.ts';
+import { getGalleryLabelOptions, getLabelTotal, getVisibleLabelFilterOptions, matchesAnyLabel, toggleColorLabel } from '../src/lib/reviewLabels.ts';
 
 test('each color can be selected, replaced and cleared without changing other colors', () => {
   assert.deepEqual(toggleColorLabel([], 'red-3'), ['red-3']);
@@ -41,4 +41,23 @@ test('individual filters retain OR matching for existing and green labels', () =
   assert.equal(matchesAnyLabel(['red-4', 'blue-3'], ['blue-3']), true);
   assert.equal(matchesAnyLabel(['green-2'], ['red-4', 'green-2']), true);
   assert.equal(matchesAnyLabel(['blue-1'], ['red-4', 'green-2']), false);
+});
+
+test('selected filters remain available until cleared after their last matching score changes', () => {
+  const before = getGalleryLabelOptions([{ labels: ['red-4', 'blue-3'] }]);
+  const after = getGalleryLabelOptions([{ labels: ['red-5', 'blue-3'] }]);
+
+  const selectedLabel = getVisibleLabelFilterOptions(after.labels, after.totals, ['red-4'], null);
+  assert.deepEqual([...selectedLabel.labels].sort(), ['blue-3', 'red-4', 'red-5']);
+  assert.deepEqual(selectedLabel.totals, [8]);
+  assert.equal(matchesAnyLabel(['red-5', 'blue-3'], ['red-4']), false);
+
+  const selectedTotal = getVisibleLabelFilterOptions(after.labels, after.totals, [], 7);
+  assert.deepEqual([...selectedTotal.labels].sort(), ['blue-3', 'red-5']);
+  assert.deepEqual(selectedTotal.totals, [7, 8]);
+
+  const cleared = getVisibleLabelFilterOptions(after.labels, after.totals, [], null);
+  assert.deepEqual([...cleared.labels].sort(), ['blue-3', 'red-5']);
+  assert.deepEqual(cleared.totals, [8]);
+  assert.deepEqual(before.totals, [7]);
 });

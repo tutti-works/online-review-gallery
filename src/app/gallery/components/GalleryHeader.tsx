@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react';
 import GallerySwitcher from '@/components/GallerySwitcher';
 import LabelBadge from '@/components/labels/LabelBadge';
 import { LABEL_DEFINITIONS } from '@/constants/labels';
+import { getVisibleLabelFilterOptions } from '@/lib/reviewLabels';
 import type { LabelType } from '@/types';
 
 import type { SortOption } from '../types';
@@ -46,7 +47,8 @@ const GalleryHeader = ({
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
 
   const activeFilterCount = selectedLabels.length + (isTotalLabelFilterActive ? 1 : 0) + (hideIncomplete ? 1 : 0);
-  const visibleLabels = LABEL_DEFINITIONS.filter((label) => availableLabels.has(label.type));
+  const visibleOptions = getVisibleLabelFilterOptions(availableLabels, availableTotals, selectedLabels, totalLabelFilter);
+  const visibleLabels = LABEL_DEFINITIONS.filter((label) => visibleOptions.labels.has(label.type));
   const startsColor = (index: number) => index > 0 &&
     visibleLabels[index].type.split('-')[0] !== visibleLabels[index - 1].type.split('-')[0];
 
@@ -100,7 +102,7 @@ const GalleryHeader = ({
                   className="rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">合計で絞り込み</option>
-                  {availableTotals.map((totalValue) => {
+                  {visibleOptions.totals.map((totalValue) => {
                     return (
                       <option key={totalValue} value={totalValue}>
                         {totalValue}
@@ -265,7 +267,7 @@ const GalleryHeader = ({
                     className="rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">合計で絞り込み</option>
-                    {availableTotals.map((totalValue) => {
+                    {visibleOptions.totals.map((totalValue) => {
                       return (
                         <option key={totalValue} value={totalValue}>
                           {totalValue}
@@ -426,7 +428,7 @@ const GalleryHeader = ({
                               className="w-full rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             >
                               <option value="">選択してください</option>
-                              {availableTotals.map((totalValue) => {
+                              {visibleOptions.totals.map((totalValue) => {
                                 return (
                                   <option key={totalValue} value={totalValue}>
                                     {totalValue}

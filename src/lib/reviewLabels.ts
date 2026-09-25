@@ -41,3 +41,14 @@ export const getGalleryLabelOptions = (artworks: { labels?: unknown }[]) => {
   }
   return { labels, totals: Array.from(totals).sort((a, b) => a - b) };
 };
+
+export const getVisibleLabelFilterOptions = (
+  availableLabels: ReadonlySet<LabelType>,
+  availableTotals: readonly number[],
+  selectedLabels: readonly LabelType[],
+  totalLabelFilter: number | null,
+) => ({
+  labels: new Set([...Array.from(availableLabels), ...selectedLabels]),
+  totals: Array.from(new Set(totalLabelFilter === null ? availableTotals : [...availableTotals, totalLabelFilter]))
+    .sort((a, b) => a - b),
+});
