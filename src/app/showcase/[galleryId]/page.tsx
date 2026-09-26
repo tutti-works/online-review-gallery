@@ -191,7 +191,7 @@ const ShowcaseGalleryPage = () => {
       setLoading(true);
       setError(null);
 
-      const { doc, getDoc } = await import('firebase/firestore');
+      const { doc, getDoc } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
 
       const gallerySnapshot = await getDoc(doc(db, 'galleries', galleryId));
@@ -312,7 +312,7 @@ const ShowcaseGalleryPage = () => {
           galleryId,
         });
       }
-      const { doc, setDoc } = await import('firebase/firestore');
+      const { doc, setDoc } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
       const trimmed = titleInput.trim();
 
@@ -345,7 +345,7 @@ const ShowcaseGalleryPage = () => {
           galleryId,
         });
       }
-      const { doc, setDoc } = await import('firebase/firestore');
+      const { doc, setDoc } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
       await setDoc(
         doc(db, 'showcaseGalleries', galleryId),
@@ -378,8 +378,8 @@ const ShowcaseGalleryPage = () => {
           galleryId,
         });
       }
-      const { ref, uploadBytes, deleteObject } = await import('firebase/storage');
-      const { deleteField, doc, setDoc } = await import('firebase/firestore');
+      const { ref, uploadBytes, deleteObject } = await import('@/lib/previewStorage');
+      const { deleteField, doc, setDoc } = await import('@/lib/previewFirestore');
       const { db, storage } = await import('@/lib/firebase');
 
       const extension = getFileExtension(file);

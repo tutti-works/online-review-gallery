@@ -1,4 +1,7 @@
 'use client';
+import { blockPreviewWrite } from '@/lib/localPreview';
+
+import { previewFetch } from '@/lib/previewFetch';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -97,7 +100,7 @@ function AdminImportPage() {
     setStatusMessage('公開済みクラスを読み込んでいます...');
 
     try {
-      const response = await fetch('https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE', {
+      const response = await previewFetch('https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE', {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -155,7 +158,7 @@ function AdminImportPage() {
     setStatusMessage('課題を読み込んでいます...');
 
     try {
-      const response = await fetch(`https://classroom.googleapis.com/v1/courses/${selectedCourse}/courseWork`, {
+      const response = await previewFetch(`https://classroom.googleapis.com/v1/courses/${selectedCourse}/courseWork`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -253,6 +256,7 @@ function AdminImportPage() {
   }, [ensureClassroomScopes, getCurrentAccessToken]);
 
   const handleImport = async () => {
+    if (blockPreviewWrite()) return;
     if (!hasRequiredScopes) {
       alert('Google Classroom APIの権限が付与されていません。画面上のボタンから権限を付与してください。');
       return;
@@ -285,7 +289,7 @@ function AdminImportPage() {
     ];
 
     try {
-      const { collection, doc, setDoc, query, where, getDocs } = await import('firebase/firestore');
+      const { collection, doc, setDoc, query, where, getDocs } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
 
       const selectedCourseName = courses.find((c) => c.id === selectedCourse)?.name || 'Unknown Course';
@@ -329,7 +333,7 @@ function AdminImportPage() {
       const functionsBaseUrl = getFunctionsBaseUrl();
       const authorization = await getFunctionAuthorizationHeader();
 
-      const response = await fetch(`${functionsBaseUrl}/importClassroomSubmissions`, {
+      const response = await previewFetch(`${functionsBaseUrl}/importClassroomSubmissions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -378,7 +382,7 @@ function AdminImportPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="import-page min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">

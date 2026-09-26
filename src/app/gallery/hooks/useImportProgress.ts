@@ -1,5 +1,7 @@
 'use client';
 
+import { previewFetch } from '@/lib/previewFetch';
+
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { getFunctionsBaseUrl } from '@/lib/functionsBaseUrl';
 import { getFunctionAuthorizationHeader } from '@/lib/functionAuth';
@@ -62,7 +64,7 @@ export const useImportProgress = ({
       const checkProgress = setInterval(async () => {
         try {
           const authorization = await getFunctionAuthorizationHeader();
-          const response = await fetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`, {
+          const response = await previewFetch(`${functionsBaseUrl}/getImportStatus?importJobId=${importJobId}`, {
             headers: { Authorization: authorization },
           });
           if (response.ok) {

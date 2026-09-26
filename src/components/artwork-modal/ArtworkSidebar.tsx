@@ -1,4 +1,5 @@
 'use client';
+import { blockPreviewWrite } from '@/lib/localPreview';
 
 import { useState, type FormEvent } from 'react';
 import LabelBadge from '@/components/labels/LabelBadge';
@@ -78,6 +79,7 @@ const ArtworkSidebar = ({
 
   const handleCommentSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (blockPreviewWrite()) return;
     if (!isAdmin || !onComment) return;
 
     const trimmed = commentText.trim();

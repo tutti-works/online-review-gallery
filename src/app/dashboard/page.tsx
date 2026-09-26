@@ -1,4 +1,7 @@
 'use client';
+import { blockPreviewWrite } from '@/lib/localPreview';
+
+import { previewFetch } from '@/lib/previewFetch';
 
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
@@ -43,6 +46,7 @@ function DashboardPage() {
   };
 
   const handleResetData = async () => {
+    if (blockPreviewWrite()) return;
     if (window.confirm('本当にすべての作品、ギャラリー情報、画像ファイルを削除しますか？この操作は元に戻せません。')) {
       if (window.confirm('最終確認：この操作を実行すると、関連データがすべて完全に削除されます。よろしいですか？')) {
         setIsDeleting(true);
@@ -55,7 +59,7 @@ function DashboardPage() {
           const deleteAllDataUrl = `${functionsBaseUrl}/deleteAllData`;
           const authorization = await getFunctionAuthorizationHeader();
           
-          const response = await fetch(deleteAllDataUrl, {
+          const response = await previewFetch(deleteAllDataUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -93,6 +97,7 @@ function DashboardPage() {
   };
 
   const handleSyncArtworkCount = async () => {
+    if (blockPreviewWrite()) return;
     if (!confirm('全ギャラリーのartworkCountを実際の作品数で同期します。\n\n実行しますか？')) {
       return;
     }
@@ -107,7 +112,7 @@ function DashboardPage() {
 
       const functionsBaseUrl = getFunctionsBaseUrl();
       const authorization = await getFunctionAuthorizationHeader();
-      const response = await fetch(`${functionsBaseUrl}/syncGalleryArtworkCount`, {
+      const response = await previewFetch(`${functionsBaseUrl}/syncGalleryArtworkCount`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -163,13 +168,14 @@ function DashboardPage() {
   const isSelectedArchived = archivedCourseIds.has(selectedArchiveCourseId);
 
   const handleArchiveChange = async () => {
+    if (blockPreviewWrite()) return;
     if (user?.role !== 'admin' || !selectedArchiveCourseId || !selectedArchiveName || !isArchiveLoaded || isUpdatingArchive || archiveError) return;
     const action = isSelectedArchived ? 'アーカイブを解除' : 'アーカイブ';
     if (!window.confirm(`「${selectedArchiveName}」の${action}をしますか？`)) return;
 
     setIsUpdatingArchive(true);
     try {
-      const { doc, setDoc, deleteDoc, serverTimestamp } = await import('firebase/firestore');
+      const { doc, setDoc, deleteDoc, serverTimestamp } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
       const archiveRef = doc(db, 'archivedCourses', selectedArchiveCourseId);
       if (isSelectedArchived) {
@@ -197,6 +203,7 @@ function DashboardPage() {
   };
 
   const handleDeleteGallery = async () => {
+    if (blockPreviewWrite()) return;
     if (!selectedGalleryId) {
       alert('課題を選択してください。');
       return;
@@ -217,7 +224,7 @@ function DashboardPage() {
           const deleteGalleryDataUrl = `${functionsBaseUrl}/deleteGalleryData`;
           const authorization = await getFunctionAuthorizationHeader();
 
-          const response = await fetch(deleteGalleryDataUrl, {
+          const response = await previewFetch(deleteGalleryDataUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -271,7 +278,7 @@ function DashboardPage() {
   const assignments = galleries.filter(g => g.courseName === selectedCourse);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="dashboard-page min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

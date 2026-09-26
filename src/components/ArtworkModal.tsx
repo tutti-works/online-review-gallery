@@ -1,4 +1,5 @@
 'use client';
+import { isLocalPreview } from '@/lib/localPreview';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
@@ -57,6 +58,9 @@ const ArtworkModal = ({
     async (reason: AnnotationSaveReason) => {
       if (!showAnnotation || !annotationDirty) {
         return true;
+      }
+      if (isLocalPreview()) {
+        return window.confirm('注釈はプレビューのため保存されません。編集内容を破棄して移動しますか？');
       }
 
       const handle = annotationCanvasRef.current;

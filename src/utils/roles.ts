@@ -1,4 +1,4 @@
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from '@/lib/previewFirestore';
 import { db } from '@/lib/firebase';
 
 export const ROLES = {

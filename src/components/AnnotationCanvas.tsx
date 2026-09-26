@@ -1,4 +1,5 @@
 'use client';
+import { blockPreviewWrite, isLocalPreview } from '@/lib/localPreview';
 
 import Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -692,6 +693,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   const saveAnnotation = useCallback(
     async (options?: SaveOptions) => {
       if (!editable || !onSave) return;
+      if (blockPreviewWrite()) return;
       if (saving) return;
 
       const stage = stageRef.current;
@@ -702,6 +704,10 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
       }
 
       const reason = options?.reason ?? 'manual';
+      if (isLocalPreview()) {
+        if (reason === 'manual') blockPreviewWrite();
+        return;
+      }
       const isAutoReason = reason !== 'manual';
 
       if (isAutoReason) {

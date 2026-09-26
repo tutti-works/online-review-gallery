@@ -59,7 +59,7 @@ npm run dev
 - **バックエンド**: Firebase Functions (Gen2), Cloud Run
 - **データベース**: Cloud Firestore
 - **ストレージ**: Firebase Storage
-- **認証**: Firebase Authentication (Google Sign-In)
+- **認証**: Firebase Authentication (Google Sign-In)。`/` でログインし `/dashboard` へ遷移（旧 `/login` は `/` へリダイレクト）。匿名ログインは提供しません。
 - **ホスティング**: Firebase Hosting
 - **外部API**: Google Classroom API, Google Drive API
 

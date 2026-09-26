@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/context/AuthContext';
 import Script from 'next/script';
+import DesignShell from '@/components/DesignShell';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -33,7 +34,7 @@ export default function RootLayout({
         </Script>
       </head>
       <body className={inter.className}>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider><DesignShell>{children}</DesignShell></AuthProvider>
       </body>
     </html>
   );

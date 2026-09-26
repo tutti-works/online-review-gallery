@@ -5,6 +5,7 @@ import {
   getFirestore,
   initializeFirestore,
   persistentLocalCache,
+  memoryLocalCache,
   persistentMultipleTabManager,
   type Firestore,
 } from "firebase/firestore";
@@ -32,7 +33,7 @@ let db: Firestore;
 if (typeof window !== 'undefined') {
   try {
     db = initializeFirestore(app, {
-      localCache: persistentLocalCache({
+      localCache: process.env.NEXT_PUBLIC_LOCAL_PREVIEW === 'true' ? memoryLocalCache() : persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
     });

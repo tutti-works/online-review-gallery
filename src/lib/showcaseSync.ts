@@ -15,7 +15,7 @@ export const syncShowcaseGallery = async (
   const shouldDebugReads =
     process.env.NEXT_PUBLIC_FIRESTORE_READ_DEBUG === 'true' ||
     process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
-  const { collection, doc, getDoc, getDocs, query, setDoc, where } = await import('firebase/firestore');
+  const { collection, doc, getDoc, getDocs, query, setDoc, where } = await import('@/lib/previewFirestore');
   const { db } = await import('@/lib/firebase');
 
   const showcaseRef = doc(db, 'showcaseGalleries', galleryId);

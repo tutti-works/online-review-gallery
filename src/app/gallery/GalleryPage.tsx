@@ -1,4 +1,7 @@
 'use client';
+import { blockPreviewWrite } from '@/lib/localPreview';
+
+import { previewFetch } from '@/lib/previewFetch';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ArtworkModal from '@/components/ArtworkModal';
@@ -72,7 +75,7 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
     let isActive = true;
     const fetchLikedArtworks = async () => {
       try {
-        const { collection, query, where, getDocs } = await import('firebase/firestore');
+        const { collection, query, where, getDocs } = await import('@/lib/previewFirestore');
         const { db } = await import('@/lib/firebase');
 
         const likesQuery = query(collection(db, 'likes'), where('userEmail', '==', user.email));
@@ -165,10 +168,11 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
   };
 
   const handleLike = async (artworkId: string) => {
+    if (blockPreviewWrite()) return;
     if (user?.role !== 'admin' || !user?.email) return;
 
     try {
-      const { doc, getDoc, setDoc, deleteDoc, collection, updateDoc, increment } = await import('firebase/firestore');
+      const { doc, getDoc, setDoc, deleteDoc, collection, updateDoc, increment } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
 
       const likeId = `${artworkId}_${user.email.replace(/[.@]/g, '_')}`;
@@ -234,10 +238,11 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
   };
 
   const handleComment = async (artworkId: string, comment: string) => {
+    if (blockPreviewWrite()) return;
     if (user?.role !== 'admin' || !user?.email) return;
 
     try {
-      const { doc, updateDoc, arrayUnion } = await import('firebase/firestore');
+      const { doc, updateDoc, arrayUnion } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
 
       const newComment = {
@@ -269,12 +274,13 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
   };
 
   const handleDelete = async (artworkId: string) => {
+    if (blockPreviewWrite()) return;
     if (user?.role !== 'admin' || !user?.email) return;
 
     try {
       const functionsBaseUrl = getFunctionsBaseUrl();
       const authorization = await getFunctionAuthorizationHeader();
-      const response = await fetch(`${functionsBaseUrl}/deleteArtwork`, {
+      const response = await previewFetch(`${functionsBaseUrl}/deleteArtwork`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -306,10 +312,11 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
   };
 
   const handleToggleLabel = async (artworkId: string, label: LabelType) => {
+    if (blockPreviewWrite()) return;
     if (user?.role !== 'admin') return;
 
     try {
-      const { doc, runTransaction } = await import('firebase/firestore');
+      const { doc, runTransaction } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
       const artworkRef = doc(db, 'artworks', artworkId);
       const nextLabels = await runTransaction(db, async (transaction) => {
@@ -338,12 +345,13 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
     pageNumber: number,
     annotation: AnnotationSavePayload | null,
   ) => {
+    if (blockPreviewWrite()) return;
     if (user?.role !== 'admin' || !user?.email) return;
 
     const pageKey = String(pageNumber);
 
     try {
-      const { doc, updateDoc, arrayRemove, deleteField } = await import('firebase/firestore');
+      const { doc, updateDoc, arrayRemove, deleteField } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
 
       const artworkRef = doc(db, 'artworks', artworkId);
@@ -466,10 +474,10 @@ function GalleryPage({ mode }: { mode: GalleryMode }) {
   const handleLoginClick = async () => {
     try {
       await logout();
-      window.location.href = '/login';
+      window.location.href = '/';
     } catch (error) {
       console.error('Logout error:', error);
-      window.location.href = '/login';
+      window.location.href = '/';
     }
   };
 

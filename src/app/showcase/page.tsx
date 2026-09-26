@@ -104,7 +104,7 @@ const ShowcaseHomePage = () => {
       }
       setError(null);
 
-      const { collection, getDocs, orderBy, query } = await import('firebase/firestore');
+      const { collection, getDocs, orderBy, query } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
 
       // Fetch existing galleries (base source)
@@ -280,7 +280,7 @@ const ShowcaseHomePage = () => {
         return;
       }
 
-      const { doc, writeBatch } = await import('firebase/firestore');
+      const { doc, writeBatch } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
       const batch = writeBatch(db);
 
@@ -498,7 +498,7 @@ const ShowcaseHomePage = () => {
       if (shouldDebugImages) {
         console.log('[Showcase] loadData start');
       }
-      const { doc, setDoc } = await import('firebase/firestore');
+      const { doc, setDoc } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
       const updateSourceGalleryId = nextSourceId || null;
 

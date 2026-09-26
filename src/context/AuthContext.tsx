@@ -4,13 +4,12 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import {
   User as FirebaseUser,
   signInWithPopup,
-  signInAnonymously,
   signOut,
   onAuthStateChanged,
   GoogleAuthProvider,
   reauthenticateWithPopup,
 } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc } from '@/lib/previewFirestore';
 import { auth, googleProvider, db, createGoogleProvider } from '@/lib/firebase';
 import { User } from '@/types';
 import { ROLES, type UserRole } from '@/utils/roles';
@@ -19,7 +18,6 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
-  signInAsGuest: () => Promise<void>;
   logout: () => Promise<void>;
   requestAdditionalScopes: (scopes: string[]) => Promise<string | null>;
 }
@@ -32,16 +30,6 @@ export const useAuth = () => {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-};
-
-const buildGuestUser = (firebaseUser: FirebaseUser): User => {
-  return {
-    uid: firebaseUser.uid,
-    email: `guest_${firebaseUser.uid}@anonymous.local`,
-    displayName: '\u30b2\u30b9\u30c8\u30e6\u30fc\u30b6\u30fc',
-    photoURL: firebaseUser.photoURL || undefined,
-    role: ROLES.GUEST,
-  };
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -60,8 +48,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return roleDoc.data().role as UserRole;
       }
 
-      if (process.env.NODE_ENV === 'development') {
-        const { setDoc } = await import('firebase/firestore');
+      if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_FIRESTORE_EMULATOR === 'true') {
+        const { setDoc } = await import('@/lib/previewFirestore');
         await setDoc(doc(db, 'userRoles', email), {
           role: ROLES.ADMIN,
           createdAt: new Date()
@@ -97,16 +85,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signInAsGuest = async () => {
-    try {
-      sessionStorage.removeItem('googleAccessToken');
-      await signInAnonymously(auth);
-    } catch (error) {
-      console.error('Error signing in as guest:', error);
-      throw error;
-    }
-  };
-
   const logout = async () => {
     try {
       await signOut(auth);
@@ -120,7 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const requestAdditionalScopes = async (scopes: string[]) => {
     const currentUser = auth.currentUser;
-    if (!currentUser) {
+    if (!currentUser || currentUser.isAnonymous) {
       throw new Error('No authenticated user to extend scopes');
     }
 
@@ -192,6 +170,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      // Retired anonymous sessions must not become application guest users.
+      if (firebaseUser?.isAnonymous) {
+        setUser(null);
+        sessionStorage.removeItem('googleAccessToken');
+        try {
+          await signOut(auth);
+        } catch (error) {
+          console.error('Error clearing retired anonymous session:', error);
+        }
+        setLoading(false);
+        return;
+      }
       if (firebaseUser && firebaseUser.email) {
         const role = await getUserRole(firebaseUser.email);
         const token = sessionStorage.getItem('googleAccessToken') || undefined;
@@ -206,8 +196,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         setUser(userData);
-      } else if (firebaseUser) {
-        setUser(buildGuestUser(firebaseUser));
       } else {
         setUser(null);
       }
@@ -221,7 +209,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
     loading,
     signInWithGoogle,
-    signInAsGuest,
     logout,
     requestAdditionalScopes,
   };

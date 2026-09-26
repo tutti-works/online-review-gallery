@@ -2,7 +2,7 @@ import type { Gallery } from '@/types';
 
 export async function fetchGalleries(): Promise<Gallery[]> {
   const [{ collection, getDocs, orderBy, query }, { db }] = await Promise.all([
-    import('firebase/firestore'), import('@/lib/firebase'),
+    import('@/lib/previewFirestore'), import('@/lib/firebase'),
   ]);
   const snapshot = await getDocs(query(collection(db, 'galleries'), orderBy('createdAt', 'desc')));
   return snapshot.docs.map((item) => {
@@ -24,7 +24,7 @@ export async function fetchGalleries(): Promise<Gallery[]> {
 
 export async function fetchArchivedCourseIds(): Promise<Set<string>> {
   const [{ collection, getDocs }, { db }] = await Promise.all([
-    import('firebase/firestore'), import('@/lib/firebase'),
+    import('@/lib/previewFirestore'), import('@/lib/firebase'),
   ]);
   const snapshot = await getDocs(collection(db, 'archivedCourses'));
   return new Set(snapshot.docs.map((item) => item.id));

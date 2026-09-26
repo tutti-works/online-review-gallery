@@ -37,7 +37,7 @@ export const useGalleryArtworks = (
       setArtworks([]);
       setError(null);
 
-      const { collection, query, getDocs, orderBy, where } = await import('firebase/firestore');
+      const { collection, query, getDocs, orderBy, where } = await import('@/lib/previewFirestore');
       const { db } = await import('@/lib/firebase');
 
       const artworksQuery = query(

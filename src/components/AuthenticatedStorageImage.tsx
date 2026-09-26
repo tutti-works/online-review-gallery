@@ -14,6 +14,10 @@ const AuthenticatedStorageImage = forwardRef<HTMLImageElement, AuthenticatedStor
   ({ storagePath, legacyUrl, loadingFallback = null, alt, onError, ...imageProps }, forwardedRef) => {
     const { url, loading, error } = useAuthenticatedStorageUrl({ storagePath, legacyUrl });
 
+    if (error) {
+      return <span role="status" className="inline-block p-4 text-xs text-gray-500">画像を取得できませんでした。再読み込みしてください。</span>;
+    }
+
     if (loading || !url) {
       return <>{loadingFallback}</>;
     }
