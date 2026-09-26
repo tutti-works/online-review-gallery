@@ -46,36 +46,12 @@
 .atelier-brand {
   display: flex;
   align-items: center;
-  gap: 20px;
-  font-size: 24px;
-  font-weight: 650;
-  letter-spacing: -1px;
+  flex-shrink: 0;
 }
-.atelier-brand-sub {
+.atelier-brand-image {
   display: block;
-  font-size: 9px;
-  letter-spacing: 2.1px;
-  font-weight: 500;
-  margin-top: 1px;
-}
-.atelier-mark {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-.atelier-mark i {
-  display: block;
-  background: #20211f;
-  width: 24px;
-  height: 28px;
-}
-.atelier-mark i:first-child {
-  clip-path: polygon(50% 0, 100% 100%, 0 100%);
-  width: 30px;
-}
-.atelier-mark i:nth-child(2) {
-  border-radius: 100%;
-  width: 28px;
+  width: 280px;
+  height: auto;
 }
 .atelier-account {
   display: flex;
@@ -1007,17 +983,8 @@
     height: 80px;
     padding: 0 12px;
   }
-  .atelier-brand {
-    font-size: 20px;
-    gap: 10px;
-  }
-  .atelier-mark {
-    transform: scale(0.75);
-    transform-origin: left;
-    width: 63px;
-  }
-  .atelier-brand-sub {
-    font-size: 7px;
+  .atelier-brand-image {
+    width: clamp(140px, 42vw, 220px);
   }
   .atelier-account {
     max-width: 130px;

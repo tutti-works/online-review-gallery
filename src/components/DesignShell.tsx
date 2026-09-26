@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
@@ -50,16 +51,17 @@ export default function DesignShell({
         <Link
           href="/gallery"
           className="atelier-brand"
-          aria-label="オンライン講評会ギャラリー ホーム"
+          aria-label="ATRIA ホーム"
         >
-          <span className="atelier-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span>
-            FORM<span className="atelier-brand-sub">DESIGN REVIEW GALLERY</span>
-          </span>
+          <Image
+            src="/brand/atria-logo.svg"
+            alt="ATRIA — DESIGN REVIEW GALLERY"
+            width={970}
+            height={240}
+            className="atelier-brand-image"
+            priority
+            unoptimized
+          />
         </Link>
         <div className="atelier-account">
           <span className="atelier-edition">A space for ideas.</span>
@@ -107,7 +109,7 @@ export default function DesignShell({
         </div>
       </div>
       <footer className="atelier-footer">
-        <span>FORM / オンライン講評会ギャラリー</span>
+        <span>ATRIA — DESIGN REVIEW GALLERY</span>
         <span>Ideas deserve a little more space.</span>
       </footer>
     </div>

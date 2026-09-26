@@ -25,7 +25,7 @@ export default function LoginPage() {
     <div className="login-composition">
       <section className="login-art">
         <div>
-          <p className="atelier-eyebrow">FORM / DESIGN COMMUNITY</p>
+          <p className="atelier-eyebrow">ATRIA / DESIGN COMMUNITY</p>
           <h2>
             Different ideas.
             <br />
@@ -40,7 +40,7 @@ export default function LoginPage() {
         </p>
       </section>
       <section className="login-panel">
-        <span className="atelier-eyebrow">WELCOME TO FORM</span>
+        <span className="atelier-eyebrow">WELCOME TO ATRIA</span>
         <h1>
           あなたの視点を、
           <br />

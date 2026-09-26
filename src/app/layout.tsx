@@ -8,7 +8,8 @@ import DesignShell from '@/components/DesignShell';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'オンライン講評会ギャラリー',
+  title: 'ATRIA — DESIGN REVIEW GALLERY',
+  icons: { icon: { url: '/brand/atria-mark.svg', type: 'image/svg+xml' } },
   description: '大学設計課題のための講評会支援アプリケーション',
 };
 
