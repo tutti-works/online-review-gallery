@@ -2,7 +2,11 @@
 
 調査日: 2026-09-27。開始コミット: `d47089e`。Node 22.16.0 / npm 10.9.2。
 
+関連: [Issue #20](https://github.com/tutti-works/online-review-gallery/issues/20)、[Draft PR #21](https://github.com/tutti-works/online-review-gallery/pull/21)。
+
 ## 状態: 更新候補を実装、デプロイは保留
+
+2026-09-27追記: ユーザー指定によりPR #21のNext.js 15移行方針を維持し、**merge・本番デプロイは禁止のまま**とする。sharp解消の追加調査は [生成SSR sharp調査](generated-ssr-sharp-issue20.md) を参照。新CLI 15.31.0、公開adapter、未公開ソースまで読み取り確認したが、通常の依存解決で修正版だけにする対応版は確認できなかった。依存・設定・生成物は変更していない。
 
 Next.js本体のcriticalを解消する **15.5.26** を採用候補として実装した。ローカルbuildとFirebase CLIの生成処理、生成SSRへのHTTP確認は成功した。ただし、生成時に `firebase-frameworks` のoptional peerから新しい脆弱な `sharp 0.33.5` が入る。**新規依存脆弱性なしという条件を満たさないため、本番反映しない。** Issue #20は未完了。
 
@@ -86,7 +90,7 @@ next/node_modules/sharp: 0.35.4（修正版）
 
 最新版firebase-frameworksも0.11.8でpeer範囲に修正版sharpを含まない。npmが示すframeworks 0.4.2へのダウングレードは採用しない。生成物削除/手修正、sharp override、peer無視、監査を隠すomit設定も採用していない。
 
-**反映再開にはユーザー判断が必要**。選択肢は、今回確認した未使用経路と画像最適化無効を前提に旧optional peerの残存を明示的に許容するか、アダプターの修正待ち/別途互換対応を行うこと。Hosting方式変更、App Hosting移行、CLI大規模変更などはIssueで指定された確認対象なので実施しない。
+**2026-09-27のユーザー判断により、Firebase公式adapterが `sharp 0.35.4+` を許容するまで保留する。** `sharp 0.33.5` は生成SSRに残るが、ATRIAで実際に使用される経路は現時点で確認されていない。これは未使用・安全の保証ではない。調査資料・関連ドキュメントだけをcommit/pushし、PR #21はDraftを維持して停止する。main / 本番は未変更。依存・設定変更、override、生成SSR手修正、peer無視、App Hosting移行、追加実装、merge・本番デプロイは行わない。再開時の検証条件は [生成SSR sharp調査](generated-ssr-sharp-issue20.md) を参照し、merge・本番反映には改めてユーザー承認を得る。
 
 ## 検証と警告
 
