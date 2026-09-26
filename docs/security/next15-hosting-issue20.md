@@ -96,9 +96,11 @@ next/node_modules/sharp: 0.35.4（修正版）
 - test:auth-flow 6 / review-labels 5 / course-archive 4 / local-preview 3 / admin-users 5: **23テスト成功**。
 - `npm run build`: Next15.5.26、13静的ページ生成成功。動的API・showcaseも生成成功。
 - 生成SSR互換確認: 成功。新規advisory検査: **sharpにより不合格**。
-- GitHub CI: 結果確認後に追記。
+- GitHub CI: 実装コミット `246bf62` の [run 36279803668](https://github.com/tutti-works/online-review-gallery/actions/runs/36279803668) が全項目成功（npm ci / typecheck / lint / 23テスト / build）。[Draft PR #21](https://github.com/tutti-works/online-review-gallery/pull/21) でレビュー中。
 
 既存のdeprecated依存、Browserslist / baseline-browser-mappingデータ、Node型除去警告は残る。`next lint` の廃止予定通知が追加されるが、15系では動作する。
+
+GitHub側ではcheckout@v4 / setup-node@v4のAction実行基盤Node20廃止に伴うNode24強制実行と、ubuntu-latestの将来のUbuntu26移行が通知された。アプリのNode22指定とは別で、今回workflowは変更していない。
 
 Firebase CLIは生成時にesbuild 0.19.2をrootへ `--no-save` で一時追加した。manifest/lockfileに追加していない。rootを再度npm ciし除去したため、一時的な監査37件と最終36件を混同しない。生成時のWindows optional WASMディレクトリcleanupにEPERM警告が出たが、依存解決の終了コードと確認は成功。
 
