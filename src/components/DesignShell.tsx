@@ -24,7 +24,7 @@ export default function DesignShell({
   const path = usePathname();
   const { user } = useAuth();
   const [keyboardFocus, setKeyboardFocus] = useState(false);
-  if (path.startsWith('/showcase')) return <>{children}</>;
+  if (path === '/' || path.startsWith('/showcase')) return <>{children}</>;
   const links = [
     { href: '/gallery', label: '作品ギャラリー', icon: Grid2X2 },
     { href: '/archive', label: 'アーカイブ', icon: Archive },

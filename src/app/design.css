@@ -821,17 +821,30 @@
 }
 .login-composition {
   display: grid;
-  grid-template-columns: 1.1fr 1fr;
-  min-height: 650px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 100vh;
+  min-height: 100svh;
+  color: #20211f;
+  background: #f8f9f5;
 }
 .login-art {
-  padding: 60px 48px;
+  padding: clamp(32px, 4vw, 72px) clamp(32px, 5vw, 96px);
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   background: #dce0d4;
+  gap: 32px;
+}
+.login-brand img {
+  display: block;
+  width: clamp(200px, 21vw, 300px);
+  max-width: 100%;
+  height: auto;
+}
+.login-brand {
+  margin-bottom: 24px;
 }
 .login-art h2 {
   font-size: clamp(35px, 4vw, 60px);
@@ -878,11 +891,18 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 50px clamp(24px, 4vw, 70px);
+  padding: 80px clamp(40px, 6vw, 120px);
   background: #f8f9f5;
+  align-items: flex-start;
+}
+.login-panel > * {
+  width: 100%;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .login-panel h1 {
-  font-size: 26px;
+  font-size: clamp(26px, 2.7vw, 42px);
   line-height: 1.5;
   font-weight: 600;
   letter-spacing: -0.8px;
@@ -891,7 +911,8 @@
   font-size: 13px;
   color: #72786a;
   line-height: 1.9;
-  margin: 18px 0 30px;
+  margin-top: 18px;
+  margin-bottom: 30px;
 }
 .login-panel button {
   min-height: 50px;
@@ -909,6 +930,14 @@
 }
 .login-panel button:disabled {
   opacity: 0.5;
+}
+.login-panel button:not(:disabled):hover {
+  background: #434e39;
+  border-color: #434e39;
+}
+.login-panel button:focus-visible {
+  outline: 2px solid #555f3d;
+  outline-offset: 4px;
 }
 .login-panel small {
   font-size: 10px;
@@ -962,17 +991,27 @@
     grid-template-columns: 1fr;
   }
   .login-art {
-    padding: 30px;
-    min-height: 200px;
+    padding: 32px clamp(24px, 6vw, 54px) 40px;
+    gap: 24px;
   }
   .login-sculpture {
-    display: none;
+    height: 200px;
+    width: min(100%, 360px);
+    margin: 0 auto;
+    transform: scale(0.75);
+    transform-origin: center top;
   }
   .login-art h2 {
     font-size: 36px;
   }
   .login-art > p {
-    margin-top: 20px;
+    margin-top: 0;
+  }
+  .login-panel {
+    padding: 56px 24px 64px;
+  }
+  .login-brand {
+    margin-bottom: 8px;
   }
 }
 @media (max-width: 600px) {
@@ -1071,7 +1110,7 @@
     display: none;
   }
   .login-panel {
-    padding: 35px 24px;
+    padding: 48px 24px 56px;
   }
   .atelier-content .dashboard-page > main,
   .atelier-content .import-page > main {

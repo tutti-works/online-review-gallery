@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
 export default function LoginPage() {
   const { user, signInWithGoogle, loading } = useAuth();
@@ -22,8 +23,18 @@ export default function LoginPage() {
     }
   };
   return (
-    <div className="login-composition">
+    <main className="login-composition">
       <section className="login-art">
+        <header className="login-brand">
+          <Image
+            src="/brand/atria-logo.svg"
+            alt="ATRIA — DESIGN REVIEW GALLERY"
+            width={970}
+            height={240}
+            priority
+            unoptimized
+          />
+        </header>
         <div>
           <p className="atelier-eyebrow">ATRIA / DESIGN COMMUNITY</p>
           <h2>
@@ -75,6 +86,6 @@ export default function LoginPage() {
           大学設計課題のための作品閲覧・講評スペース
         </small>
       </section>
-    </div>
+    </main>
   );
 }
