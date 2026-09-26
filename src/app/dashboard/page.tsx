@@ -355,7 +355,7 @@ function DashboardPage() {
                       </p>
                       <a
                         href="/admin/import"
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
                       >
                         インポート開始
                       </a>
@@ -369,7 +369,7 @@ function DashboardPage() {
                       </p>
                       <a
                         href="/gallery"
-                        className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+                        className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                       >
                         ギャラリーを見る
                       </a>
@@ -387,7 +387,7 @@ function DashboardPage() {
                       value={selectedArchiveCourseId}
                       onChange={(event) => setSelectedArchiveCourseId(event.target.value)}
                       aria-label="アーカイブする授業を選択"
-                      className="mb-2 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      className="mb-2 w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                     >
                       <option value="">授業を選択</option>
                       {archiveCourses.map(([courseId, courseName]) => (
@@ -422,7 +422,7 @@ function DashboardPage() {
                             setSelectedCourse(e.target.value);
                             setSelectedGalleryId(''); // 課題選択をリセット
                           }}
-                          className="mb-2 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          className="mb-2 w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                         >
                           <option value="">授業を選択</option>
                           {courses.map(courseName => (
@@ -437,7 +437,7 @@ function DashboardPage() {
                           value={selectedGalleryId}
                           onChange={(e) => setSelectedGalleryId(e.target.value)}
                           disabled={!selectedCourse}
-                          className="mb-4 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                          className="mb-4 w-full px-3 py-2 border border-gray-300 rounded-md text-sm disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
                         >
                           <option value="">課題を選択</option>
                           {assignments.map(gallery => (
@@ -450,7 +450,7 @@ function DashboardPage() {
                         <button
                           onClick={handleDeleteGallery}
                           disabled={!selectedGalleryId || isDeletingGallery}
-                          className="inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
+                          className="inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
                         >
                           {isDeletingGallery ? '削除を実行中...' : '選択した課題を削除'}
                         </button>
@@ -467,7 +467,7 @@ function DashboardPage() {
                         <button
                           onClick={handleResetData}
                           disabled={isDeleting}
-                          className="inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
+                          className="inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
                         >
                           {isDeleting ? '削除を実行中...' : '全データをリセット'}
                         </button>
@@ -487,7 +487,7 @@ function DashboardPage() {
                       <button
                         onClick={handleSyncArtworkCount}
                         disabled={isSyncing}
-                        className="inline-flex justify-center items-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
+                        className="inline-flex justify-center items-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
                       >
                         {isSyncing ? '同期を実行中...' : '全ギャラリーの作品数を同期'}
                       </button>
@@ -544,7 +544,7 @@ function DashboardPage() {
                     </p>
                     <a
                       href="/gallery"
-                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-gray-600 hover:bg-gray-700"
                     >
                       ギャラリーを見る
                     </a>

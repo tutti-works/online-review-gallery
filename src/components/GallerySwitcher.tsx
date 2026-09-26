@@ -36,7 +36,7 @@ export default function GallerySwitcher({ galleries, currentGalleryId, mode }: P
       <select
         value={selectedCourseId}
         onChange={(event) => setChosenCourseId(event.target.value)}
-        className="max-w-[180px] truncate rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        className="max-w-[180px] truncate rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all"
         title={courses.find(([id]) => id === selectedCourseId)?.[1] || '授業を選択'}
         aria-label="授業を選択"
       >
@@ -47,7 +47,7 @@ export default function GallerySwitcher({ galleries, currentGalleryId, mode }: P
         value={currentGallery?.courseId === selectedCourseId ? currentGalleryId || '' : ''}
         onChange={(event) => handleAssignmentChange(event.target.value)}
         disabled={!selectedCourseId}
-        className="max-w-[180px] truncate rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+        className="max-w-[180px] truncate rounded-lg border-2 border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
         aria-label="課題を選択"
       >
         <option value="">課題を選択</option>

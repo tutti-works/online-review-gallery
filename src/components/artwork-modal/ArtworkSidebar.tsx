@@ -144,7 +144,7 @@ const ArtworkSidebar = ({
               <div className="flex items-center space-x-3">
                 <button
                   onClick={handleLike}
-                  className="flex flex-1 items-center justify-center space-x-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  className="flex flex-1 items-center justify-center space-x-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
                 >
                   <svg
                     className={`h-5 w-5 ${liked ? 'text-red-500' : 'text-gray-600'}`}
@@ -256,12 +256,12 @@ const ArtworkSidebar = ({
                   onChange={(event) => setCommentText(event.target.value)}
                   placeholder="コメントを入力してください..."
                   rows={4}
-                  className="block w-full resize-none rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                  className="block w-full resize-none rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm"
                 />
                 <button
                   type="submit"
                   disabled={!commentText.trim() || isSubmittingComment}
-                  className="w-full rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isSubmittingComment ? '送信中...' : 'コメントを投稿'}
                 </button>

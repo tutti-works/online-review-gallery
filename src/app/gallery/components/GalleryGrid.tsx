@@ -25,10 +25,13 @@ export default function GalleryGrid({
         const incomplete = isIncomplete(artwork);
         const liked = likedArtworkIds.has(artwork.id);
         return (
-          <article key={artwork.id} className="exhibition-card">
+          <article
+            key={artwork.id}
+            className="exhibition-card"
+            onClick={() => onSelectArtwork(artwork)}
+          >
             <button
               className="exhibition-cover"
-              onClick={() => onSelectArtwork(artwork)}
               aria-label={artwork.studentName + 'の作品を開く'}
             >
               {cover && !incomplete ? (
@@ -50,20 +53,21 @@ export default function GalleryGrid({
               )}
             </button>
             <div className="exhibition-card-info">
-              <button
-                className="exhibition-card-title"
-                onClick={() => onSelectArtwork(artwork)}
-                title={artwork.title}
-              >
-                {artwork.title}
-              </button>
-              <div className="exhibition-card-author">
-                <span aria-hidden="true">
-                  {artwork.studentName.slice(0, 1)}
+              <div className="exhibition-card-name">
+                <span
+                  className="exhibition-card-title"
+                  title={artwork.studentName}
+                >
+                  {artwork.studentName}
                 </span>
-                {artwork.studentName}
                 {artwork.isLate && (
-                  <small className="text-amber-700">期限後提出</small>
+                  <span
+                    className="exhibition-card-late"
+                    title="提出期限に遅れています"
+                    aria-label="提出期限に遅れています"
+                  >
+                    ⚠️
+                  </span>
                 )}
               </div>
               <div className="exhibition-card-bottom">
@@ -75,7 +79,10 @@ export default function GalleryGrid({
                 <div className="exhibition-card-stats">
                   {canLike && onLike ? (
                     <button
-                      onClick={() => onLike(artwork.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onLike(artwork.id);
+                      }}
                       aria-pressed={liked}
                       aria-label={liked ? 'いいねを取り消す' : 'いいねする'}
                     >

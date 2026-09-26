@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   Archive,
@@ -21,6 +22,7 @@ export default function DesignShell({
 }) {
   const path = usePathname();
   const { user } = useAuth();
+  const [keyboardFocus, setKeyboardFocus] = useState(false);
   if (path.startsWith('/showcase')) return <>{children}</>;
   const links = [
     { href: '/gallery', label: '作品ギャラリー', icon: Grid2X2 },
@@ -31,7 +33,16 @@ export default function DesignShell({
       : []),
   ];
   return (
-    <div className="atelier">
+    <div
+      className="atelier"
+      data-keyboard-focus={keyboardFocus}
+      onPointerDownCapture={() => setKeyboardFocus(false)}
+      onKeyDownCapture={(event) => {
+        if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+          setKeyboardFocus(true);
+        }
+      }}
+    >
       <a className="atelier-skip" href="#atelier-content">
         コンテンツへ移動
       </a>

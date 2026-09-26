@@ -36,7 +36,6 @@ export default function GalleryHeader(props: GalleryHeaderProps) {
     props.selectedLabels,
     props.totalLabelFilter
   );
-  const gallery = props.galleries.find((g) => g.id === props.currentGalleryId);
   const count =
     props.selectedLabels.length +
     (props.isTotalLabelFilterActive ? 1 : 0) +
@@ -45,21 +44,15 @@ export default function GalleryHeader(props: GalleryHeaderProps) {
     <header className="exhibition-header">
       <div className="exhibition-intro">
         <div>
-          <p className="atelier-eyebrow">
-            {props.mode === 'archive' ? 'THE ARCHIVE' : 'THE COLLECTION'}
-          </p>
           <h1>
             {props.mode === 'archive'
-              ? '過去のアイデアと、出会う。'
-              : '次の視点に、出会う。'}
+              ? 'THE ARCHIVE'
+              : 'THE COLLECTION'}
           </h1>
           <p className="exhibition-description">
-            一人ひとりの発想を、じっくりと。作品をひらいて、対話をはじめよう。
+            Take time to explore each unique perspective. Open a work and start a conversation.
           </p>
         </div>
-        <span className="exhibition-symbol" aria-hidden="true">
-          ↗
-        </span>
       </div>
       <div className="exhibition-toolbar">
         <Suspense fallback={<span>授業を読み込み中…</span>}>
@@ -143,13 +136,6 @@ export default function GalleryHeader(props: GalleryHeaderProps) {
           </label>
         </div>
       )}
-      <div className="exhibition-section">
-        <h2>
-          <span className="exhibition-dot" />
-          {gallery?.assignmentName || '作品ギャラリー'}
-        </h2>
-        <span>{gallery?.courseName || 'DESIGN WORKS'}</span>
-      </div>
     </header>
   );
 }
