@@ -56,6 +56,12 @@ Reparsing as ES module because module syntax was detected. This incurs a perform
 
 lockfileの依存ツリーに由来する `npm warn deprecated`（inflight、rimraf 3、glob 7/10、@humanwhocodes/config-array/object-schema、node-domexception、uuid 9、eslint 8）も既知です。ESLint/Next.js/Firebase CLIなどの親依存を確認して更新する必要があり、一括更新やoverridesによる強制置換は今回行いません。非推奨通知は脆弱性監査の代わりにはなりません。セキュリティ監査・依存更新は別作業で扱います。
 
+### Issue #19の調査・限定更新（2026-09-27）
+
+41件を再現し、本番依存12件・devのみ29件に分類しました。`jws`、`nanoid`、`basic-ftp` のみ親依存を変えずpatch/minor更新し、全体38件・本番依存10件になりました。criticalは2→1件（Next.js）。Nextのcritical成立条件と、影響を除外できないRSC・キャッシュ処理は区別しています。Admin 13.10.0固定を維持し、本番デプロイは行っていません。
+
+全41パッケージの経路・修正候補・残す理由・生成SSRとの違いは[Issue #19の依存監査](security/dependency-audit-issue19.md)を参照してください。更新後のnpm ci・typecheck・lint・build・31テストは成功しました。
+
 ## 新規警告の扱い
 
 CIのlintは `--max-warnings=0` で失敗させます。build・Node・npmの通知はこの一覧と比較し、未知の警告を自動的に既知扱いしないでください。互換性データの経過月数やローカルパス・PIDの違いは新規警告ではありません。
