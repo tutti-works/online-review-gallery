@@ -5,6 +5,7 @@ import { previewFetch } from '@/lib/previewFetch';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft, ArrowUpRight, Download, Layers } from 'lucide-react';
 import withAuth from '@/components/withAuth';
 import { useAuth } from '@/context/AuthContext';
 import { ClassroomCourse, CourseAssignment } from '@/types';
@@ -383,28 +384,28 @@ function AdminImportPage() {
 
   return (
     <div className="import-page min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <h1 className="text-xl font-semibold text-gray-900">
-              データインポート
-            </h1>
-            <a href="/dashboard" className="text-sm text-blue-600 hover:underline">ダッシュボードに戻る</a>
+      <header>
+        <div className="import-heading">
+          <div>
+            <p className="atelier-eyebrow">CLASSROOM / IMPORT</p>
+            <h1>作品をインポート</h1>
+            <p className="import-description">授業で生まれた作品を、ギャラリーへ。</p>
           </div>
+          <a href="/dashboard" className="import-back"><ArrowLeft size={15} aria-hidden="true" />ダッシュボード</a>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="bg-white p-8 rounded-lg shadow">
-          <div className="max-w-xl mx-auto">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">インポート設定</h2>
-            <p className="text-sm text-gray-600 mb-6">
+      <main className="mx-auto">
+        <div className="import-layout">
+          <section className="import-settings" aria-labelledby="import-settings-title">
+            <div className="import-section-heading"><span className="import-icon"><Download size={20} aria-hidden="true" /></span><div><p className="atelier-eyebrow">GOOGLE CLASSROOM</p><h2 id="import-settings-title">インポート設定</h2></div></div>
+            <p className="import-description">
               Google Classroomから作品をインポートする授業と課題を選択してください。
             </p>
 
-            <div className="space-y-6">
+            <div className="import-fields">
               {needsAdditionalConsent && (
-                <div className="mb-6 rounded-md border border-yellow-300 bg-yellow-50 p-4">
+                <div className="import-notice">
                   <p className="text-sm text-yellow-800">
                     Google Classroom APIへのアクセス許可が必要です。下のボタンから追加のアクセス許可を付与してください。
                   </p>
@@ -416,14 +417,14 @@ function AdminImportPage() {
                       type="button"
                       onClick={handleRequestScopes}
                       disabled={isRequestingScopes}
-                      className="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                      className="import-button"
                     >
                       {isRequestingScopes ? '権限を付与しています...' : 'Googleでアクセスを許可'}
                     </button>
                     <button
                       type="button"
                       onClick={() => router.back()}
-                      className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      className="import-button import-button-secondary"
                     >
                       前のページに戻る
                     </button>
@@ -432,16 +433,16 @@ function AdminImportPage() {
               )}
 
               {/* Step 1: Course Selection */}
-              <div>
-                <label htmlFor="course-select" className="block text-sm font-medium text-gray-700 mb-2">
-                  ステップ1: 授業を選択
+              <div className="import-field">
+                <label htmlFor="course-select">
+                  <span className="import-step">01</span>授業を選択
                 </label>
                 <select
                   id="course-select"
                   value={selectedCourse}
                   onChange={(e) => setSelectedCourse(e.target.value)}
                   disabled={isLoadingCourses || isImporting || isRequestingScopes || needsAdditionalConsent}
-                  className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100"
+                  className="import-select"
                 >
                   <option value="">{isLoadingCourses ? '読み込み中...' : '-- 授業を選択してください --'}</option>
                   {courses.map((course) => (
@@ -453,19 +454,18 @@ function AdminImportPage() {
               </div>
 
               {/* Step 2: Assignment Selection */}
-              {selectedCourse && (
-                <div>
-                  <label htmlFor="assignment-select" className="block text-sm font-medium text-gray-700 mb-2">
-                    ステップ2: 課題を選択
+                <div className="import-field">
+                  <label htmlFor="assignment-select">
+                    <span className="import-step">02</span>課題を選択
                   </label>
                   <select
                     id="assignment-select"
                     value={selectedAssignment}
                     onChange={(e) => setSelectedAssignment(e.target.value)}
                     disabled={isLoadingAssignments || !selectedCourse || isImporting || isRequestingScopes || needsAdditionalConsent}
-                    className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100"
+                    className="import-select"
                   >
-                    <option value="">{isLoadingAssignments ? '読み込み中...' : '-- 課題を選択してください --'}</option>
+                    <option value="">{!selectedCourse ? '先に授業を選択してください' : isLoadingAssignments ? '読み込み中...' : '-- 課題を選択してください --'}</option>
                     {assignments.map((assignment) => (
                       <option key={assignment.id} value={assignment.id}>
                         {assignment.title}
@@ -473,16 +473,16 @@ function AdminImportPage() {
                     ))}
                   </select>
                 </div>
-              )}
 
               {/* Step 3: Import Button */}
-              <div className="pt-4">
+              <div className="import-action">
                 <button
                   onClick={handleImport}
                   disabled={!selectedAssignment || isImporting || isLoadingCourses || isLoadingAssignments || isRequestingScopes || needsAdditionalConsent}
-                  className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  className="import-button"
                 >
                   {isImporting ? 'インポート処理中...' : 'インポートを開始'}
+                  <ArrowUpRight size={16} aria-hidden="true" />
                 </button>
               </div>
 
@@ -506,13 +506,13 @@ function AdminImportPage() {
 
                   {/* ステータスメッセージ（スピナー付き） */}
                   {statusMessage && (
-                    <div className="p-4 bg-indigo-50 rounded-md">
+                    <div className="import-status" role="status">
                       <div className="flex items-center justify-center">
-                        <svg className="animate-spin h-5 w-5 text-indigo-600 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <svg className="animate-spin h-5 w-5 mr-3 shrink-0" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
-                        <p className="text-sm font-medium text-indigo-700">{statusMessage}</p>
+                        <p className="text-sm font-medium">{statusMessage}</p>
                       </div>
                     </div>
                   )}
@@ -521,12 +521,23 @@ function AdminImportPage() {
 
               {/* ステータスメッセージ（インポート中でない場合） */}
               {!isImporting && statusMessage && (
-                <div className="mt-6 p-4 bg-gray-100 rounded-md text-center">
+                <div className="import-status" role="status">
                   <p className="text-sm text-gray-700">{statusMessage}</p>
                 </div>
               )}
             </div>
-          </div>
+          </section>
+          <aside className="import-summary" aria-labelledby="import-summary-title">
+            <span className="import-icon"><Layers size={22} aria-hidden="true" /></span>
+            <p className="atelier-eyebrow">YOUR SELECTION</p>
+            <h2 id="import-summary-title">取り込む作品の確認</h2>
+            <p className="import-description">選択した課題の提出作品をギャラリーにまとめます。</p>
+            <dl>
+              <div><dt>授業</dt><dd>{courses.find((course) => course.id === selectedCourse)?.name || '未選択'}</dd></div>
+              <div><dt>課題</dt><dd>{assignments.find((assignment) => assignment.id === selectedAssignment)?.title || '未選択'}</dd></div>
+            </dl>
+            <p className="import-summary-note">開始後はギャラリーへ移動し、取り込みの進捗を確認できます。</p>
+          </aside>
         </div>
       </main>
     </div>

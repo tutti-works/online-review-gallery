@@ -421,12 +421,225 @@
 .atelier-content .import-page > header {
   background: transparent;
   box-shadow: none;
-  padding: 20px 14px;
-  border-bottom: 1px solid #d7dacf;
+  padding: 36px 32px 0;
 }
 .atelier-content .import-page > main {
-  max-width: none;
-  padding: 24px 30px;
+  max-width: 1104px;
+  padding: 28px 32px 40px;
+}
+.import-heading {
+  max-width: 1040px;
+  margin: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.import-heading h1 {
+  font-size: clamp(24px, 2.5vw, 32px);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+.import-description {
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--muted);
+  margin-top: 12px;
+}
+.import-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 12px 16px;
+  border: 1px solid #cfd3c7;
+  border-radius: 12px;
+}
+.import-back:hover {
+  background: #f8f9f5;
+}
+.import-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+.import-settings,
+.import-summary {
+  min-width: 0;
+  padding: 30px;
+  border: 1px solid #ffffffb0;
+  border-radius: 22px;
+  background: #f8f9f5;
+}
+.import-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.import-section-heading .atelier-eyebrow {
+  margin-bottom: 5px;
+  font-size: 9px;
+}
+.import-settings h2,
+.import-summary h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.import-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: #e8ebdf;
+  color: #505d42;
+}
+.import-fields {
+  display: grid;
+  gap: 24px;
+  margin-top: 28px;
+}
+.import-field {
+  min-width: 0;
+}
+.import-field label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.import-step {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #7a826e;
+}
+.atelier-content .import-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  background: white;
+  font-size: 13px;
+}
+.atelier-content .import-select:disabled {
+  background: #eeefe9;
+  color: #818779;
+  cursor: not-allowed;
+}
+.import-action {
+  padding-top: 22px;
+  border-top: 1px solid #e0e3d9;
+}
+.import-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 12px 18px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: #343c2c;
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+}
+.import-button svg {
+  flex-shrink: 0;
+}
+.import-button:hover:not(:disabled) {
+  background: #505d42;
+}
+.import-button:disabled {
+  background: #e1e4d9;
+  color: #777e6c;
+  cursor: not-allowed;
+}
+.import-button-secondary {
+  background: transparent;
+  color: #505d42;
+  border-color: #cfd3c7;
+}
+.import-button-secondary:hover:not(:disabled) {
+  background: #e8ebdf;
+}
+.import-notice {
+  border: 1px solid #e4d8b8;
+  background: #f6f2e6;
+  padding: 18px;
+  border-radius: 14px;
+  line-height: 1.8;
+}
+.import-status {
+  background: #eaeede;
+  padding: 16px;
+  border-radius: 12px;
+  color: #505d42;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.import-summary {
+  background: #dde2d3;
+  border-color: #d4dac9;
+}
+.import-summary > .import-icon {
+  background: #f4f6ee;
+  margin-bottom: 30px;
+}
+.import-summary .atelier-eyebrow {
+  margin-bottom: 10px;
+}
+.import-summary dl {
+  margin-top: 26px;
+  display: grid;
+  gap: 20px;
+}
+.import-summary dt {
+  color: #727966;
+  font-size: 11px;
+  margin-bottom: 7px;
+}
+.import-summary dd {
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.import-summary-note {
+  border-top: 1px solid #cbd2be;
+  padding-top: 20px;
+  margin-top: 26px;
+  font-size: 12px;
+  line-height: 1.9;
+  color: #667157;
+}
+@media (max-width: 1100px) {
+  .import-layout {
+    grid-template-columns: 1fr;
+  }
+  .import-summary dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .atelier-content .import-page > header {
+    padding: 24px 16px 0;
+  }
+  .import-settings,
+  .import-summary {
+    padding: 22px 18px;
+    border-radius: 18px;
+  }
+  .import-summary dl {
+    grid-template-columns: 1fr;
+  }
+  .import-heading {
+    gap: 16px;
+  }
 }
 .atelier-content .dashboard-page > header {
   background: transparent;
