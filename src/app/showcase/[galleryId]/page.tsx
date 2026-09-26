@@ -111,6 +111,11 @@ const OVERVIEW_THUMB_MAX_SIZE = 480;
 const OVERVIEW_THUMB_TYPE = 'image/webp';
 const OVERVIEW_THUMB_QUALITY = 0.78;
 
+// Next.js replaces these public environment flags at build time; they are not render state.
+const shouldDebugImages = process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
+const shouldDebugReads =
+  process.env.NEXT_PUBLIC_FIRESTORE_READ_DEBUG === 'true' || shouldDebugImages;
+
 const ShowcaseGalleryPage = () => {
   const params = useParams();
   const galleryId = typeof params?.galleryId === 'string' ? params.galleryId : '';
@@ -134,9 +139,6 @@ const ShowcaseGalleryPage = () => {
   const [reuploadConfirmOpen, setReuploadConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const animatedArtworkIdsRef = useRef<Set<string>>(new Set());
-  const shouldDebugImages = process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
-  const shouldDebugReads =
-    process.env.NEXT_PUBLIC_FIRESTORE_READ_DEBUG === 'true' || shouldDebugImages;
   const loadCountRef = useRef(0);
   const loadInFlightRef = useRef(false);
 
@@ -167,7 +169,7 @@ const ShowcaseGalleryPage = () => {
       count: sortedArtworks.length,
       ids: sortedArtworks.map((artwork) => artwork.id),
     });
-  }, [sortedArtworks, shouldDebugImages]);
+  }, [sortedArtworks]);
 
   const loadData = useCallback(async () => {
     if (!galleryId) {

@@ -2,6 +2,16 @@
 
 このドキュメントは、Online Review Galleryの主要機能に関するテストシナリオを記載します。
 
+## GitHub CI（検証専用）
+
+`.github/workflows/ci.yml` は main への push と Pull Request で実行します。Node.js 22 で `npm ci`、`typecheck`、`lint -- --max-warnings=0`、`test:auth-flow`、`test:review-labels`、`test:course-archive`、`test:local-preview`（計16件）、`build` を順に確認します。
+
+Firebase設定はダミー値を使用し、Secretsや本番認証情報は不要です。Emulator・外部サービス依存テストは含めません。ビルド時のGoogle Fonts取得にはネットワーク接続が必要です。
+
+CIはデプロイも本番データへのアクセスも行いません。本番反映は引き続き承認後に手動で行い、本番UI・機能確認はユーザーが行います。CI成功は認証済み画面や本番の動作確認を意味しません。
+
+警告の原文・判断は [CIの既知警告](ci-warnings.md) を参照してください。lint警告は0件を必須とし、その他の新しい警告はこの記録との差分で判断します。警告を一括抑制する環境変数は使いません。
+
 ## Storage Rules 自動テスト
 
 ```powershell

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      # Build-only dummy configuration. No credentials or production access.
+      NEXT_PUBLIC_FIREBASE_API_KEY: ci-placeholder-api-key
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: demo-atria-ci.firebaseapp.com
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: demo-atria-ci
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: demo-atria-ci.appspot.com
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '123456789'
+      NEXT_PUBLIC_FIREBASE_APP_ID: '1:123456789:web:ci-placeholder'
+      NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: G-CI-DUMMY
+      NEXT_PUBLIC_LOCAL_PREVIEW: 'false'
+      NEXT_PUBLIC_USE_AUTH_EMULATOR: 'false'
+      NEXT_PUBLIC_USE_FIRESTORE_EMULATOR: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint -- --max-warnings=0
+      - run: npm run test:auth-flow
+      - run: npm run test:review-labels
+      - run: npm run test:course-archive
+      - run: npm run test:local-preview
+      - run: npm run build

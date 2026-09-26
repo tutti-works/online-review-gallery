@@ -12,6 +12,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:auth-flow": "node --test test/authFlow.test.cjs",
+    "test:local-preview": "node --test test/localPreview.test.cjs",
     "test:review-labels": "node --experimental-strip-types --test test/reviewLabels.test.mjs",
     "test:course-archive": "node --experimental-strip-types --test test/courseArchive.test.mjs",
     "test:storage-rules": "firebase emulators:exec --only auth,firestore,storage --config firebase.emulators.json \"node --test test/storage.rules.test.js\"",

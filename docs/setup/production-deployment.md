@@ -10,6 +10,8 @@
 
 ## デプロイフロー
 
+GitHub CIは検証専用です（[検証内容](../TESTING.md#github-ci検証専用)）。mainへのpushで自動デプロイは行いません。本番反映はCI結果を確認して承認後に手動で実施し、本番UI・機能確認はユーザーが行います。以下は全構成の手順であり、毎回すべてをデプロイする必要はありません。UI変更は原則Hostingのみ（framework-aware SSRの自動生成Functionを含む）を対象にしてください。
+
 ```
 1. Cloud Runデプロイ（processFileTask）
    ↓

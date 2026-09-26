@@ -66,6 +66,11 @@ const mapGalleryDoc = (id: string, data: Record<string, any>): Gallery => {
   };
 };
 
+// Next.js replaces these public environment flags at build time; they are not render state.
+const shouldDebugImages = process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
+const shouldDebugReads =
+  process.env.NEXT_PUBLIC_FIRESTORE_READ_DEBUG === 'true' || shouldDebugImages;
+
 const ShowcaseHomePage = () => {
   const { user } = useAuth();
   const [entries, setEntries] = useState<ShowcaseEntry[]>([]);
@@ -78,9 +83,6 @@ const ShowcaseHomePage = () => {
   const [savingOrder, setSavingOrder] = useState(false);
   const { viewerMode, setViewerMode } = useShowcaseViewerMode();
   const initialLoadRef = useRef(true);
-  const shouldDebugImages = process.env.NEXT_PUBLIC_SHOWCASE_IMAGE_DEBUG === 'true';
-  const shouldDebugReads =
-    process.env.NEXT_PUBLIC_FIRESTORE_READ_DEBUG === 'true' || shouldDebugImages;
 
   const isAdmin = user?.role === 'admin';
   const isAllowed = isShowcaseDomainAllowed(user?.email);
