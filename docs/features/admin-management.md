@@ -20,7 +20,7 @@
 
 ## 実行環境・反映
 
-- `firebase-admin` を既存バージョンのまま実行時依存に移動した。Next.jsのNode.jsサーバーAPIとしてHostingの生成SSR内で動作する。新規の独立FunctionsやCloud Runサービスは不要。
+- アプリ側の `firebase-admin` は実行時依存の13.10.0に固定する。Hostingの生成SSRが使用する `firebase-frameworks` の対応範囲に合わせたもの（14系は依存解決に失敗する）。既存Functions側の依存は変更しない。Next.jsのNode.jsサーバーAPIとしてHostingの生成SSR内で動作し、新規の独立FunctionsやCloud Runサービスは不要。
 - サーバーはApplication Default Credentialsを使う。クライアントのFirebase設定はサーバー認証情報ではない。SSR実行サービスアカウントにFirestore読み書き・Firebase Authユーザー参照が必要。権限不足なら自動変更せず確認する。
 - 本番反映には **Hosting（生成SSRを含む）と `firestore:rules`** が必要。Rules変更はユーザー承認後に行う。独立Functions・Storage Rules・データ移行は対象外。Rulesだけ先に反映すると旧クライアントのロール直接書き込みは停止する。
 - ローカルプレビューはクライアント・サーバー双方で追加・削除を拒否する。一覧取得には読み取り可能なサーバー認証情報が必要。設定を自動で追加しない。

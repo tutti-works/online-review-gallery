@@ -28,13 +28,13 @@
     "@dnd-kit/sortable": "^8.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "firebase": "^12.19.0",
+    "firebase-admin": "13.10.0",
     "konva": "^9.3.16",
     "lucide-react": "^0.552.0",
     "next": "^14.2.35",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
-    "react-konva": "^18.2.9",
-    "firebase-admin": "^14.4.0"
+    "react-konva": "^18.2.9"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
