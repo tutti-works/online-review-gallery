@@ -1,5 +1,7 @@
 # Issue #9: Hosting 生成 SSR Function の Node.js 22 化
 
+2026-09-27のNext.js 15更新候補では、Node22 / Admin13.10.0での実際のSSR生成・HTTP動作を確認済み。ただし新規sharp依存により本番反映は保留。[Issue #20の詳細と事前確認スクリプト](../security/next15-hosting-issue20.md)を参照。以下はIssue #9当時の反映記録。
+
 ## runtime の決定元
 
 このリポジトリは `firebase.json` の `hosting.source: "."` と `frameworksBackend.region: "asia-northeast1"` を使う framework-aware Hosting。`functions/` は別 codebase で、同じファイルの `functions.runtime: "nodejs22"` が適用されるが、Hosting 生成 SSR Function には適用されない。

@@ -1,5 +1,11 @@
 # CI導入時の警告棚卸し（Issue #17、2026-09-27）
 
+## Issue #20: Next.js 15更新候補の検証
+
+詳細は[Next.js / Hosting SSR互換更新](security/next15-hosting-issue20.md)。root監査は38→36件、critical 0。moderate +1はNextのseverity変更であり、新規advisoryではない。一方、生成SSRにはframeworksのoptional peer経由で脆弱なsharp 0.33.5が追加されるため本番反映を保留している。
+
+Next15で `next lint` の廃止予定通知が追加されるが、lintは警告0で成功。生成時の一時esbuild、Windows optional依存cleanup、ローカルSSRのlistener警告も後続資料に記録。既存firebase-functionsのmajorや生成物を手修正して警告を消していない。以下の過去の棚卸しは履歴として維持する。
+
 ## 今修正する: Hooks警告2件
 
 原文（両ファイル共通）:

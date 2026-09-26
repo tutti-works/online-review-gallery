@@ -4,6 +4,8 @@
 
 ## 結論
 
+後続: [Issue #20のNext.js 15 / Hosting SSR互換更新](next15-hosting-issue20.md)。Next固有critical解消候補を検証したが、生成SSRの新規sharp依存により本番反映は保留。以下はIssue #19時点の履歴を維持する。
+
 - 更新前の41件を再現した。本番依存ツリーに12件、開発用依存だけに29件。件数はnpmが集約した**パッケージ数**であり、独立した攻撃やCVEの数ではない。親パッケージへの伝播も含む。
 - critical 2件は `next` と `basic-ftp`。Nextのcritical advisoryは2本あるが、npmの集計では1パッケージである。
 - `jws`、`nanoid`、`basic-ftp` のみ、既存親依存が許容するpatch/minorへ更新した。全体38件、本番依存10件が残る。

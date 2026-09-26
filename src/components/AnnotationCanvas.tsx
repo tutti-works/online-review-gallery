@@ -65,7 +65,7 @@ const AnnotationCanvas = forwardRef<AnnotationCanvasHandle, AnnotationCanvasProp
   const isPointerDrawingRef = useRef(false);
   const indicatorTimeoutRef = useRef<number | null>(null);
   const clearAllTimeoutRef = useRef<number | null>(null);
-  const saveAnnotationRef = useRef<(options?: SaveOptions) => Promise<void>>();
+  const saveAnnotationRef = useRef<((options?: SaveOptions) => Promise<void>) | undefined>(undefined);
 
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | ImageBitmap | null>(null);
   const [baseSize, setBaseSize] = useState<Size | null>(null);
