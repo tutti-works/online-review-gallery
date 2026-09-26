@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LogIn,
   Upload,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { isLocalPreview } from '@/lib/localPreview';
@@ -30,7 +31,8 @@ export default function DesignShell({
     { href: '/archive', label: 'アーカイブ', icon: Archive },
     { href: '/dashboard', label: 'ダッシュボード', icon: LayoutDashboard },
     ...(user?.role === 'admin'
-      ? [{ href: '/admin/import', label: 'インポート', icon: Upload }]
+      ? [{ href: '/admin/import', label: 'インポート', icon: Upload },
+         { href: '/admin/users', label: '管理者管理', icon: Users }]
       : []),
   ];
   return (

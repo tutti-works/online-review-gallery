@@ -44,4 +44,5 @@ jobs:
       - run: npm run test:review-labels
       - run: npm run test:course-archive
       - run: npm run test:local-preview
+      - run: npm run test:admin-users
       - run: npm run build

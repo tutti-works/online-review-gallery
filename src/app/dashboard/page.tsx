@@ -377,30 +377,34 @@ function DashboardPage() {
                         アーカイブを見る
                       </a>
                     </div>
-                  </div>
-
-                  <div className="dashboard-archive dashboard-panel">
-                    <h5 className="text-sm font-semibold text-gray-800 mb-2">授業アーカイブ管理</h5>
-                    <p className="text-sm text-gray-500 mb-4">授業の表示先を切り替えます。課題・作品・画像は移動しません。</p>
-                    {archiveError && <p role="alert" className="mb-3 text-sm text-red-700">{archiveError}</p>}
-                    <select
-                      value={selectedArchiveCourseId}
-                      onChange={(event) => setSelectedArchiveCourseId(event.target.value)}
-                      aria-label="アーカイブする授業を選択"
-                      className="mb-2 w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    >
-                      <option value="">授業を選択</option>
-                      {archiveCourses.map(([courseId, courseName]) => (
-                        <option key={courseId} value={courseId}>{courseName}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handleArchiveChange}
-                      disabled={!selectedArchiveCourseId || !isArchiveLoaded || isUpdatingArchive || Boolean(archiveError)}
-                      className="inline-flex justify-center items-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                    >
-                      {isUpdatingArchive ? '更新中...' : isSelectedArchived ? 'アーカイブを解除' : '選択した授業をアーカイブ'}
-                    </button>
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                      <h4 className="font-medium text-gray-800 mb-2">管理者管理</h4>
+                      <p className="text-sm text-gray-600 mb-4">アプリを管理できるユーザーを追加・削除します。</p>
+                      <a href="/admin/users" className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">管理者を管理</a>
+                    </div>
+                    <div className="dashboard-archive dashboard-panel">
+                      <h4 className="font-medium text-gray-800 mb-2">授業アーカイブ管理</h4>
+                      <p className="text-sm text-gray-500 mb-4">授業の表示先を切り替えます。課題・作品・画像は移動しません。</p>
+                      {archiveError && <p role="alert" className="mb-3 text-sm text-red-700">{archiveError}</p>}
+                      <select
+                        value={selectedArchiveCourseId}
+                        onChange={(event) => setSelectedArchiveCourseId(event.target.value)}
+                        aria-label="アーカイブする授業を選択"
+                        className="mb-2 w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      >
+                        <option value="">授業を選択</option>
+                        {archiveCourses.map(([courseId, courseName]) => (
+                          <option key={courseId} value={courseId}>{courseName}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handleArchiveChange}
+                        disabled={!selectedArchiveCourseId || !isArchiveLoaded || isUpdatingArchive || Boolean(archiveError)}
+                        className="inline-flex justify-center items-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      >
+                        {isUpdatingArchive ? '更新中...' : isSelectedArchived ? 'アーカイブを解除' : '選択した授業をアーカイブ'}
+                      </button>
+                    </div>
                   </div>
 
                   {/* データ削除機能 */}

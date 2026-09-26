@@ -4,7 +4,7 @@
 
 ## GitHub CI（検証専用）
 
-`.github/workflows/ci.yml` は main への push と Pull Request で実行します。Node.js 22 で `npm ci`、`typecheck`、`lint -- --max-warnings=0`、`test:auth-flow`、`test:review-labels`、`test:course-archive`、`test:local-preview`（計16件）、`build` を順に確認します。
+`.github/workflows/ci.yml` は main への push と Pull Request で実行します。Node.js 22 で `npm ci`、`typecheck`、`lint -- --max-warnings=0`、`test:auth-flow`、`test:review-labels`、`test:course-archive`、`test:local-preview`、`test:admin-users`、`build` を順に確認します。
 
 Firebase設定はダミー値を使用し、Secretsや本番認証情報は不要です。Emulator・外部サービス依存テストは含めません。ビルド時のGoogle Fonts取得にはネットワーク接続が必要です。
 
@@ -13,6 +13,8 @@ CIはデプロイも本番データへのアクセスも行いません。本番
 警告の原文・判断は [CIの既知警告](ci-warnings.md) を参照してください。lint警告は0件を必須とし、その他の新しい警告はこの記録との差分で判断します。警告を一括抑制する環境変数は使いません。
 
 ## Storage Rules 自動テスト
+
+管理者管理のAPI・認証・本番Firestore Rules・同時更新テストは [管理者管理](features/admin-management.md#検証) を参照してください。`npm run test:admin-users:emulator` は専用のdemoプロジェクトで実行します。
 
 ```powershell
 npm.cmd run test:storage-rules

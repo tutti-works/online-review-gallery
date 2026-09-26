@@ -323,9 +323,11 @@ importJobs (コレクション)
 
 userRoles (コレクション)
 ├── user_email (ドキュメント)
-│   ├── role: 'admin' | 'viewer'
+│   ├── role: 'admin' | 'viewer' | 'guest'
 │   └── createdAt: Timestamp
 ```
+
+管理者の追加・削除、最終管理者の保護、サーバーAPIとRulesの運用は [管理者管理](features/admin-management.md) を参照。
 
 ### 7.2. 注釈データ構造（実装済み - 2025-11-05更新）
 

@@ -9,7 +9,7 @@ import {
   GoogleAuthProvider,
   reauthenticateWithPopup,
 } from 'firebase/auth';
-import { doc, getDoc } from '@/lib/previewFirestore';
+import { doc, getDoc, onSnapshot } from '@/lib/previewFirestore';
 import { auth, googleProvider, db, createGoogleProvider } from '@/lib/firebase';
 import { User } from '@/types';
 import { ROLES, type UserRole } from '@/utils/roles';
@@ -20,6 +20,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   requestAdditionalScopes: (scopes: string[]) => Promise<string | null>;
+  refreshRole: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,7 +46,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const roleDoc = await getDoc(doc(db, 'userRoles', email));
       if (roleDoc.exists()) {
-        return roleDoc.data().role as UserRole;
+        const role = roleDoc.data().role;
+        return role === ROLES.ADMIN || role === ROLES.VIEWER ? role : ROLES.GUEST;
       }
 
       if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_FIRESTORE_EMULATOR === 'true') {
@@ -65,6 +67,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return ROLES.GUEST;
     }
   };
+
+  const refreshRole = async () => {
+    const current = auth.currentUser;
+    const role = await getUserRole(current?.email);
+    setUser((previous) => previous && previous.uid === current?.uid ? { ...previous, role } : previous);
+  };
+
+  // Observe only the current user's readable role, including changes made by another admin.
+  useEffect(() => {
+    if (!user?.email) return;
+    const email = user.email;
+    const update = (role: UserRole) => setUser((previous) =>
+      previous?.email === email ? { ...previous, role } : previous);
+    return onSnapshot(doc(db, 'userRoles', email), (snapshot) => {
+      const role = snapshot.data()?.role;
+      update(role === ROLES.ADMIN || role === ROLES.VIEWER ? role : ROLES.GUEST);
+    }, () => update(ROLES.GUEST));
+  }, [user?.email]);
 
   const signInWithGoogle = async () => {
     try {
@@ -211,6 +231,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signInWithGoogle,
     logout,
     requestAdditionalScopes,
+    refreshRole,
   };
 
   return (

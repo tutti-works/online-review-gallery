@@ -21,10 +21,11 @@ service cloud.firestore {
         && request.auth.token.email.matches('.*@([A-Za-z0-9-]+\\.)*musashino-u\\.ac\\.jp$');
     }
 
-    // userRoles コレクション: 管理者のみ書き込み可能、認証済みユーザーは自分のロールを読み取り可能
+    // ロール変更は認証・最終管理者チェックを行うサーバーAPIのみ（Admin SDK）。
+    // 自分のロール読み取りは従来どおり。クライアント直接書き込みは禁止。
     match /userRoles/{email} {
       allow read: if isAuthenticated() && request.auth.token.email == email;
-      allow write: if isAdmin();
+      allow write: if false;
     }
 
     // galleries コレクション: 管理者のみ作成・更新可能、認証済みユーザーは読み取り可能

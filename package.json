@@ -19,7 +19,9 @@
     "emulators": "firebase emulators:start --config firebase.emulators.json",
     "cleanup:showcase": "node scripts/cleanup-showcase.js",
     "audit:storage-privacy": "node scripts/audit-storage-privacy.js",
-    "dev:preview": "node scripts/dev-preview.cjs"
+    "dev:preview": "node scripts/dev-preview.cjs",
+    "test:admin-users": "node --test test/adminUsers.test.cjs",
+    "test:admin-users:emulator": "firebase emulators:exec --only firestore --project demo-atria-admin --config firebase.admin-test.json \"node --test test/adminUsers.emulator.test.cjs\""
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
@@ -31,7 +33,8 @@
     "next": "^14.2.35",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
-    "react-konva": "^18.2.9"
+    "react-konva": "^18.2.9",
+    "firebase-admin": "^14.4.0"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
@@ -44,7 +47,6 @@
     "eslint": "^8.0.0",
     "eslint-config-next": "^14.2.35",
     "eslint-config-prettier": "^9.0.0",
-    "firebase-admin": "^14.4.0",
     "firebase-tools": "^15.30.2",
     "postcss": "^8.4.0",
     "prettier": "^3.0.0",
