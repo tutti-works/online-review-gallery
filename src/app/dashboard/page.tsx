@@ -281,8 +281,8 @@ function DashboardPage() {
     <div className="dashboard-page min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+        <div className="dashboard-heading">
+          <div className="dashboard-heading-row">
             <h1 className="text-xl font-semibold text-gray-900">
               ダッシュボード
             </h1>
@@ -319,10 +319,10 @@ function DashboardPage() {
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="border-4 border-dashed border-gray-200 rounded-lg p-8">
-            <div className="text-center">
-              <div className="bg-white rounded-lg shadow p-6 max-w-md mx-auto">
+            <div className="dashboard-layout">
+              <div className="dashboard-account">
                 <h3 className="text-lg font-semibold mb-4">アカウント情報</h3>
-                <dl className="space-y-2 text-left">
+                <dl className="dashboard-account-details">
                   <div>
                     <dt className="text-sm font-medium text-gray-500">名前:</dt>
                     <dd className="text-sm text-gray-900">{user?.displayName}</dd>
@@ -345,7 +345,7 @@ function DashboardPage() {
               {user?.role === 'admin' && (
                 <div className="mt-8">
                   <h3 className="text-lg font-semibold mb-4">管理者機能</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="dashboard-card-grid">
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                       <h4 className="font-medium text-blue-900 mb-2">
                         データインポート
@@ -373,13 +373,13 @@ function DashboardPage() {
                       >
                         ギャラリーを見る
                       </a>
-                      <a href="/archive" className="ml-2 inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                      <a href="/archive" className="dashboard-secondary-link inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                         アーカイブを見る
                       </a>
                     </div>
                   </div>
 
-                  <div className="mt-8 border-t border-gray-200 pt-6 text-left">
+                  <div className="dashboard-archive dashboard-panel">
                     <h5 className="text-sm font-semibold text-gray-800 mb-2">授業アーカイブ管理</h5>
                     <p className="text-sm text-gray-500 mb-4">授業の表示先を切り替えます。課題・作品・画像は移動しません。</p>
                     {archiveError && <p role="alert" className="mb-3 text-sm text-red-700">{archiveError}</p>}
@@ -397,7 +397,7 @@ function DashboardPage() {
                     <button
                       onClick={handleArchiveChange}
                       disabled={!selectedArchiveCourseId || !isArchiveLoaded || isUpdatingArchive || Boolean(archiveError)}
-                      className="w-full inline-flex justify-center items-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      className="inline-flex justify-center items-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
                     >
                       {isUpdatingArchive ? '更新中...' : isSelectedArchived ? 'アーカイブを解除' : '選択した授業をアーカイブ'}
                     </button>
@@ -405,7 +405,7 @@ function DashboardPage() {
 
                   {/* データ削除機能 */}
                   <div className="mt-8 border-t border-gray-200 pt-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="dashboard-card-grid">
                       {/* 課題削除 */}
                       <div className="text-left">
                         <h5 className="text-sm font-semibold text-gray-800 mb-2">
@@ -450,7 +450,7 @@ function DashboardPage() {
                         <button
                           onClick={handleDeleteGallery}
                           disabled={!selectedGalleryId || isDeletingGallery}
-                          className="w-full inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
+                          className="inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
                         >
                           {isDeletingGallery ? '削除を実行中...' : '選択した課題を削除'}
                         </button>
@@ -467,7 +467,7 @@ function DashboardPage() {
                         <button
                           onClick={handleResetData}
                           disabled={isDeleting}
-                          className="mt-14 w-full inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
+                          className="inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
                         >
                           {isDeleting ? '削除を実行中...' : '全データをリセット'}
                         </button>
@@ -476,7 +476,7 @@ function DashboardPage() {
                   </div>
 
                   {/* ギャラリー作品数同期機能 */}
-                  <div className="mt-8 border-t border-gray-200 pt-6">
+                  <div className="dashboard-sync dashboard-panel">
                     <div className="text-left">
                       <h5 className="text-sm font-semibold text-gray-800 mb-2">
                         ギャラリー作品数同期
@@ -487,7 +487,7 @@ function DashboardPage() {
                       <button
                         onClick={handleSyncArtworkCount}
                         disabled={isSyncing}
-                        className="w-full inline-flex justify-center items-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
+                        className="inline-flex justify-center items-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
                       >
                         {isSyncing ? '同期を実行中...' : '全ギャラリーの作品数を同期'}
                       </button>
@@ -535,7 +535,7 @@ function DashboardPage() {
               {user?.role === 'viewer' && (
                 <div className="mt-8">
                   <h3 className="text-lg font-semibold mb-4">閲覧者機能</h3>
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <div className="dashboard-viewer dashboard-panel">
                     <h4 className="font-medium text-gray-900 mb-2">
                       ギャラリー閲覧
                     </h4>
@@ -548,7 +548,7 @@ function DashboardPage() {
                     >
                       ギャラリーを見る
                     </a>
-                    <a href="/archive" className="ml-2 inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                    <a href="/archive" className="dashboard-secondary-link inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                       アーカイブを見る
                     </a>
                   </div>
