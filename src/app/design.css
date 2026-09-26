@@ -50,7 +50,7 @@
 }
 .atelier-brand-image {
   display: block;
-  width: 280px;
+  width: 240px;
   height: auto;
 }
 .atelier-account {
@@ -1036,7 +1036,7 @@
     padding: 0 12px;
   }
   .atelier-brand-image {
-    width: clamp(140px, 42vw, 220px);
+    width: clamp(120px, 36vw, 190px);
   }
   .atelier-account {
     max-width: 130px;
