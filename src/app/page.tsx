@@ -35,20 +35,20 @@ export default function LoginPage() {
             unoptimized
           />
         </header>
-        <div>
-          <p className="atelier-eyebrow">ATRIA / DESIGN COMMUNITY</p>
+        <div className="login-art-content">
+          <p className="atelier-eyebrow">DESIGN COMMUNITY</p>
           <h2>
             Different ideas.
             <br />
             New perspectives.
           </h2>
+          <div className="login-sculpture" aria-hidden="true" />
+          <p>
+            かたちにした想いを、ひらこう。
+            <br />
+            作品と対話から、新しい視点が生まれる場所。
+          </p>
         </div>
-        <div className="login-sculpture" aria-hidden="true" />
-        <p>
-          かたちにした想いを、ひらこう。
-          <br />
-          作品と対話から、新しい視点が生まれる場所。
-        </p>
       </section>
       <section className="login-panel">
         <span className="atelier-eyebrow">WELCOME TO ATRIA</span>

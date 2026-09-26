@@ -821,36 +821,43 @@
 }
 .login-composition {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
   min-height: 100vh;
   min-height: 100svh;
   color: #20211f;
   background: #f8f9f5;
 }
 .login-art {
-  padding: clamp(32px, 4vw, 72px) clamp(32px, 5vw, 96px);
+  padding: clamp(28px, 3vw, 48px) clamp(32px, 5vw, 96px);
   position: relative;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  display: grid;
+  grid-template-rows: auto 1fr;
   background: #dce0d4;
-  gap: 32px;
+  gap: 40px;
 }
 .login-brand img {
   display: block;
-  width: clamp(200px, 21vw, 300px);
+  width: clamp(200px, 19vw, 260px);
   max-width: 100%;
   height: auto;
 }
 .login-brand {
-  margin-bottom: 24px;
+  width: 100%;
+  max-width: 580px;
+  margin: 0 auto;
+}
+.login-art-content {
+  width: 100%;
+  max-width: 580px;
+  margin: auto;
+  padding-bottom: 32px;
 }
 .login-art h2 {
-  font-size: clamp(35px, 4vw, 60px);
+  font-size: clamp(34px, 3.6vw, 56px);
   font-weight: 500;
   line-height: 1.15;
-  letter-spacing: -2px;
+  letter-spacing: -1.6px;
   position: relative;
   z-index: 1;
 }
@@ -861,8 +868,9 @@
 }
 .login-sculpture {
   position: relative;
-  height: 260px;
-  margin: 30px 0;
+  width: min(100%, 400px);
+  height: 280px;
+  margin: 48px auto 40px;
 }
 .login-sculpture:before {
   content: '';
@@ -891,18 +899,18 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 80px clamp(40px, 6vw, 120px);
+  padding: 80px clamp(40px, 5vw, 96px);
   background: #f8f9f5;
   align-items: flex-start;
 }
 .login-panel > * {
   width: 100%;
-  max-width: 420px;
+  max-width: 380px;
   margin-left: auto;
   margin-right: auto;
 }
 .login-panel h1 {
-  font-size: clamp(26px, 2.7vw, 42px);
+  font-size: clamp(28px, 2.5vw, 38px);
   line-height: 1.5;
   font-weight: 600;
   letter-spacing: -0.8px;
@@ -994,23 +1002,28 @@
     padding: 32px clamp(24px, 6vw, 54px) 40px;
     gap: 24px;
   }
+  .login-art-content {
+    max-width: 480px;
+    padding-bottom: 0;
+  }
   .login-sculpture {
     height: 200px;
     width: min(100%, 360px);
-    margin: 0 auto;
+    margin: 16px auto 12px;
     transform: scale(0.75);
     transform-origin: center top;
   }
   .login-art h2 {
     font-size: 36px;
   }
-  .login-art > p {
+  .login-art-content > p:last-child {
     margin-top: 0;
   }
   .login-panel {
     padding: 56px 24px 64px;
   }
   .login-brand {
+    max-width: 480px;
     margin-bottom: 8px;
   }
 }
