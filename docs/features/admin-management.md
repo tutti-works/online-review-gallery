@@ -5,10 +5,18 @@
 - メールアドレスで追加する。前後空白を除去し小文字化する。登録前のGoogleアカウントも指定できる。既存adminは重複追加しない。
 - 一覧は `userRoles` のadminを表示する。保存済みの `displayName` がなければメールアドレスのみ表示する。Authユーザー全件取得は行わない。
 - 削除は確認ダイアログを経由し、**guestに変更**する。viewerへ自動復元はしない。既存のその他のフィールド・作品・Googleアカウントは保持する。
-- 自分自身の削除には追加の確認チェックが必要。削除後はギャラリーへ移動する。
+- 自分自身の削除には追加の確認チェックが必要。削除後は共通の利用制限案内が表示され、OK後にログアウトする（下記の暫定admin-only対応）。
 - 最後のadminは削除不可。各端末は自分のロールドキュメントを購読し、権限変更を反映する。読み取り失敗時はguestとして扱う。
 
 ## 書き込みと互換性
+
+### 暫定admin-onlyログイン（Issue #22）
+
+Google認証後、Firestoreのロールがadminの場合のみアプリを利用できる。`AuthProvider` 直下の `src/components/AuthAccessGate.tsx` が、ナビゲーション・ページ全体（showcaseを含む）を描画する前に判定する。ロール確認中は待機表示とし、viewer / guest / ロールなし / メールなし / 旧匿名セッションは案内ダイアログを表示する。ロール取得・購読失敗もguest扱いでfail-closedとする。リロード、直接URLアクセス、利用中の権限削除にも同じ判定が適用される。
+
+「現在、このサービスは管理者のみ利用できます。」のOKを押すまではFirebase Authからログアウトしない。OK後に既存のlogout（signOutとGoogleトークンのクリア）を実行し、`/`へ戻す。Escや背景操作では閉じられず、ログアウト失敗時はアプリを表示せず同じダイアログで再試行できる。開発Emulatorでロールなしユーザーを自動admin登録する処理も廃止し、検証用adminは事前に明示的に用意する。
+
+将来viewer等を再開する場合は `AuthAccessGate` の共通入場条件を変更し、`test/authFlow.test.cjs` を更新する。各ページの `withAuth` / `withShowcaseAuth`、APIの認証・admin判定、Firestore / Storage Rulesは維持している。これはクライアントの共通入場制限であり、既存のviewer等のAPI・Rules上の権限を一律無効化する変更ではない。本対応で本番デプロイは行わない。
 
 `/api/admin/users` はFirebase IDトークンを検証（失効確認あり）し、確認済みメールアドレスの現在のadminロールをFirestoreで確認する。リクエストが指定する操作ユーザーやロールは信用しない。
 
