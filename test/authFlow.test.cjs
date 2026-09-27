@@ -17,7 +17,7 @@ function load(file, mocks) {
   }).outputText;
   const module = { exports: {} };
   new Function('require', 'module', 'exports', 'sessionStorage', code)(
-    (id) => (id in mocks ? mocks[id] : require(id)),
+    (id) => (id in mocks ? mocks[id] : id === '@/components/AuthAccessGate' ? { __esModule: true, default: ({ children }) => children } : require(id)),
     module,
     module.exports,
     mocks.sessionStorage || { getItem: () => null, removeItem: () => {} }
@@ -50,7 +50,7 @@ function hooks() {
   };
 }
 
-test('root displays only Google sign-in and redirects every authenticated role to dashboard', async () => {
+test('root inside the admission gate redirects only admin and never mounts non-admin login content', async () => {
   for (const role of [null, 'admin', 'viewer', 'guest']) {
     const h = hooks(),
       redirects = [];
@@ -67,9 +67,15 @@ test('root displays only Google sign-in and redirects every authenticated role t
         }),
       },
     }).default;
-    const html = renderToStaticMarkup(Page());
+    const Gate = load('src/components/AuthAccessGate.tsx', {
+      react: h.react,
+      'next/navigation': { useRouter: () => ({ replace: (url) => redirects.push(url) }) },
+      '@/context/AuthContext': { useAuth: () => ({ user: role ? { role } : null, loading: false }) },
+      '@/utils/roles': { ROLES: { ADMIN: 'admin' } },
+    }).default;
+    const html = renderToStaticMarkup(Gate({ children: React.createElement(Page) }));
     h.effects.forEach((effect) => effect());
-    assert.deepEqual(redirects, role ? ['/dashboard'] : []);
+    assert.deepEqual(redirects, role === 'admin' ? ['/dashboard'] : []);
     assert.equal(html.includes('Googleでログイン'), role === null);
     assert.equal(html.includes('ゲストとして'), false);
   }
@@ -83,8 +89,75 @@ test('legacy login redirects to root', () => {
   assert.deepEqual(urls, ['/']);
 });
 
-test('auth restoration retains registered and fallback roles, rejects retired anonymous sessions', async () => {
-  for (const role of ['admin', 'viewer', null, 'anonymous']) {
+test('shared admission gate hides every descendant during loading and for all non-admin roles', () => {
+  for (const loading of [true, false]) {
+    for (const role of [null, 'admin', 'viewer', 'guest', undefined]) {
+      const h = hooks();
+      const Gate = load('src/components/AuthAccessGate.tsx', {
+        react: h.react,
+        'next/navigation': { useRouter: () => ({ replace() { throw new Error('unexpected redirect'); } }) },
+        '@/context/AuthContext': { useAuth: () => ({ user: role === null ? null : { role }, loading }) },
+        '@/utils/roles': { ROLES: { ADMIN: 'admin' } },
+      }).default;
+      const html = renderToStaticMarkup(Gate({ children: React.createElement('div', null, 'PROTECTED CONTENT') }));
+      assert.equal(html.includes('PROTECTED CONTENT'), !loading && (role === null || role === 'admin'));
+      assert.equal(html.includes('現在、このサービスは管理者のみ利用できます。'), !loading && role !== null && role !== 'admin');
+    }
+  }
+});
+
+test('denial dialog waits for OK, prevents dismissal and duplicate logout, navigates only after success', async () => {
+  const h = hooks(), redirects = [];
+  let signOuts = 0, resolveLogout;
+  const Gate = load('src/components/AuthAccessGate.tsx', {
+    react: h.react,
+    'next/navigation': { useRouter: () => ({ replace: (url) => redirects.push(url) }) },
+    '@/context/AuthContext': { useAuth: () => ({ user: { role: 'viewer' }, loading: false,
+      logout: () => { signOuts++; return new Promise((resolve) => { resolveLogout = resolve; }); } }) },
+    '@/utils/roles': { ROLES: { ADMIN: 'admin' } },
+  }).default;
+  const denial = Gate({ children: null });
+  const tree = denial.type();
+  const dialog = tree.props.children;
+  let prevented = false;
+  dialog.props.onCancel({ preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  h.effects.forEach((effect) => effect());
+  assert.equal(signOuts, 0);
+  const button = dialog.props.children.find((child) => child?.type === 'button');
+  button.props.onClick();
+  button.props.onClick();
+  assert.equal(signOuts, 1);
+  assert.deepEqual(redirects, []);
+  resolveLogout();
+  await new Promise(setImmediate);
+  assert.deepEqual(redirects, ['/']);
+});
+
+test('failed logout keeps denial in place and allows an explicit retry', async () => {
+  const h = hooks();
+  let attempts = 0;
+  const Gate = load('src/components/AuthAccessGate.tsx', {
+    react: h.react,
+    'next/navigation': { useRouter: () => ({ replace() { throw new Error('must not navigate'); } }) },
+    '@/context/AuthContext': { useAuth: () => ({ user: { role: 'guest' }, loading: false,
+      logout: async () => { attempts++; throw new Error('offline'); } }) },
+    '@/utils/roles': { ROLES: { ADMIN: 'admin' } },
+  }).default;
+  const denial = Gate({ children: null });
+  const dialog = denial.type().props.children;
+  const button = dialog.props.children.find((child) => child?.type === 'button');
+  button.props.onClick();
+  await new Promise(setImmediate);
+  assert.match(h.state[1], /ログアウトできませんでした/);
+  assert.equal(h.state[0], false);
+  button.props.onClick();
+  await new Promise(setImmediate);
+  assert.equal(attempts, 2);
+});
+
+test('auth restoration resolves roles without signing out before acknowledgement', async () => {
+  for (const role of ['admin', 'viewer', 'guest', null, 'anonymous', 'failure']) {
     const h = hooks();
     let listener,
       signOuts = 0,
@@ -106,6 +179,7 @@ test('auth restoration retains registered and fallback roles, rejects retired an
         doc: () => ({}),
         getDoc: async () => {
           reads++;
+          if (role === 'failure') throw new Error('unavailable');
           return { exists: () => role !== null, data: () => ({ role }) };
         },
       },
@@ -128,16 +202,67 @@ test('auth restoration retains registered and fallback roles, rejects retired an
       isAnonymous: role === 'anonymous',
     });
     assert.equal(h.state[1], false);
-    if (role === 'anonymous') {
-      assert.equal(h.state[0], null);
-      assert.equal(signOuts, 1);
-      assert.equal(clears, 1);
-      assert.equal(reads, 0);
-    } else {
-      assert.equal(h.state[0].role, role ?? 'guest');
-      assert.equal(signOuts, 0);
-    }
+    assert.equal(h.state[0].role, ['admin', 'viewer'].includes(role) ? role : 'guest');
+    assert.equal(signOuts, 0);
+    assert.equal(clears, 0);
+    assert.equal(reads, role === 'anonymous' ? 0 : 1);
   }
+});
+
+test('a stale role read cannot restore an account after signout or overwrite a newer session', async () => {
+  const h = hooks();
+  let listener;
+  const reads = [];
+  const gate = () => null;
+  const { AuthProvider } = load('src/context/AuthContext.tsx', {
+    react: h.react,
+    '@/components/AuthAccessGate': { __esModule: true, default: gate },
+    'firebase/auth': { onAuthStateChanged: (_, callback) => { listener = callback; return () => {}; } },
+    '@/lib/firebase': { auth: {}, db: {} },
+    '@/lib/previewFirestore': { doc: () => ({}), getDoc: () => new Promise((resolve) => reads.push(resolve)) },
+    '@/utils/roles': { ROLES: { ADMIN: 'admin', VIEWER: 'viewer', GUEST: 'guest' } },
+  });
+  const tree = AuthProvider({ children: 'APP SHELL' });
+  assert.equal(tree.props.children.type, gate);
+  assert.equal(tree.props.children.props.children, 'APP SHELL');
+  h.effects.forEach((effect) => effect());
+  const first = listener({ uid: 'old', email: 'old@example.test' });
+  assert.equal(h.state[1], true);
+  assert.equal(h.state[0], null);
+  await listener(null);
+  reads.shift()({ exists: () => true, data: () => ({ role: 'admin' }) });
+  await first;
+  assert.equal(h.state[0], null);
+  const second = listener({ uid: 'old', email: 'old@example.test' });
+  const third = listener({ uid: 'new', email: 'new@example.test' });
+  reads[1]({ exists: () => true, data: () => ({ role: 'viewer' }) });
+  await third;
+  reads[0]({ exists: () => true, data: () => ({ role: 'admin' }) });
+  await second;
+  assert.equal(h.state[0].uid, 'new');
+  assert.equal(h.state[0].role, 'viewer');
+  assert.equal(h.state[1], false);
+});
+
+test('provider logout waits for Firebase signOut before clearing the application session', async () => {
+  const h = hooks(), cleared = [];
+  let finish, calls = 0;
+  const { AuthProvider } = load('src/context/AuthContext.tsx', {
+    react: h.react,
+    'firebase/auth': { signOut: () => { calls++; return new Promise((resolve) => { finish = resolve; }); } },
+    '@/lib/firebase': { auth: {}, db: {} },
+    '@/lib/previewFirestore': {},
+    '@/utils/roles': { ROLES: { ADMIN: 'admin', VIEWER: 'viewer', GUEST: 'guest' } },
+    sessionStorage: { removeItem: (key) => cleared.push(key) },
+  });
+  const tree = AuthProvider({ children: null });
+  const pending = tree.props.value.logout();
+  assert.equal(calls, 1);
+  assert.deepEqual(cleared, []);
+  finish();
+  await pending;
+  assert.deepEqual(cleared, ['googleAccessToken']);
+  assert.equal(h.state[0], null);
 });
 
 test('existing role gates keep guest gallery access and restrict dashboard/admin', () => {

@@ -13,6 +13,7 @@ import { doc, getDoc, onSnapshot } from '@/lib/previewFirestore';
 import { auth, googleProvider, db, createGoogleProvider } from '@/lib/firebase';
 import { User } from '@/types';
 import { ROLES, type UserRole } from '@/utils/roles';
+import AuthAccessGate from '@/components/AuthAccessGate';
 
 interface AuthContextType {
   user: User | null;
@@ -48,16 +49,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (roleDoc.exists()) {
         const role = roleDoc.data().role;
         return role === ROLES.ADMIN || role === ROLES.VIEWER ? role : ROLES.GUEST;
-      }
-
-      if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_FIRESTORE_EMULATOR === 'true') {
-        const { setDoc } = await import('@/lib/previewFirestore');
-        await setDoc(doc(db, 'userRoles', email), {
-          role: ROLES.ADMIN,
-          createdAt: new Date()
-        });
-        console.log(`Auto-created admin role for ${email} in development mode`);
-        return ROLES.ADMIN;
       }
 
       console.warn(`No role found for ${email}. Defaulting to guest.`);
@@ -189,26 +180,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    let generation = 0;
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
-      // Retired anonymous sessions must not become application guest users.
-      if (firebaseUser?.isAnonymous) {
-        setUser(null);
-        sessionStorage.removeItem('googleAccessToken');
-        try {
-          await signOut(auth);
-        } catch (error) {
-          console.error('Error clearing retired anonymous session:', error);
-        }
-        setLoading(false);
-        return;
-      }
-      if (firebaseUser && firebaseUser.email) {
-        const role = await getUserRole(firebaseUser.email);
+      const currentGeneration = ++generation;
+      setLoading(true);
+      setUser(null);
+      if (firebaseUser) {
+        const role = firebaseUser.isAnonymous ? ROLES.GUEST : await getUserRole(firebaseUser.email);
+        if (currentGeneration !== generation) return;
         const token = sessionStorage.getItem('googleAccessToken') || undefined;
 
         const userData: User = {
           uid: firebaseUser.uid,
-          email: firebaseUser.email,
+          email: firebaseUser.email || '',
           displayName: firebaseUser.displayName || '',
           photoURL: firebaseUser.photoURL || undefined,
           role,
@@ -222,7 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => { generation++; unsubscribe(); };
   }, []);
 
   const value = {
@@ -236,7 +220,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider value={value}>
-      {children}
+      <AuthAccessGate>{children}</AuthAccessGate>
     </AuthContext.Provider>
   );
 };

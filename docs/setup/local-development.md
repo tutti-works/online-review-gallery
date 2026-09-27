@@ -76,11 +76,11 @@ npm run dev
 
 ## 5. 初期ユーザーの作成
 
-開発環境では、初回ログイン時に自動的に`admin`ロールが付与されます。
+暫定admin-only対応（Issue #22）により、開発Emulatorでも初回ログイン時の自動admin付与は行いません。
 
-1. `http://localhost:3000` にアクセス
-2. Googleアカウントでサインイン
-3. 自動的に管理者権限が付与されます
+1. ローカルFirestore Emulatorの `userRoles/{ログインするメールアドレス}` に `role: 'admin'` を明示的に用意する（本番データは変更しない）。
+2. `http://localhost:3000` にアクセスし、用意したアカウントでサインインする。
+3. admin以外は案内ダイアログが表示され、OK後にログアウトする。詳細は[管理者管理](../features/admin-management.md#暫定admin-onlyログインissue-22)を参照。
 
 ## トラブルシューティング
 
