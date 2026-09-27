@@ -1,7 +1,7 @@
 # インポート機能仕様書
 
 ✅ **実装完了日**: 2025-11-06
-📝 **ステータス**: 本番環境デプロイ済み
+📝 **現在仕様の補足**: 2026-09-27のmainでは共通admin-only制限を適用。2025年のstatus導入仕様を基礎に、学生キー・Task・集計は [Issue #8の実装](../implementation/import-idempotency.md)、開始応答と監視は [背景インポート](BACKGROUND_IMPORT.md) を参照。
 📄 **機能ID**: F-02-07, F-02-08, F-02-09
 
 > **2026-09-22 認証更新:** Functions の `Authorization` は Firebase ID token 専用とする。Google Classroom / Drive の OAuth access token は、Cloud Functions に除去される予約済み `X-Google-*` を避けて `X-Classroom-OAuth-Token` で別送し、本文の email は認可に使用しない。`getImportStatus` を含む管理系 endpoint は Firebase ID token と admin role を必須とする。
@@ -29,7 +29,7 @@ await fetch(`${functionsBaseUrl}/importClassroomSubmissions`, {
 - Firebase ID token: 呼出者本人の検証と admin 認可に使用する。
 - Google OAuth token: Classroom / Drive API の呼出しだけに使用する。
 - `userEmail` を request body / query で送っても認可根拠にはしない。
-- `getImportStatus` は Firebase ID token を付け、UI 用の進捗4項目だけを受け取る。
+- `getImportStatus` は Firebase ID token を付け、UI用の状態・進捗と提出単位の集計を受け取る。OAuth tokenや内部エラー詳細は返さない。
 
 ### 1.1. 機能の目的
 
@@ -477,7 +477,7 @@ export interface ImportJob {
 
 **重要な変更**:
 - `existingArtworkId` をタスクペイロードに追加
-- `overwriteCount` を `ImportJob` に記録
+- `overwrittenCount` を `ImportJob` に記録
 
 ### 4.2. 未提出学生プレースホルダー生成
 
@@ -507,29 +507,7 @@ export interface ImportJob {
 
 ### 4.4. ドキュメント上書き処理
 
-**実装ファイル**: `functions/src/fileProcessor.ts`
-
-**処理フロー**:
-1. `existingArtworkId` があれば既存ドキュメント参照を取得
-2. `set({ merge: true })` で上書き
-3. 新規作品の場合のみ `artworkCount` を増加
-
-**重要な実装**:
-```typescript
-const artworkRef = existingArtworkId
-  ? db.collection('artworks').doc(existingArtworkId)
-  : db.collection('artworks').doc();
-
-await artworkRef.set(artworkData, { merge: true });
-
-if (!existingArtworkId) {
-  await db.collection('galleries').doc(galleryId).update({
-    artworkCount: FieldValue.increment(1),
-  });
-}
-```
-
----
+新規ジョブでは初期化時にartwork IDを確定し、既存not_submitted／error作品はIDを再利用します。作品保存・作品数・提出終端・ジョブ集計をFirestore transactionで更新します。処理中の二重実行、後段失敗時の生成画像補償削除、旧ジョブ互換経路の詳細は [現在の実装](../implementation/import-idempotency.md) を参照してください。旧来の個別set／increment例を新規ジョブに転用しないでください。
 
 ## 5. FAQ
 
@@ -543,7 +521,7 @@ A: ✅ **2025-11-20実装**: 再インポート時に、`not_submitted` 作品�
 
 ### Q3: エラー作品に対して、いいねやコメントはできますか？
 
-A: 現在の仕様では、エラー作品にはいいね・コメント・ラベル機能を表示しません。将来的な拡張で、全作品に対してフィードバック可能にする予定です。
+A: 現在の仕様では、エラー作品にはいいね・コメント・ラベル機能を表示しません。全作品へのフィードバック拡張は現在の要件に含めません。
 
 ### Q4: 処理エラー（メモリ不足等）で失敗した作品は、エラー作品として扱われますか？
 
@@ -561,7 +539,7 @@ A: 現在の `studentsubmissions.students.readonly` スコープで、割り当�
 - [データマイグレーション](../implementation/data-migration.md) - Artwork.status マイグレーション
 - [テストシナリオ](../TESTING.md) - 再インポート機能のテスト
 - [背景インポート機能](BACKGROUND_IMPORT.md) - インポート処理フロー全体
-- [要件定義](../requirements.md#32-データインポート機能-f-02) - F-02全体の要件
+- [要件定義](../requirements.md#インポートf-02) - F-02全体の要件
 
 ---
 

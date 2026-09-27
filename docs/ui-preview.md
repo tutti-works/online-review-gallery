@@ -7,6 +7,6 @@
 - 作品画像は、ログイン中のFirebase IDトークンをローカルのGET専用API経由でStorageへ送って取得します。サービスアカウントは使いません。Storage Rulesでアクセスを判定します。
 - プレビューではFirestore・Storageの保存、削除、インポートや同期へのPOSTを停止します。Firestoreはメモリーキャッシュを使います。
 - 通常の開発は `npm.cmd run dev`。プレビューAPIは通常開発・本番で404になります。
-- 開発時の管理者ロール自動作成はFirestoreエミュレーター利用時のみです。
+- 暫定admin-only制限が適用されるため、登録済みadminでログインします。Emulatorを含め、管理者ロールの自動作成はありません。[管理者管理](features/admin-management.md)を参照してください。
 
 保護の確認: `node --test test/localPreview.test.cjs`

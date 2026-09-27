@@ -1,5 +1,7 @@
 # 生成SSRのsharp解消調査（Issue #20 / PR #21）
 
+> 調査時点の記録です。件数・バージョン・検証結果は本文の対象と日付に限定されます。現在の判断と再検討の入口は [セキュリティ索引](README.md) を参照してください。
+
 調査日: 2026-09-27。対象: `codex/issue20-next15-ssr` / `9564ce2` の既存生成物と公開メタデータ・ソース。
 
 関連: [Issue #20](https://github.com/tutti-works/online-review-gallery/issues/20)、[PR #21（未mergeで終了）](https://github.com/tutti-works/online-review-gallery/pull/21)、[Next.js 15移行・検証記録](next15-hosting-issue20.md)、[Issueの調査報告](https://github.com/tutti-works/online-review-gallery/issues/20#issuecomment-5851026391)。

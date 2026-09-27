@@ -1,5 +1,7 @@
 # CI導入時の警告棚卸し（Issue #17、2026-09-27）
 
+> 歴史的スナップショット。警告原文・件数・検証結果・未完了表記は各作業時点のものです。現在のCI実行範囲は [TESTING](TESTING.md)、依存リスクは [セキュリティ索引](security/README.md) を参照してください。
+
 ## 後続調査の結論（Issue #20 / PR #21、2026-09-27）
 
 Next.js 15.5.26への移行検証自体は成功したが、Firebase framework-aware Hostingの公式adapterが生成SSRへ `sharp 0.33.5` を導入するため本番反映を見送った。現行adapterでは安全に解消できず、調査結果をmainの文書へ記録してIssue #20とPR #21を終了する。PR #21は未mergeでCloseし、実装・依存・設定変更はmainへ取り込まない。main / 本番のNext.js 14系は維持し、既知リスクは未解消。
@@ -9,7 +11,7 @@ Firebase公式adapterが `sharp 0.35.4+` を許容する、またはNext向け�
 [移行検証記録](security/next15-hosting-issue20.md) / [生成SSR sharpの依存経路・再検討条件](security/generated-ssr-sharp-issue20.md)。以下は元の作業時点の記録を維持する。
 
 
-## 今修正する: Hooks警告2件
+## Issue #17で解消済み: Hooks警告2件
 
 原文（両ファイル共通）:
 
@@ -45,7 +47,7 @@ package.json indicates an outdated version of firebase-functions. Please upgrade
 
 発生元は `firebase-tools/lib/deploy/functions/runtimes/node/versioning.js`。直前のHostingデプロイで、自動生成 `.firebase/online-review-gallery/functions/package.json` の `firebase-functions: ^6.0.1` に対して発生しました。生成物はCLIにより再作成されるため、そこへの手修正や通常の `functions/package.json` 更新で解決するものではありません。
 
-CIにはデプロイ処理がなく、この警告は通常のCIでは発生しません。Firebase CLIの生成テンプレートとSDK互換性を調査する別の作業として扱います。対応時はNode.js 22・SSR設定の維持、ローカルbuild、承認後のHostingのみの反映とSSRのACTIVE確認が必要です。今回はCLI・SDK・本番ランタイムを変更しません。別Issueの起票は未実施です。
+CIにはデプロイ処理がなく、この警告は通常のCIでは発生しません。Firebase CLIの生成テンプレートとSDK互換性を調査する別の作業として扱います。対応時はNode.js 22・SSR設定の維持、ローカルbuild、承認後のHostingのみの反映とSSRのACTIVE確認が必要です。今回はCLI・SDK・本番ランタイムを変更しません。この棚卸し時点では別Issueの起票は未実施でした。後続のIssue #19／#20の判断は冒頭のリンク先を参照してください。
 
 ## 既知警告として残す: Node.jsのテスト実行
 
@@ -79,4 +81,4 @@ CIのlintは `--max-warnings=0` で失敗させます。build・Node・npmの通
 
 Node.js 22.16.0で `npm ci --no-audit --no-fund`、typecheck、lint（警告0件）、軽量テスト16件が成功しました。workflowのダミーFirebase環境変数でNext.js buildも成功しています。初回buildはサンドボックスのGoogle Fonts通信制限で失敗し、通信許可後の再実行で成功しました。YAMLの構文とイベント・権限・ステップ構成も確認済みです。
 
-GitHub上のCI実行とIssueへの結果投稿は、push/PR後に実施する未完了項目です。本番変更・デプロイは実施していません。
+この導入時点ではGitHub上のCI実行とIssueへの結果投稿は未実施でした。現在のCI結果は対象コミットのActionsを確認してください。本番変更・デプロイは実施していません。

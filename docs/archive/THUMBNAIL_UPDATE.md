@@ -8,7 +8,7 @@
 
 ## コード変更
 
-### Functions ([functions/src/fileProcessor.ts](../functions/src/fileProcessor.ts))
+### Functions ([functions/src/fileProcessor.ts](../../functions/src/fileProcessor.ts))
 
 ```typescript
 // 変更前
@@ -19,7 +19,7 @@ const THUMBNAIL_WIDTH = 420;  // A3横向き比率
 const THUMBNAIL_HEIGHT = 297;
 ```
 
-### フロントエンド ([src/app/gallery/page.tsx](../src/app/gallery/page.tsx))
+### フロントエンド ([src/app/gallery/page.tsx](../../src/app/gallery/page.tsx))
 
 ```tsx
 // 変更前

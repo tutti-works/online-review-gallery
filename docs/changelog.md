@@ -1,7 +1,32 @@
 # 変更履歴
 
-このファイルには、オンライン講評会支援ギャラリーアプリの主要な変更履歴が記録されています。
-技術的な詳細は各専門ドキュメントを参照してください。
+mainの主要変更を記録します。現在仕様・残課題は [PLAN](../PLAN.md)、全資料は [文書索引](README.md) を参照してください。merge／commit日と本番デプロイ日は別です。旧エントリの件数・実装予定・性能は当時の記録として保持します。
+
+---
+
+## 2026-09-27: 現在仕様・運用と履歴の文書整理（Issue #24）
+
+README・PLAN・索引をmainに照合。要件を簡潔化し、データ構造と旧注釈計画・手動テストを分離。Git履歴と一致するバックアップを削除し復元元を記録。admin-only、CI、背景インポート、注釈保存先等の説明と相対リンクを修正。文書のみの変更で、本番反映は行わない。
+
+## 2026-09-27: 認証・管理者管理・CI・依存調査
+
+- ATRIAのブランド・画面を整理し、[Read-Onlyプレビュー](ui-preview.md)を導入（04409d9ほか）。
+- Issue #17: 検証専用GitHub CI導入、Hooks lint警告解消（0d2cb7b）。[現在の検証範囲](TESTING.md)。
+- 管理者の追加・削除・最終admin保護（3c32c56）、生成SSR互換のためroot firebase-adminを13.10.0に固定（c419af2）。[管理者管理](features/admin-management.md)。
+- Issue #19: 限定的な依存更新と[監査記録](security/dependency-audit-issue19.md)（d47089e）。この更新で本番デプロイは行っていない。
+- Issue #20 / PR #21: Next.js 15検証は成功したがadapterの旧sharp依存により移行を見送り。PRは未mergeで終了し、[調査結果](security/next15-hosting-issue20.md)のみmainへ記録（3d2a6a5）。Next.js 14の既知リスクは未解消。
+- Issue #22 / PR #23: 共通admin-only入場制限、案内のOK後にログアウト（547190c / 048d854）。これはmainへの実装記録で、本番反映を示すものではない。
+
+## 2026-09-25: 評価ラベル・授業アーカイブ
+
+Issue #10で赤・青・緑の色別評価と個別／合計点フィルターを改善（0ab05d1、5db4bb3）。Issue #11で授業単位のアーカイブと専用画面を追加（3a2a411）。[機能仕様](features/gallery-and-feedback.md)を参照。
+
+## 2026-09-22〜23: 認証境界・Storage・Node.js 22・インポート
+
+- Issue #4: HTTP管理APIのFirebase ID token／admin認証とGoogle OAuth tokenの分離。
+- Issue #5・#9: Functions／Cloud Run／Hosting生成SSRをNode.js 22へ移行。旧Hosting Actionsを削除。[SSRの移行記録](implementation/hosting-ssr-node22.md)。
+- Issue #6・#7: Storage非公開化とusers.jsonの追跡停止。旧Git履歴と未参照objectの判断は [PLAN](../PLAN.md) に残る。
+- Issue #8: 学生提出単位の進捗、安定ID、Task冪等化、生成画像の補償削除。[実装・2026-09-23の本番確認と制約](implementation/import-idempotency.md)。
 
 ---
 
@@ -34,7 +59,7 @@
 - 未提出学生が後日提出 → 再インポートで自動反映 ✅
 - エラー作品のファイル修正後 → 再インポートで自動反映 ✅
 
-**詳細**: [再インポート機能仕様](import-skip-and-placeholders.md#21-再インポートスキップと上書き機能-f-02-07)
+**詳細**: [再インポート機能仕様](features/import-feature.md#21-再インポートスキップと上書き機能-f-02-07)
 
 **コミット**: d0b720d
 
@@ -74,7 +99,7 @@
 
 **効果**: 同一学生の重複作品生成を防止
 
-**詳細**: [再インポート機能仕様](import-skip-and-placeholders.md#12-実装完了サマリー2025-11-06)
+**詳細**: [再インポート機能仕様](features/import-feature.md)
 
 **コミット**: 3ec79b9
 
@@ -90,7 +115,7 @@
 
 **修正**: `validTasks.length === 0` 時に明示的に `checkImportCompletion()` を呼び出し
 
-**詳細**: [再インポート機能仕様](import-skip-and-placeholders.md#12-実装完了サマリー2025-11-06)
+**詳細**: [再インポート機能仕様](features/import-feature.md)
 
 **コミット**: 88442f7
 
@@ -137,7 +162,7 @@
 - 学籍番号順ソート（メールアドレスから抽出）
 - グレープレースホルダー表示
 
-**詳細**: [再インポート機能仕様](import-skip-and-placeholders.md)
+**詳細**: [再インポート機能仕様](features/import-feature.md)
 
 **コミット**: 40ace0c
 
@@ -158,7 +183,7 @@
 - Firebase Storage（アノテーション画像保存）
 - Firestore（メタデータ保存）
 
-**詳細**: [アノテーション実装サマリー](annotation-implementation-summary.md)
+**詳細**: [アノテーション実装サマリー](features/ANNOTATION_FEATURE.md)
 
 ---
 
@@ -183,7 +208,7 @@ A3サイズ: 297mm × 420mm
 
 **メリット**: A3プロジェクター全画面表示でも鮮明
 
-**詳細**: [コストとパフォーマンス分析](COST_AND_PERFORMANCE.md#設定変更の影響)
+**詳細**: [コストとパフォーマンス分析](COST_AND_PERFORMANCE.md)
 
 ---
 
@@ -222,7 +247,7 @@ A3サイズ: 297mm × 420mm
 - 70人分のインポート: 約8-10分
 - 並列処理でスケーラブル
 
-**詳細**: [背景インポート機能](BACKGROUND_IMPORT.md)
+**詳細**: [背景インポート機能](features/BACKGROUND_IMPORT.md)
 
 ---
 
@@ -258,9 +283,9 @@ A3サイズ: 297mm × 420mm
 **関連ドキュメント**:
 - [要件定義](requirements.md) - システム要件と機能一覧
 - [コストとパフォーマンス分析](COST_AND_PERFORMANCE.md) - 料金・処理時間分析
-- [再インポート機能仕様](import-skip-and-placeholders.md) - インポート機能の詳細
-- [背景インポート機能](BACKGROUND_IMPORT.md) - インポート処理フロー
-- [アノテーション実装サマリー](annotation-implementation-summary.md) - アノテーション機能
+- [再インポート機能仕様](features/import-feature.md) - インポート機能の詳細
+- [背景インポート機能](features/BACKGROUND_IMPORT.md) - インポート処理フロー
+- [アノテーション実装サマリー](features/ANNOTATION_FEATURE.md) - アノテーション機能
 - [テストシナリオ](TESTING.md) - 主要機能のテストケース
 - [PDF処理ガイド](PDF_PROCESSING_GUIDE.md) - PDF変換の技術詳細
 

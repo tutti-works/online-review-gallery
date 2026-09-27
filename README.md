@@ -1,84 +1,59 @@
-# オンライン講評会支援ギャラリーアプリ
+# ATRIA — オンライン講評会支援ギャラリー
 
-Google Classroomの課題提出物を自動取得し、レスポンシブCSS Gridのギャラリーで表示するWebアプリケーションです。
+Google Classroomの提出物を取り込み、PDF・画像をWebPへ変換して作品を閲覧・講評するWebアプリです。
 
-## 📚 ドキュメント
+## 現在の状態
 
-詳細なドキュメントは [docs/](docs/) ディレクトリを参照してください。
+2026-09-27のmain（Issue #22 / PR #23反映後）を基準とします。本番の反映状況をこの文書更新で再検証したものではありません。
 
-- **[docs/README.md](docs/README.md)** - ドキュメント索引
-- **[docs/requirements.md](docs/requirements.md)** - 要件定義書
-- **[docs/setup/local-development.md](docs/setup/local-development.md)** - ローカル開発環境セットアップ
-- **[docs/setup/cloud-run-deployment.md](docs/setup/cloud-run-deployment.md)** - Cloud Runデプロイガイド
-- **[docs/setup/production-deployment.md](docs/setup/production-deployment.md)** - 本番環境デプロイガイド
-- **[docs/changelog.md](docs/changelog.md)** - 変更履歴
-- **[PLAN.md](PLAN.md)** - 現在の残課題と完了済みIssue
-- **[docs/audit-2026-09-22.md](docs/audit-2026-09-22.md)** - 2026-09-22時点の再監査記録
+- Googleログインの入口は `/`、adminは `/dashboard` へ進みます。旧 `/login` は `/` に転送します。匿名ログインは提供しません。
+- **暫定admin-only運用**です。viewer・guest・ロール未登録・ロール取得失敗時は利用制限案内を表示し、OK後にログアウトします。Showcaseにも適用します。API・Rulesの権限とアプリの入場制限は別です。
+- Next.js 14 / React 18 / Node.js 22を使用します。Next.js 15移行はHosting adapterの依存制約で見送り、既知の依存リスクは残っています。
+- GitHub Actionsは検証専用です。mainへのpushで本番デプロイは行いません。
 
-## 🚀 クイックスタート
+残課題と判断事項は [PLAN](PLAN.md)、機能・運用・履歴の入口は [ドキュメント索引](docs/README.md) を参照してください。
 
-### 1. リポジトリをクローン
+## 開発を始める
+
+Node.js 22を用意し、依存をインストールします（Windowsでは `npm.cmd` を使用できます）。
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/tutti-works/online-review-gallery.git
 cd online-review-gallery
+npm ci
+npm --prefix functions ci
 ```
 
-### 2. 依存関係をインストール
+続いて [ローカル開発ガイド](docs/setup/local-development.md) に従い、環境変数・Emulator・検証用adminを設定します。Emulatorでもadminの自動登録はしません。
 
 ```bash
-npm install
-cd functions && npm install && cd ..
-```
-
-### 3. 環境変数を設定
-
-`.env.local`ファイルを作成し、Firebase設定を追加します。
-
-詳細は [docs/setup/local-development.md](docs/setup/local-development.md) を参照してください。
-
-### 4. Firebase Emulatorを起動
-
-```bash
-firebase emulators:start
-```
-
-### 5. 開発サーバーを起動
-
-別のターミナルで：
-
-```bash
+npm run emulators
+# 別ターミナル
 npm run dev
 ```
 
-アプリケーションが `http://localhost:3000` で起動します。
+本番接続情報を使って画面を確認する場合は、書き込みを停止する [UIプレビュー](docs/ui-preview.md) を使用してください。通常の開発起動はRead-Onlyではありません。
 
-## 🛠 技術スタック
+## 主な機能
 
-- **フロントエンド**: Next.js 14, React, TypeScript, Tailwind CSS
-- **バックエンド**: Firebase Functions (Gen2), Cloud Run
-- **データベース**: Cloud Firestore
-- **ストレージ**: Firebase Storage
-- **認証**: Firebase Authentication (Google Sign-In)。`/` でログインし `/dashboard` へ遷移（旧 `/login` は `/` へリダイレクト）。匿名ログインは提供しません。
-- **ホスティング**: Firebase Hosting
-- **外部API**: Google Classroom API, Google Drive API
+- Classroom import、学生単位の複数ファイル統合、再インポート時のスキップ・上書き、未提出・エラー表示
+- CSS Gridによる作品一覧、複数ページ表示、ズーム・パン、並び替え
+- いいね・コメント・注釈、赤・青・緑の評価ラベルと個別／合計点フィルター
+- 授業単位のアーカイブと専用 `/archive` 画面
+- 管理者の追加・削除、最後の管理者の保護
+- Showcaseの作品選定・手動同期・展示表示（学内ドメイン制限あり）
 
-## 📦 主な機能
+詳しくは [現在の要件・仕様](docs/requirements.md) と [管理者管理](docs/features/admin-management.md) を参照してください。
 
-- ✅ Google Classroomからの自動データインポート
-- ✅ レスポンシブCSS Gridギャラリー表示
-- ✅ PDF・画像ファイルのWebP変換（高品質・軽量化）
-- ✅ 複数ファイル提出の統合処理
-- ✅ いいね・コメント機能
-- ✅ ラベル機能（個別・合計フィルタリング対応予定）
-- ✅ 作品の拡大表示・ズーム・パン機能
-- ✅ ギャラリー別データ管理
-- ✅ 授業単位のアーカイブ表示切り替え
+## 構成と運用
 
-## 📄 ライセンス
+フロントエンドはNext.js・TypeScript・Tailwind CSS・Konva、バックエンドはFirebase Functions Gen2・Cloud Run・Cloud Tasksです。Firestoreと非公開のFirebase Storageを使用し、Firebase Authenticationで認証します。Firebase framework-aware HostingがSSR Functionを生成します。
 
-このプロジェクトは教育目的で開発されています。
+- [テストとCI](docs/TESTING.md)
+- [本番デプロイ](docs/setup/production-deployment.md)（承認後に対象を限定して手動実行）
+- [セキュリティ調査の入口](docs/security/README.md)
+- [変更履歴](docs/changelog.md)
 
-## 🙋 サポート
+## ライセンス・問い合わせ
 
-質問や問題がある場合は、[Issues](https://github.com/tutti-works/online-review-gallery/issues)で報告してください。
+教育目的で開発しています。質問・不具合は [GitHub Issues](https://github.com/tutti-works/online-review-gallery/issues) へ報告してください。

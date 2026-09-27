@@ -1123,8 +1123,8 @@ export const ImageCacheMonitor = () => {
 
 ### プロジェクトドキュメント
 
-- [注釈機能実装サマリー](./annotation-implementation-summary.md)
-- [要件定義書](./requirements.md)
+- [注釈機能実装サマリー](../features/ANNOTATION_FEATURE.md)
+- [要件定義書](../requirements.md)
 
 ---
 

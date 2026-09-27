@@ -1,49 +1,27 @@
-# アーカイブドキュメント
+# アーカイブ・履歴資料
 
-このディレクトリには、履歴的価値はあるが現在は参照頻度の低いドキュメントが保管されています。
+このディレクトリの計画・設定値・実装済み表記・見積もりは当時の記録です。現在仕様は [requirements](../requirements.md)、次の作業は [PLAN](../../PLAN.md)、全体の入口は [文書索引](../README.md) を参照してください。
 
----
+## 保管資料
 
-## 📁 保管ドキュメント
+| 資料 | 用途 |
+|---|---|
+| [注釈の旧実装計画](annotation-roadmap-2025.md) | 旧要件書の第10章を分離。2025年の技術選定・拡張案・工数。 |
+| [注釈の性能最適化計画](phase3-performance-optimization-plan.md) | 2025-11-03の設計・実装記録。現在の注釈は [機能仕様](../features/ANNOTATION_FEATURE.md) 参照。 |
+| [旧手動テストシナリオ](manual-test-scenarios-2025.md) | 2025-11-20版TESTINGのケース。現在の [テストとCI](../TESTING.md) とは分離。 |
+| [A3表示変更](A3_LANDSCAPE_UPDATE.md) | 2025-10-30の画像表示変更記録。 |
+| [サムネイル変更](THUMBNAIL_UPDATE.md) | 当時の生成サイズ・表示変更。 |
+| [Chrome DevTools MCP](chrome-devtools-mcp.md) | 当時のツール導入資料。現行ツール設定や操作許可を定めるものではない。 |
 
-### 設定変更履歴
-- **A3_LANDSCAPE_UPDATE.md** - A3横向き全画面表示対応（2025-10-30実装）
-- **THUMBNAIL_UPDATE.md** - サムネイルサイズ変更（実装済み）
+## 旧要件書バックアップの整理（Issue #24）
 
-**現在の参照先**: [COST_AND_PERFORMANCE.md](../COST_AND_PERFORMANCE.md#設定変更の影響)
+旧 `docs/requirements.md.backup` は、2025年の文書分割コミット `49e8f0e` で追加された約59KBのコピーでした。内容を比較し、同コミットの親にある `docs/requirements.md` と全文一致（改行コードを正規化して比較）することを確認しました。実行時参照はなく、単なるバックアップのためdocs直下から削除しました。
 
----
+復元元はGit履歴です。内容確認には次の読み取りコマンドを使えます。
 
-### アノテーション機能開発
-- **phase3-performance-optimization-plan.md** - フェーズ3詳細設計書（2025-11-03実装完了）
+```bash
+git show 49e8f0e:docs/requirements.md.backup
+git show 49e8f0e^:docs/requirements.md
+```
 
-**現在の参照先**: [ANNOTATION_FEATURE.md](../ANNOTATION_FEATURE.md)
-
----
-
-### 開発ツール
-- **chrome-devtools-mcp.md** - Chrome DevTools MCP導入ガイド
-
-**説明**: Claude CodeのChrome DevTools MCP統合に関する汎用ガイド。このプロジェクト固有の内容ではなく、Claude Code利用全般の参考資料。
-
----
-
-## 📌 アーカイブポリシー
-
-以下の条件を満たすドキュメントをアーカイブします：
-
-1. **実装完了済み**: 機能が実装済みで、最新情報は別ドキュメントに統合済み
-2. **参照頻度低**: 日常的な開発で参照する必要がない
-3. **履歴的価値**: 設計判断の経緯や過去の実装詳細として保存価値がある
-
-**削除対象外**: アーカイブドキュメントは削除せず、履歴として保管します。
-
----
-
-## 🔗 関連ドキュメント
-
-最新の情報は以下を参照してください：
-
-- [コアドキュメント](../README.md#コアドキュメント)
-- [機能仕様](../README.md#機能仕様)
-- [技術分析](../README.md#技術分析)
+旧要件書全体をもう1部保管せず、読み続ける価値のある注釈計画を上記資料に分離しています。監査スナップショットは削除せず [セキュリティ索引](../security/README.md) と [2026-09-22監査](../audit-2026-09-22.md) から辿れます。

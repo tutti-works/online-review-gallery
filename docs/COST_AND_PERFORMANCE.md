@@ -1,5 +1,7 @@
 # コストとパフォーマンス分析
 
+> 2025年の条件に基づく分析・試算です。料金・性能・削減率・構成は現在値を保証しません。現在の仕様は [requirements](requirements.md)、残課題は [PLAN](../PLAN.md) を参照してください。
+
 **最終更新**: 2025-11-20
 **対象構成**: 2400px画像、200 DPI PDF、20MB上限
 
@@ -425,7 +427,7 @@ PDF_DPI = 200
 ## 🔗 関連ドキュメント
 
 - [変更履歴](changelog.md) - Firestore最適化の詳細
-- [背景インポート機能](BACKGROUND_IMPORT.md) - 処理フローの詳細
+- [背景インポート機能](features/BACKGROUND_IMPORT.md) - 処理フローの詳細
 - [PDF処理ガイド](PDF_PROCESSING_GUIDE.md) - PDF変換の技術詳細
 - [要件定義](requirements.md) - システム要件
 
