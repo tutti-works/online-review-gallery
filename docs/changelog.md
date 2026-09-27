@@ -15,7 +15,7 @@ README・PLAN・索引をmainに照合。要件を簡潔化し、データ構造
 - 管理者の追加・削除・最終admin保護（3c32c56）、生成SSR互換のためroot firebase-adminを13.10.0に固定（c419af2）。[管理者管理](features/admin-management.md)。
 - Issue #19: 限定的な依存更新と[監査記録](security/dependency-audit-issue19.md)（d47089e）。この更新で本番デプロイは行っていない。
 - Issue #20 / PR #21: Next.js 15検証は成功したがadapterの旧sharp依存により移行を見送り。PRは未mergeで終了し、[調査結果](security/next15-hosting-issue20.md)のみmainへ記録（3d2a6a5）。Next.js 14の既知リスクは未解消。
-- Issue #22 / PR #23: 共通admin-only入場制限、案内のOK後にログアウト（547190c / 048d854）。これはmainへの実装記録で、本番反映を示すものではない。
+- Issue #22 / PR #23: 共通admin-only入場制限、案内のOK後にログアウト（547190c / 048d854）。2026-09-27にHosting / 生成SSRへ本番反映済みで、ユーザーによる本番動作確認も完了（ユーザー報告）。
 
 ## 2026-09-25: 評価ラベル・授業アーカイブ
 
