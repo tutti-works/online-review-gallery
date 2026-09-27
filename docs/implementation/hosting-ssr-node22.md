@@ -1,5 +1,14 @@
 # Issue #9: Hosting 生成 SSR Function の Node.js 22 化
 
+## 後続調査の結論（Issue #20 / PR #21、2026-09-27）
+
+Next.js 15.5.26への移行検証自体は成功したが、Firebase framework-aware Hostingの公式adapterが生成SSRへ `sharp 0.33.5` を導入するため本番反映を見送った。現行adapterでは安全に解消できず、調査結果をmainの文書へ記録してIssue #20とPR #21を終了する。PR #21は未mergeでCloseし、実装・依存・設定変更はmainへ取り込まない。main / 本番のNext.js 14系は維持し、既知リスクは未解消。
+
+Firebase公式adapterが `sharp 0.35.4+` を許容する、またはNext向け旧sharp依存が解消された時点で、新しいIssueを作って再検討する。旧ブランチは再利用せず、その時点のmainから新しいブランチを作る。
+
+[移行検証記録](../security/next15-hosting-issue20.md) / [生成SSR sharpの依存経路・再検討条件](../security/generated-ssr-sharp-issue20.md)。以下は元の作業時点の記録を維持する。
+
+
 ## runtime の決定元
 
 このリポジトリは `firebase.json` の `hosting.source: "."` と `frameworksBackend.region: "asia-northeast1"` を使う framework-aware Hosting。`functions/` は別 codebase で、同じファイルの `functions.runtime: "nodejs22"` が適用されるが、Hosting 生成 SSR Function には適用されない。
