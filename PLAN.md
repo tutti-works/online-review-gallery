@@ -8,7 +8,7 @@
 |---|---|
 | 認証・管理者 | Googleログインは `/`、adminは `/dashboard` へ。匿名ログインなし。Issue #22の共通入場制限によりShowcaseを含めadminのみ利用可能。非adminは案内のOK後にログアウト。[管理者管理](docs/features/admin-management.md)で追加・削除・最終admin保護とAPI／Rulesの境界を説明。 |
 | 講評・アーカイブ | Issue #10の赤・青・緑ラベル、個別／合計点フィルター、Issue #11の授業単位アーカイブを実装。[機能仕様](docs/features/gallery-and-feedback.md)。 |
-| インポート | Issue #4の管理API認証、#8の提出単位の状態・安定ID・冪等化を実装。#8は2026-09-23本番反映とユーザーのインポート確認を記録。[実装と制約](docs/implementation/import-idempotency.md)。入口504対策は2026-10-03にFunctions／専用queue／Hosting・生成SSRへ本番反映済み。認証付きTask配送と稼働状態を確認し、実授業インポートはユーザー確認待ち。[初期化Task化](docs/implementation/import-initialization.md)。 |
+| インポート | Issue #4の管理API認証、#8の提出単位の状態・安定ID・冪等化を実装。#8は2026-09-23本番反映とユーザーのインポート確認を記録。[実装と制約](docs/implementation/import-idempotency.md)。入口504対策は2026-10-03にFunctions／専用queue／Hosting・生成SSRへ本番反映済み。同日にユーザーの本番インポート確認も完了（ユーザー報告）。[初期化Task化](docs/implementation/import-initialization.md)。 |
 | 実行環境 | Issue #5・#9でFunctions／Cloud Run／Hosting生成SSRをNode.js 22へ移行。SSRの決定元はルート `package.json` の `engines.node`。[SSR記録](docs/implementation/hosting-ssr-node22.md)。 |
 | CI | Issue #17で検証専用CIを導入、Hooks lint警告を解消。main push／PRで型・lint（警告0）・軽量テスト・Next buildを検証。Functions・Emulator・本番確認は含まない。[テスト範囲](docs/TESTING.md)。自動デプロイなし。 |
 | 依存更新 | Issue #19で限定的なpatch/minor更新。ルート `firebase-admin` はSSR互換性のため13.10.0固定。[監査資料](docs/security/README.md)の件数は調査時点の値。 |
@@ -19,7 +19,6 @@
 
 | ID | 優先度 | 残っている作業 |
 |---|---|---|
-| IMP-TIMEOUT-01 | 本番確認待ち | 開始APIをジョブ登録・Task投入へ変更し、初期化を背景化。名簿プロフィール再利用・経過時間ログを含め、2026-10-03に本番反映済み。認証付き配送・無認証拒否・配信ファイルを確認。実授業での開始応答時間・完了・再インポートの確認が残る。[変更と制約](docs/implementation/import-initialization.md)。 |
 | IMP-PDF-01 | Medium | PDFの50ページ上限・20MB制限を、重い変換・downloadより前に判定する。 |
 | TEST-CI-01 | High | 導入済みのフロント検証CIに、Functions build/testとRulesのEmulatorテストをどう組み込むか整理し、提出進捗・再送・部分失敗の検証を拡充する。 |
 | DEPLOY-BUILD-01 | Medium | Functionsのpredeploy/buildを必須にし、未生成・古い `lib` の手動配布を防ぐ。現状 `functions` のdeployスクリプトはbuildするが、直接のFirebase CLI実行を強制保護していない。 |
@@ -30,6 +29,8 @@
 | SEC-DEPS-01 | High | Next／生成SSRの残存依存リスクを追跡。公式adapterが修正版sharpを許容する等の条件が満たされたら、その時点のmainから新Issueで再検討する。#20のCloseを修正完了と扱わない。 |
 | PRIV-REPO-01 | High・要判断 | `users.json` の旧Git履歴に残る情報の実データ性・履歴除去・対象者対応の要否を判断。[調査記録](docs/implementation/users-json-history.md)。履歴rewrite／force pushは別承認。 |
 | SEC-STORAGE-ORPHAN | 要判断 | Issue #6の本番dry-runで未参照とされた26 objectは保持した記録がある。用途・復旧可能性・現在の参照状態を再確認し、削除は別承認。[移行記録](docs/implementation/storage-privacy-migration.md)。 |
+
+IMP-TIMEOUT-01は2026-10-03に実装・本番反映・ユーザーの本番インポート確認が完了したため、未対応一覧から外しました（ユーザー報告）。所要時間の数値や個別条件の検証範囲は [反映・確認記録](docs/implementation/import-initialization.md) を参照してください。
 
 Issue #24で文書の入口・要件・背景インポート説明を整理したため、旧DOC-DRIFT-01はこの一覧から外しました。旧QA-01のHooks警告はIssue #17で対応済みです。新しいずれは個別に記録します。
 

@@ -1,6 +1,6 @@
 # バックグラウンドインポートと進捗表示
 
-更新: 2026-10-03。[インポート画面](../../src/app/admin/import/page.tsx)、[開始・Task管理](../../functions/src/importInitialization.ts)、[初期化処理](../../functions/src/importController.ts)、[進捗フック](../../src/app/gallery/hooks/useImportProgress.ts) に照合しています。504対策は本番反映済み。実授業でのインポートはユーザー確認待ちです。
+更新: 2026-10-03。[インポート画面](../../src/app/admin/import/page.tsx)、[開始・Task管理](../../functions/src/importInitialization.ts)、[初期化処理](../../functions/src/importController.ts)、[進捗フック](../../src/app/gallery/hooks/useImportProgress.ts) に照合しています。504対策は本番反映済み。同日にユーザーによる本番インポート確認も完了しました（ユーザー報告）。
 
 ## 開始から画面遷移まで
 
