@@ -35,7 +35,7 @@ Windowsでは `npm.cmd` を使用できます。
 | `npm run test:admin-users` | 管理APIの入力・認証・プレビュー拒否等。 |
 | `npm run test:admin-users:emulator` | 専用demoプロジェクトのFirestoreで本番Rules・同時更新・最終admin保護を検証。Java 21が必要。 |
 | `npm run test:storage-rules` | Auth／Firestore／Storage Emulatorで認証read・admin write、Showcaseのドメイン制限、一時ファイル拒否を検証。 |
-| `npm --prefix functions test` | FunctionsのTypeScript buildと `functions/test/*.test.js`。HTTP認証・提出状態等のユニットテスト。 |
+| `npm --prefix functions test` | FunctionsのTypeScript buildと `functions/test/*.test.js`。HTTP認証・提出状態・非同期開始／初期化Taskのユニットテスト。 |
 
 管理者管理のEmulator設定は [管理者管理](features/admin-management.md#検証)、コンテナ検証は [Cloud Run](setup/cloud-run-deployment.md) を参照してください。開発用Rulesと本番Rulesを混同せず、テスト対象の設定ファイルを確認します。
 
@@ -47,7 +47,7 @@ Windowsでは `npm.cmd` を使用できます。
 - 管理者: 追加・重複・削除、自己削除確認、最後のadmin保護。Googleアカウント自体を削除しないこと。
 - 講評: 複数ページ・作品移動、いいね、コメント、色別ラベルと合計点、注釈の描画・保存・ズーム・パン。
 - アーカイブ: 同一授業の全課題が表示区分を切り替え、通常／アーカイブの選択履歴が混ざらないこと。
-- インポート: 初回・submittedのスキップ・未提出／errorの上書きとID維持、提出単位の進捗、部分失敗・再送・作品数の整合性。入口504や強制終了は [既知の制約](implementation/import-idempotency.md) と区別する。
+- インポート: 初回・submittedのスキップ・未提出／errorの上書きとID維持、提出単位の進捗、部分失敗・再送・作品数の整合性。[初期化Task化](implementation/import-initialization.md)の本番queue／IAM・配送・所要時間はローカルのテストダブル検証と区別する。強制終了は [既知の制約](implementation/import-idempotency.md) を参照する。
 - Showcase: 選定・同期・概要画像・閲覧モード、Storage実画像の認証取得。
 
 性能確認にはファイルサイズ・ページ数・環境・所要時間を併記します。旧資料の秒数や読み取り回数を現在の合否基準・実測値として流用しません。

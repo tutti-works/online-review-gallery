@@ -166,3 +166,12 @@ test('CORS は本番 Hosting と既定ローカル開発 origin だけを許可�
   ]);
   assert.equal(ALLOWED_CORS_ORIGINS.includes('https://attacker.example'), false);
 });
+
+test('initialization progress is exposed without credentials or internal failure details', () => {
+  const status = toImportStatusResponse({ status: 'processing', initializationComplete: false,
+    accessToken: 'secret', errorMessage: 'private failure details' });
+  assert.equal(status.initializationComplete, false);
+  assert.doesNotMatch(JSON.stringify(status), /secret|private failure details/);
+  assert.equal(toImportStatusResponse({ initializationComplete: true }).initializationComplete, true);
+  assert.equal(toImportStatusResponse({}).initializationComplete, undefined);
+});

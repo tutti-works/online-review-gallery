@@ -7,6 +7,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { google } from 'googleapis';
 import { CloudTasksClient } from '@google-cloud/tasks';
 import { initializeImport, checkImportCompletion } from './importController';
+import { startImport, runImportInitialization, INITIALIZATION_TIMEOUT_SECONDS, InitializationTask } from './importInitialization';
 import { processFile } from './fileProcessor';
 import {
   ALLOWED_CORS_ORIGINS,
@@ -58,7 +59,7 @@ export const importClassroomSubmissions = onRequest(
   {
     region: 'asia-northeast1',
     memory: '1GiB', // 1GB以上のメモリ
-    timeoutSeconds: 540, // 9分
+    timeoutSeconds: 60, // ジョブ登録とキュー投入のみ
     maxInstances: 100,
     cors: ALLOWED_CORS_ORIGINS,
   },
@@ -72,28 +73,19 @@ export const importClassroomSubmissions = onRequest(
       const requester = await requireAdmin(request);
       const accessToken = requireGoogleOAuthToken(request);
 
-      // ユーザーのトークンでOAuth2クライアントを作成
-      const userAuth = new google.auth.OAuth2();
-      userAuth.setCredentials({ access_token: accessToken });
-
       const { galleryId, classroomId, assignmentId } = request.body;
 
-      if (!galleryId || !classroomId || !assignmentId) {
+      if (![galleryId, classroomId, assignmentId].every(value =>
+        typeof value === 'string' && value.trim().length > 0 && !value.includes('/'))) {
         response.status(400).json({
           error: 'Missing required parameters',
         });
         return;
       }
 
-      // インポート処理を開始（非同期）
-      const importJobId = await initializeImport(
-        galleryId,
-        classroomId,
-        assignmentId,
-        requester.email,
-        userAuth, // ユーザー自身の認証情報を使用
-        tasksClient
-      );
+      // 重い初期化はTaskに移譲。投入成功を確認してから開始応答を返す。
+      const importJobId = await startImport({ galleryId, classroomId, assignmentId,
+        userEmail: requester.email }, accessToken);
 
       response.status(200).json({
         importJobId,
@@ -107,6 +99,25 @@ export const importClassroomSubmissions = onRequest(
       });
     }
   }
+);
+
+export const initializeClassroomImport = onTaskDispatched<InitializationTask>(
+  {
+    region: 'asia-northeast1',
+    memory: '1GiB',
+    timeoutSeconds: INITIALIZATION_TIMEOUT_SECONDS,
+    concurrency: 1,
+    maxInstances: 4,
+    retryConfig: { maxAttempts: 1 },
+    rateLimits: { maxConcurrentDispatches: 4 },
+    // Leave invoker restricted to IAM-authorized service accounts (SDK default).
+  },
+  async request => runImportInitialization(request.data, async (jobId, input, accessToken) => {
+    const userAuth = new google.auth.OAuth2();
+    userAuth.setCredentials({ access_token: accessToken });
+    await initializeImport(jobId, input.galleryId, input.classroomId, input.assignmentId,
+      input.userEmail, userAuth, tasksClient);
+  }),
 );
 
 // 【第2世代】Cloud Function: 個別ファイル処理（Task Queue）

@@ -1,5 +1,7 @@
 # Issue #8: インポート提出単位の状態と再送
 
+2026-10-03補足: 入口504対策を別途実装し、Functions／専用queue／Hosting・生成SSRへ本番反映しました。[初期化Task化の反映記録](import-initialization.md)を参照してください。新しい経路での実授業インポートはユーザー確認待ちです。以下はIssue #8の本番反映記録です。
+
 2026-09-23 に Cloud Run → Firebase Functions → Hosting の順で本番反映済み。Cloud Run は `processfiletask-00027-bgh`、Functions は `importClassroomSubmissions` / `getImportStatus` を更新し、Hosting live version は `0df2374b97bcdba8`。ユーザーが本番インポートを確認し、Issue #8 は Close 済み。Task再送・部分失敗・強制終了の全条件を本番で検証済みとは扱わない。既存データの一括移行は行っていない。デプロイ前に取り残された旧 job `hidAqbU2RYqqFoElrYJV` のみ運用上 `error` へ終端した。現在の未対応課題は[PLAN](../../PLAN.md)を参照。
 
 新規 `importJobs/{jobId}` は `totalSubmissions`、`completedSubmissions`、`succeededSubmissions`、`failedSubmissions`、`failedFileCount` を持つ。`initializationComplete` になるまでは、全提出が終端してもジョブを完了にしない。`errorFiles` は旧ジョブとの互換用であり、新規ジョブの完了判定へ加算しない。既存ジョブは旧フィールドで表示する。

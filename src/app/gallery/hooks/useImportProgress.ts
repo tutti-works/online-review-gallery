@@ -18,6 +18,7 @@ export type ImportProgress = {
   succeededSubmissions?: number;
   failedSubmissions?: number;
   failedFileCount?: number;
+  initializationComplete?: boolean;
 };
 
 type UseImportProgressOptions = {
@@ -55,7 +56,8 @@ export const useImportProgress = ({
 
       const { importJobId, galleryId, startedAt } = activeImport;
       const startTime = new Date(startedAt).getTime();
-      if (Date.now() - startTime > 30 * 60 * 1000) {
+      // Initialization and conversion now both run after the start response.
+      if (Date.now() - startTime > 2 * 60 * 60 * 1000) {
         localStorage.removeItem('activeImportJob');
         return;
       }
@@ -81,12 +83,13 @@ export const useImportProgress = ({
               succeededSubmissions: data.succeededSubmissions,
               failedSubmissions: data.failedSubmissions,
               failedFileCount: data.failedFileCount,
+              initializationComplete: data.initializationComplete,
             });
 
             if (data.status === 'completed' || data.status === 'error') {
               clearInterval(checkProgress);
               localStorage.removeItem('activeImportJob');
-              setImportProgress(null);
+              if (data.status === 'completed') setImportProgress(null);
               onImportCompleted();
             }
           } else if (response.status === 404) {

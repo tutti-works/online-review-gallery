@@ -65,6 +65,7 @@
 - [主要変更履歴](changelog.md): 2026-09を含むmainの変更。デプロイ台帳とは別
 - [2026-09-22再監査](audit-2026-09-22.md): 当時のコード・本番確認・判断
 - [2026-02-08インポート障害分析](implementation/import-timeout-analysis-2026-02-08.md): 504の調査根拠
+- [インポート開始APIの504対策](implementation/import-initialization.md): 初期化Task化のローカル実装・制約・本番反映手順
 - [データマイグレーションの旧設計](implementation/data-migration.md): 2025年のstatus導入と参考スクリプト
 - [コスト・パフォーマンス分析](COST_AND_PERFORMANCE.md) / [PDF処理分析](PDF_PROCESSING_GUIDE.md): 当時の条件での試算・処理設計
 - [archive索引](archive/README.md): 注釈の過去計画、画像設定変更、旧ツール資料、バックアップの復元元

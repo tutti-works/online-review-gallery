@@ -12,12 +12,22 @@ const GalleryImportProgress = ({ importProgress }: GalleryImportProgressProps) =
   }
 
   const isCompleted = importProgress.status === 'completed';
+  const isError = importProgress.status === 'error';
+  const isPreparing = importProgress.initializationComplete === false;
+
+  if (isError) {
+    return (
+      <div role="alert" className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        インポート中にエラーが発生しました。取り込み済みの作品を確認してから、もう一度インポートしてください。
+      </div>
+    );
+  }
 
   return (
     <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-medium text-blue-900">
-          {isCompleted ? '✅ インポート完了' : '⏳ インポート進行中'}
+          {isCompleted ? '✅ インポート完了' : isPreparing ? '⏳ 提出物を準備しています' : '⏳ インポート進行中'}
         </h3>
         <span className="text-sm text-blue-700">{importProgress.progress}%</span>
       </div>
@@ -28,7 +38,7 @@ const GalleryImportProgress = ({ importProgress }: GalleryImportProgressProps) =
         />
       </div>
       <p className="text-xs text-blue-700">
-        {importProgress.totalSubmissions !== undefined
+        {isPreparing ? '提出一覧と添付ファイルを取得しています。準備が終わると処理件数を表示します。' : importProgress.totalSubmissions !== undefined
           ? `${importProgress.completedSubmissions ?? 0} / ${importProgress.totalSubmissions} 学生提出を処理済み`
           : `${importProgress.processedFiles} / ${importProgress.totalFiles} ファイル処理済み`}
         {importProgress.failedSubmissions ? `（失敗 ${importProgress.failedSubmissions} 件）` : ''}

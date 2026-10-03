@@ -1,6 +1,6 @@
 # 現在の状態と残課題
 
-更新: 2026-09-27。main（`048d854`、Issue #22 / PR #23反映後）の実装・設定に照合した入口です。履歴は [変更履歴](docs/changelog.md)、仕様・運用は [文書索引](docs/README.md) を参照してください。本番状態は記録された確認時点と区別し、この文書整理では再照会・デプロイしていません。
+更新: 2026-10-03。2026-09-27のmain（`048d854`、Issue #22 / PR #23反映後）を基礎に、入口504対策の実装と本番反映を追記しています。履歴は [変更履歴](docs/changelog.md)、仕様・運用は [文書索引](docs/README.md) を参照してください。デプロイ状態確認とユーザーの実授業インポート確認は区別します。
 
 ## 現在の実装・運用方針
 
@@ -8,7 +8,7 @@
 |---|---|
 | 認証・管理者 | Googleログインは `/`、adminは `/dashboard` へ。匿名ログインなし。Issue #22の共通入場制限によりShowcaseを含めadminのみ利用可能。非adminは案内のOK後にログアウト。[管理者管理](docs/features/admin-management.md)で追加・削除・最終admin保護とAPI／Rulesの境界を説明。 |
 | 講評・アーカイブ | Issue #10の赤・青・緑ラベル、個別／合計点フィルター、Issue #11の授業単位アーカイブを実装。[機能仕様](docs/features/gallery-and-feedback.md)。 |
-| インポート | Issue #4の管理API認証、#8の提出単位の状態・安定ID・冪等化を実装。#8は2026-09-23本番反映とユーザーのインポート確認を記録。[実装と制約](docs/implementation/import-idempotency.md)。入口504は残課題。 |
+| インポート | Issue #4の管理API認証、#8の提出単位の状態・安定ID・冪等化を実装。#8は2026-09-23本番反映とユーザーのインポート確認を記録。[実装と制約](docs/implementation/import-idempotency.md)。入口504対策は2026-10-03にFunctions／専用queue／Hosting・生成SSRへ本番反映済み。認証付きTask配送と稼働状態を確認し、実授業インポートはユーザー確認待ち。[初期化Task化](docs/implementation/import-initialization.md)。 |
 | 実行環境 | Issue #5・#9でFunctions／Cloud Run／Hosting生成SSRをNode.js 22へ移行。SSRの決定元はルート `package.json` の `engines.node`。[SSR記録](docs/implementation/hosting-ssr-node22.md)。 |
 | CI | Issue #17で検証専用CIを導入、Hooks lint警告を解消。main push／PRで型・lint（警告0）・軽量テスト・Next buildを検証。Functions・Emulator・本番確認は含まない。[テスト範囲](docs/TESTING.md)。自動デプロイなし。 |
 | 依存更新 | Issue #19で限定的なpatch/minor更新。ルート `firebase-admin` はSSR互換性のため13.10.0固定。[監査資料](docs/security/README.md)の件数は調査時点の値。 |
@@ -19,7 +19,7 @@
 
 | ID | 優先度 | 残っている作業 |
 |---|---|---|
-| IMP-TIMEOUT-01 | High | 入口の同期Drive取得・既知504の解消。N+1と所要時間を測り、初期化非同期化を検討。[障害記録](docs/implementation/import-timeout-analysis-2026-02-08.md)。 |
+| IMP-TIMEOUT-01 | 本番確認待ち | 開始APIをジョブ登録・Task投入へ変更し、初期化を背景化。名簿プロフィール再利用・経過時間ログを含め、2026-10-03に本番反映済み。認証付き配送・無認証拒否・配信ファイルを確認。実授業での開始応答時間・完了・再インポートの確認が残る。[変更と制約](docs/implementation/import-initialization.md)。 |
 | IMP-PDF-01 | Medium | PDFの50ページ上限・20MB制限を、重い変換・downloadより前に判定する。 |
 | TEST-CI-01 | High | 導入済みのフロント検証CIに、Functions build/testとRulesのEmulatorテストをどう組み込むか整理し、提出進捗・再送・部分失敗の検証を拡充する。 |
 | DEPLOY-BUILD-01 | Medium | Functionsのpredeploy/buildを必須にし、未生成・古い `lib` の手動配布を防ぐ。現状 `functions` のdeployスクリプトはbuildするが、直接のFirebase CLI実行を強制保護していない。 |

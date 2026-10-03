@@ -5,6 +5,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { processMultipleFiles } from './fileProcessor';
 import { getSafeErrorCode } from './httpSecurity';
 import { createSubmissionRecord, finishSubmission, isAlreadyExistsTaskError, studentKey, submissionDocumentId, submissionTaskName } from './importState';
+import { createStudentProfileResolver } from './studentProfiles';
 
 const logSafeError = (operation: string, error: unknown, context: Record<string, unknown> = {}) => {
   console.error(operation, { ...context, errorCode: getSafeErrorCode(error) });
@@ -33,11 +34,13 @@ async function listStudentSubmissions(
   courseId: string,
   courseWorkId: string,
   states: readonly string[] = STUDENT_SUBMISSION_STATES,
+  checkDeadline: () => void = () => {},
 ): Promise<classroom_v1.Schema$StudentSubmission[]> {
   const results: classroom_v1.Schema$StudentSubmission[] = [];
   let pageToken: string | undefined;
 
   do {
+    checkDeadline();
     const normalizedStates = states.filter((state): state is string => typeof state === 'string' && state.length > 0);
 
     const response = await classroom.courses.courseWork.studentSubmissions.list({
@@ -62,12 +65,14 @@ async function listStudentSubmissions(
 // Google Classroomから割り当て済み学生リストを取得
 async function listAssignedStudents(
   classroom: classroom_v1.Classroom,
-  courseId: string
+  courseId: string,
+  checkDeadline: () => void = () => {},
 ): Promise<classroom_v1.Schema$Student[]> {
   const results: classroom_v1.Schema$Student[] = [];
   let pageToken: string | undefined;
 
   do {
+    checkDeadline();
     const response = await classroom.courses.students.list({
       courseId,
       pageToken,
@@ -100,47 +105,28 @@ function extractStudentIdFromEmail(email?: string | null): string {
 }
 
 export async function initializeImport(
+  importJobId: string,
   galleryId: string,
   classroomId: string,
   assignmentId: string,
   userEmail: string,
   auth: Auth.OAuth2Client | Auth.GoogleAuth,
   tasksClient: CloudTasksClient
-): Promise<string> {
+): Promise<void> {
   const db = getFirestore();
-
-  // galleriesコレクションを作成/更新
-  await ensureGalleryExists(galleryId, classroomId, assignmentId, userEmail, auth);
-
-  // インポートジョブを作成
-  const importJobRef = db.collection('importJobs').doc();
-  const importJob = {
-    id: importJobRef.id,
-    galleryId,
-    classroomId,
-    assignmentId,
-    status: 'pending',
-    progress: 0,
-    totalFiles: 0,
-    processedFiles: 0,
-    errorFiles: [],
-    totalSubmissions: 0,
-    completedSubmissions: 0,
-    succeededSubmissions: 0,
-    failedSubmissions: 0,
-    failedFileCount: 0,
-    initializationComplete: false,
-    createdBy: userEmail,
-    createdAt: FieldValue.serverTimestamp(),
+  const importJobRef = db.collection('importJobs').doc(importJobId);
+  const startedAt = Date.now();
+  // Leave time to persist an error before the task's hard 30 minute deadline.
+  const checkDeadline = () => {
+    if (Date.now() - startedAt > 24 * 60 * 1000) throw new Error('initialization_deadline_exceeded');
   };
 
-  await importJobRef.set(importJob);
-
-  // バックグラウンドで提出物の取得とタスクキューへの投入を開始
+  // Task handler awaits all work; no detached promises after an HTTP response.
   try {
-    await importJobRef.update({ status: 'processing' });
+    await ensureGalleryExists(galleryId, classroomId, assignmentId, userEmail, auth);
 
-    const classroom = google.classroom({ version: 'v1', auth });
+    const classroom = google.classroom({ version: 'v1', auth, timeout: 60_000, retry: false });
+    const drive = google.drive({ version: 'v3', auth, timeout: 60_000, retry: false });
 
     // 既存作品を取得（再インポートスキップ用）
     const existingArtworksSnapshot = await db
@@ -174,7 +160,8 @@ export async function initializeImport(
     console.log(`📋 Existing artworks: ${existingArtworksByEmail.size} students`);
 
     // 課題の提出物を取得（全ステータスを対象にページング取得）
-    const submissions = await listStudentSubmissions(classroom, classroomId, assignmentId);
+    const submissions = await listStudentSubmissions(classroom, classroomId, assignmentId,
+      STUDENT_SUBMISSION_STATES, checkDeadline);
 
     console.log(`📊 Total submissions count: ${submissions.length}`);
     if (submissions.length === 0) {
@@ -182,8 +169,11 @@ export async function initializeImport(
     }
 
     // 割り当て済み学生リストを取得
-    const assignedStudents = await listAssignedStudents(classroom, classroomId);
+    const assignedStudents = await listAssignedStudents(classroom, classroomId, checkDeadline);
     console.log(`👥 Assigned students: ${assignedStudents.length} students`);
+    const getStudentProfile = createStudentProfileResolver(classroom, assignedStudents);
+    console.log('Import roster loaded', { importJobId, durationMs: Date.now() - startedAt,
+      submissionCount: submissions.length, studentCount: assignedStudents.length });
 
     // 学生ごとにファイルをグループ化するためのMap
     const submissionsByStudent = new Map<string, {
@@ -214,6 +204,7 @@ export async function initializeImport(
 
     // 各提出物からファイル情報を収集
     for (const submission of submissions) {
+      checkDeadline();
       // 提出状態を確認（TURNED_INまたはRETURNEDのみ処理）
       const submissionState = submission.state;
       const isTurnedIn = submissionState === 'TURNED_IN' || submissionState === 'RETURNED';
@@ -232,10 +223,10 @@ export async function initializeImport(
       let studentId = '';
       if (submission.userId) {
         try {
-          const userProfile = await classroom.userProfiles.get({ userId: submission.userId });
-          if (userProfile.data) {
-            studentName = userProfile.data.name?.fullName || submission.userId;
-            studentEmail = userProfile.data.emailAddress || '';
+          const userProfile = await getStudentProfile(submission.userId);
+          if (userProfile) {
+            studentName = userProfile.name?.fullName || submission.userId;
+            studentEmail = userProfile.emailAddress || '';
             studentId = extractStudentIdFromEmail(studentEmail);
           }
         } catch (error) {
@@ -290,12 +281,12 @@ export async function initializeImport(
 
       // 各添付ファイルをダウンロードしてStorageに保存
       for (const attachment of submission.assignmentSubmission.attachments) {
+        checkDeadline();
         if (!attachment.driveFile?.id) {
           studentSubmission.failedFileCount++;
           continue;
         }
 
-        const drive = google.drive({ version: 'v3', auth });
         try {
           const fileMetadata = await drive.files.get({
             fileId: attachment.driveFile.id,
@@ -353,8 +344,12 @@ export async function initializeImport(
     const studentsWithUnsupportedFilesOnly: typeof validTasks = [];
 
     const totalSubmissions = submissionsByStudent.size;
+    checkDeadline();
+    console.log('Import downloads finished', { importJobId, durationMs: Date.now() - startedAt,
+      submissionCount: totalSubmissions });
     await importJobRef.update({ totalSubmissions, totalFiles: totalSubmissions, progress: 5 });
     for (const submission of submissionsByStudent.values()) {
+      checkDeadline();
       const artworkId = submission.existingArtworkId || db.collection('artworks').doc().id;
       await createSubmissionRecord(importJobRef.id, submission.key,
         submission.studentEmail || submission.classroomUserId || submission.classroomSubmissionId || submission.key,
@@ -372,6 +367,7 @@ export async function initializeImport(
 
     // サポートされていないファイルのみの学生に対してエラー作品を作成
     for (const student of studentsWithUnsupportedFilesOnly) {
+      checkDeadline();
       try {
         const artworkId = student.artworkId;
         const errorArtworkData: Record<string, unknown> = {
@@ -548,6 +544,7 @@ export async function initializeImport(
     console.log(`📝 Creating ${notSubmittedStudents.length} not-submitted placeholders`);
 
     for (const student of notSubmittedStudents) {
+      checkDeadline();
       try {
         const studentEmail = student.profile?.emailAddress || '';
         const studentId = extractStudentIdFromEmail(studentEmail);
@@ -588,6 +585,7 @@ export async function initializeImport(
     }
 
     for (const student of studentsToMarkNotSubmitted) {
+      checkDeadline();
       try {
         const artworkRef = db.collection('artworks').doc(student.artworkId);
         await artworkRef.set({
@@ -636,15 +634,8 @@ export async function initializeImport(
 
   } catch (error) {
     logSafeError('Import initialization error', error, { importJobId: importJobRef.id });
-    await importJobRef.update({
-      status: 'error',
-      errorMessage: error instanceof Error ? error.message : 'Unknown error during initialization',
-      completedAt: FieldValue.serverTimestamp(),
-    });
     throw error;
   }
-
-  return importJobRef.id;
 }
 
 export async function checkImportCompletion(importJobId: string, db: Firestore = getFirestore()): Promise<void> {
@@ -717,7 +708,7 @@ async function ensureGalleryExists(
       console.log(`Gallery ${galleryId} exists but missing course/assignment names, fetching...`);
 
       try {
-        const classroom = google.classroom({ version: 'v1', auth });
+        const classroom = google.classroom({ version: 'v1', auth, timeout: 60_000, retry: false });
 
         // 授業情報を取得
         const courseResponse = await classroom.courses.get({ id: classroomId });
@@ -757,7 +748,7 @@ async function ensureGalleryExists(
   console.log(`Creating new gallery ${galleryId}...`);
 
   try {
-    const classroom = google.classroom({ version: 'v1', auth });
+    const classroom = google.classroom({ version: 'v1', auth, timeout: 60_000, retry: false });
 
     // 授業情報を取得
     const courseResponse = await classroom.courses.get({ id: classroomId });

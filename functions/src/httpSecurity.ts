@@ -109,6 +109,7 @@ export type ImportStatusResponse = {
   succeededSubmissions?: number;
   failedSubmissions?: number;
   failedFileCount?: number;
+  initializationComplete?: boolean;
 };
 
 export function toImportStatusResponse(data: FirebaseFirestore.DocumentData): ImportStatusResponse {
@@ -124,6 +125,9 @@ export function toImportStatusResponse(data: FirebaseFirestore.DocumentData): Im
     response.succeededSubmissions = typeof data.succeededSubmissions === 'number' ? data.succeededSubmissions : 0;
     response.failedSubmissions = typeof data.failedSubmissions === 'number' ? data.failedSubmissions : 0;
     response.failedFileCount = typeof data.failedFileCount === 'number' ? data.failedFileCount : 0;
+  }
+  if (typeof data.initializationComplete === 'boolean') {
+    response.initializationComplete = data.initializationComplete;
   }
   return response;
 }
